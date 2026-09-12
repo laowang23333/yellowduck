@@ -69,6 +69,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 .add(Attributes.MOVEMENT_SPEED, 0.25D);
     }
 
+    // 新增的公共方法，用来给模型类读取状态
+    public boolean isPhaseTwo() {
+        return this.entityData.get(IS_PHASE_TWO);
+    }
+
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
