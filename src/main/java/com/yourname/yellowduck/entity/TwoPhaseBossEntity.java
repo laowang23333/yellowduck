@@ -6,6 +6,7 @@ import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -32,9 +33,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         super(entityType, level);
     }
 
-    // ================= 核心 AI 代码（主动攻击 + 移动） =================
+    // ================= AI 行为（主动攻击 + 移动） =================
     @Override
     protected void registerGoals() {
+        super.registerGoals();
+        
         // 0. 浮在水面（防止淹死）
         this.goalSelector.addGoal(0, new FloatGoal(this));
         
@@ -56,7 +59,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         // 6. 主动索敌（主动攻击最近的玩家）
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
     }
-    // ================================================================
+    // ==============================================================
 
     @Override
     protected void defineSynchedData() {
@@ -77,21 +80,18 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         }
     }
 
-    // ================= 核心动画代码（完美调用 idle 和 walk） =================
+    // ================= 动画控制器（行走、待机、攻击） =================
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, "controller", 5, state -> {
-            // 如果实体正在移动，播放行走动画
             if (state.isMoving()) {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("walk"));
-            } 
-            // 如果没在移动，播放待机动画
-            else {
+            } else {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("idle"));
             }
-        }));
+        }).triggerableAnim("attack", RawAnimation.begin().thenPlay("attack"))); // 攻击动画触发器
     }
-    // =====================================================================
+    // ================================================================
 
     @Override
     public AnimatableInstanceCache getAnimatableInstanceCache() {
@@ -100,10 +100,10 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 600.0D)      // 最大生命值 600
-                .add(Attributes.ATTACK_DAMAGE, 14.0D)    // 攻击力 14
-                .add(Attributes.MOVEMENT_SPEED, 0.25D)   // 移动速度
-                .add(Attributes.FOLLOW_RANGE, 35.0D);    // 索敌范围 35 格
+                .add(Attributes.MAX_HEALTH, 600.0D)
+                .add(Attributes.ATTACK_DAMAGE, 14.0D)
+                .add(Attributes.MOVEMENT_SPEED, 0.25D)
+                .add(Attributes.FOLLOW_RANGE, 35.0D);
     }
 
     public boolean isPhaseTwo() {
@@ -121,4 +121,12 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         super.readAdditionalSaveData(tag);
         this.entityData.set(IS_PHASE_TWO, tag.getBoolean("IsPhaseTwo"));
     }
+
+    // ================= 攻击时触发挥拳动画 =================
+    @Override
+    public boolean doHurtTarget(Entity target) {
+        this.triggerAnim("controller", "attack");
+        return super.doHurtTarget(target);
+    }
+    // ======================================================
 }
