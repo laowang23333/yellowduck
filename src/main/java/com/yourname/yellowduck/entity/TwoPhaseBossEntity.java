@@ -10,6 +10,10 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.goal.*;
+import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
+import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
@@ -27,6 +31,32 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     public TwoPhaseBossEntity(EntityType<? extends PathfinderMob> entityType, Level level) {
         super(entityType, level);
     }
+
+    // ================= 新增：AI 行为 =================
+    @Override
+    protected void registerGoals() {
+        // 0. 防止掉进水里淹死
+        this.goalSelector.addGoal(0, new FloatGoal(this));
+        
+        // 1. 近战攻击目标（1.0D是移动速度，true是即使看不到目标也会追击）
+        this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 1.0D, true));
+        
+        // 2. 随机漫步（0.8D是漫步速度）
+        this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.8D));
+        
+        // 3. 看向玩家
+        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        
+        // 4. 随机东张西望
+        this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
+
+        // 5. 被攻击时反击
+        this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
+        
+        // 6. 主动攻击最近的玩家
+        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
+    }
+    // =================================================
 
     @Override
     protected void defineSynchedData() {
@@ -66,10 +96,10 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         return PathfinderMob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 600.0D)
                 .add(Attributes.ATTACK_DAMAGE, 14.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.25D);
+                .add(Attributes.MOVEMENT_SPEED, 0.25D)
+                .add(Attributes.FOLLOW_RANGE, 35.0D); // 新增：Boss 的索敌范围（追踪玩家的距离）
     }
 
-    // 新增的公共方法，用来给模型类读取状态
     public boolean isPhaseTwo() {
         return this.entityData.get(IS_PHASE_TWO);
     }
