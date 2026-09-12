@@ -1,0 +1,20 @@
+package com.yourname.yellowduck.registry;
+
+import com.yourname.yellowduck.YellowDuckMod;
+import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.registries.RegistryObject;
+
+public class ModEntities {
+    public static final DeferredRegister<EntityType<?>> ENTITIES =
+            DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, YellowDuckMod.MOD_ID);
+
+    public static final RegistryObject<EntityType<TwoPhaseBossEntity>> TWO_PHASE_BOSS =
+            ENTITIES.register("two_phase_boss", () ->
+                    EntityType.Builder.<TwoPhaseBossEntity>of(TwoPhaseBossEntity::new, MobCategory.MONSTER)
+                            .sized(1.0F, 1.0F)
+                            .build("two_phase_boss"));
+}
