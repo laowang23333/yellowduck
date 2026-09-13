@@ -8,6 +8,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
@@ -20,7 +21,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -68,10 +68,10 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 1.2D, true));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.8D));
-        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, net.minecraft.world.entity.player.Player.class, 8.0F));
         this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
+        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.player.Player.class, true));
     }
 
     @Override
@@ -87,8 +87,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.isCharging = false;
         this.isDashing = false;
         this.setDeltaMovement(Vec3.ZERO);
-        this.getNavigation().stop(); // 停止移动
-        this.setTarget(null);        // 清除目标
+        this.getNavigation().stop();
+        this.setTarget(null);
     }
 
     public void enterPhaseTwo() {
@@ -116,8 +116,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         if (!this.level().isClientSide && !this.entityData.get(IS_PHASE_TWO)) {
             if (this.getHealth() - amount <= 0) {
                 this.setHealth(1.0F);
-                this.startTransform(); // 触发变身过渡
-                return false; // 取消本次死亡
+                this.startTransform();
+                return false;
             }
         }
         return super.hurt(source, amount);
@@ -142,7 +142,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     double x = this.getX() + Math.cos(angle) * radius;
                     double z = this.getZ() + Math.sin(angle) * radius;
                     
-                    // 交替发送两种粒子，让效果更华丽
                     serverLevel.sendParticles(ParticleTypes.ENCHANT, x, this.getY() + 1.0, z, 5, 0, 0, 0, 0.1);
                     serverLevel.sendParticles(ParticleTypes.END_ROD, x, this.getY() + 1.5, z, 2, 0, 0, 0, 0);
                 }
@@ -159,19 +158,20 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         Entity newEntity = type.create(serverLevel);
                         if (newEntity instanceof TwoPhaseBossEntity boss) {
                             boss.moveTo(this.getX(), this.getY(), this.getZ(), this.getYRot(), this.getXRot());
-                            boss.enterPhaseTwo(); // 触发二阶段属性设置
+                            boss.enterPhaseTwo();
                             serverLevel.addFreshEntity(boss);
 
                             // 3. 发送屏幕正中间标题（给50格内的玩家）
                             Component titleMsg = Component.literal("§4鸭神§e降临");
-                            for (Player player : serverLevel.getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(50))) {
+                            // 【修复】把 Player 改为 ServerPlayer
+                            for (ServerPlayer player : serverLevel.getEntitiesOfClass(ServerPlayer.class, this.getBoundingBox().inflate(50))) {
                                 player.connection.send(new ClientboundSetTitleTextPacket(titleMsg));
                             }
                         }
                     }
-                    this.discard(); // 删除一阶段实体
+                    this.discard();
                 }
-                return; // 变身过程中跳过常规逻辑
+                return;
             }
             // ===============================================
 
@@ -185,7 +185,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             if (this.entityData.get(IS_PHASE_TWO) && healthRatio <= 1.0f && healthRatio > 0.8f && dashCooldown <= 0 && !isCharging && !isDashing) {
                 this.isCharging = true;
                 this.chargeTimer = 0;
-                this.dashCooldown = 500; // 25秒冷却
+                this.dashCooldown = 500;
                 
                 if (this.getTarget() != null) {
                     this.dashDirection = new Vec3(
@@ -258,9 +258,9 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 100000.0D)      // 一阶段10万血
+                .add(Attributes.MAX_HEALTH, 100000.0D)
                 .add(Attributes.ARMOR, 12.0D)
-                .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D) // 100%免疫击退
+                .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D)
                 .add(Attributes.ATTACK_DAMAGE, 12.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.28D)
                 .add(Attributes.FOLLOW_RANGE, 35.0D);
