@@ -3,7 +3,6 @@ package com.yourname.yellowduck.block;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.player.Player;
@@ -79,6 +78,4 @@ public class BigChestBlockEntity extends BlockEntity implements Container {
         items.clear();
         ContainerHelper.loadAllItems(tag, items);
     }
-
-    @Override public Component getDisplayName() { return Component.literal("大箱子"); }
 }
