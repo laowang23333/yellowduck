@@ -12,5 +12,6 @@ public class ClientEvents {
     @SubscribeEvent
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossRenderer::new);
+        event.registerEntityRenderer(ModEntities.MOUNT.get(), MountRenderer::new);
     }
 }
