@@ -43,23 +43,23 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             SynchedEntityData.defineId(TwoPhaseBossEntity.class, EntityDataSerializers.BOOLEAN);
 
     // ================= 全局技能状态机 =================
-    private int skillCooldown = 0;      // 全局技能冷却
-    private int chargeTimer = 0;        // 冲撞蓄力计时器
-    private int dashTimer = 0;          // 冲撞冲刺计时器
-    private int slamTimer = 0;          // 撼地计时器
-    private int recoveryTimer = 0;      // 地形恢复计时器
+    private int skillCooldown = 0;
+    private int chargeTimer = 0;
+    private int dashTimer = 0;
+    private int slamTimer = 0;
+    private int recoveryTimer = 0;
     
-    private boolean isCharging = false; // 是否在冲撞蓄力
-    private boolean isDashing = false;  // 是否在冲撞冲刺
-    private boolean isSlamming = false; // 是否在撼地
-    private boolean isRecovering = false; // 是否在地形恢复期
+    private boolean isCharging = false;
+    private boolean isDashing = false;
+    private boolean isSlamming = false;
+    private boolean isRecovering = false;
     
-    private Vec3 dashDirection = Vec3.ZERO;    // 冲撞方向
-    private double slamStartY = 0.0;           // 记录撼地起跳高度，用于限制高度
-    private double slamTargetX = 0.0;          // 撼地最终落点 X
-    private double slamTargetZ = 0.0;          // 撼地最终落点 Z
-    private double slamVelX = 0.0;             // 下坠时的水平速度 X
-    private double slamVelZ = 0.0;             // 下坠时的水平速度 Z
+    private Vec3 dashDirection = Vec3.ZERO;
+    private double slamStartY = 0.0;
+    private double slamTargetX = 0.0;
+    private double slamTargetZ = 0.0;
+    private double slamVelX = 0.0;
+    private double slamVelZ = 0.0;
     // =================================================
 
     // ================= 变身过渡状态机 =================
@@ -211,7 +211,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.bossEvent.setProgress(this.getHealth() / this.getMaxHealth());
 
         if (!this.level().isClientSide) {
-            // 全局技能冷却递减
             if (skillCooldown > 0) {
                 skillCooldown--;
             }
@@ -220,9 +219,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             if (this.entityData.get(IS_PHASE_TWO) && skillCooldown <= 0 && !isCharging && !isDashing && !isSlamming && !isRecovering) {
                 Player nearestPlayer = this.level().getNearestPlayer(this, 50.0D);
                 if (nearestPlayer != null) {
-                    // 随机判定：平均每2秒判定一次
                     if (this.random.nextInt(40) == 0) {
-                        // 100%-80% 和 80%以下 都是随机二选一
                         if (this.random.nextBoolean()) {
                             startDash(nearestPlayer);
                         } else {
@@ -280,50 +277,62 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 }
             }
 
-            // ================= 撼地逻辑【修复版：50格限制】 =================
+            // ================= 撼地逻辑 =================
             if (this.isSlamming) {
                 this.slamTimer++;
                 
-                // 1. 升空阶段（前60 ticks = 3秒）
+                // 1. 升空阶段
                 if (this.slamTimer <= 60) {
                     this.getNavigation().stop();
-                    
-                    // 限制高度 12 格
                     if (this.getY() - this.slamStartY < 12.0) {
                         this.setDeltaMovement(0, 0.4, 0);
                     } else {
                         this.setDeltaMovement(0, 0, 0);
                     }
-                    
                     if (this.slamTimer % 10 == 0) {
                         this.triggerAnim("controller", "attack");
                         this.level().playSound(null, this.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundSource.HOSTILE, 1.0F, 1.2F);
                     }
                 } 
-                // 2. 悬停阶段（第60到360 ticks = 15秒）
+                // 2. 悬停阶段（投掷草方块）
                 else if (this.slamTimer > 60 && this.slamTimer <= 360) {
                     this.setDeltaMovement(0, 0, 0);
                     
-                    // 每 20 ticks 投掷草方块并更新目标（限制在 50 格内）
                     if (this.slamTimer % 20 == 0) {
                         Player nearestPlayer = this.level().getNearestPlayer(this, 50.0D);
                         if (nearestPlayer != null) {
-                            // 更新目标位置，为最后的下坠做准备
                             this.slamTargetX = nearestPlayer.getX();
                             this.slamTargetZ = nearestPlayer.getZ();
                             
                             if (this.level() instanceof ServerLevel serverLevel) {
-                                FallingBlockEntity grassBlock = FallingBlockEntity.fall(serverLevel, 
-                                    this.blockPosition().above(1), Blocks.GRASS_BLOCK.defaultBlockState());
+                                // 【关键修复】从 Boss 头顶 2 格生成草方块
+                                FallingBlockEntity grassBlock = FallingBlockEntity.fall(
+                                    serverLevel, 
+                                    this.blockPosition().above(2), 
+                                    Blocks.GRASS_BLOCK.defaultBlockState()
+                                );
                                 
-                                Vec3 dir = new Vec3(
-                                    nearestPlayer.getX() - this.getX(),
-                                    nearestPlayer.getY() + 1.0 - (this.getY() + 1.0),
-                                    nearestPlayer.getZ() - this.getZ()
-                                ).normalize().scale(1.2);
-                                
-                                grassBlock.setDeltaMovement(dir);
+                                // 【关键修复1】禁用重力，让草方块走直线飞向玩家
+                                grassBlock.setNoGravity(true);
+                                // 【关键修复2】落地后不变方块，绝不破坏地形
+                                grassBlock.setCancelDrop(true);
                                 grassBlock.addTag("boss_grass_projectile");
+                                
+                                // 计算朝玩家的速度（含向下的分量，让飞行轨迹自然）
+                                Vec3 toPlayer = new Vec3(
+                                    nearestPlayer.getX() - this.getX(),
+                                    nearestPlayer.getY() + 1.0 - (this.getY() + 2.0),
+                                    nearestPlayer.getZ() - this.getZ()
+                                );
+                                
+                                // 1 秒（20 tick）内到达玩家
+                                double distance = toPlayer.length();
+                                double speed = distance / 20.0;
+                                if (speed > 1.5) speed = 1.5; // 速度上限
+                                if (speed < 0.3) speed = 0.3; // 速度下限
+                                
+                                grassBlock.setDeltaMovement(toPlayer.normalize().scale(speed));
+                                
                                 serverLevel.addFreshEntity(grassBlock);
                                 this.level().playSound(null, this.blockPosition(), SoundEvents.SNOWBALL_THROW, SoundSource.HOSTILE, 1.0F, 0.5F);
                             }
@@ -334,14 +343,13 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         this.triggerAnim("controller", "attack");
                     }
                 }
-                // 3. 下坠阶段（第360到370 ticks = 0.5秒）
+                // 3. 下坠阶段
                 else if (this.slamTimer > 360 && this.slamTimer <= 370) {
                     if (this.slamTimer == 361) {
                         double distanceX = this.slamTargetX - this.getX();
                         double distanceZ = this.slamTargetZ - this.getZ();
                         
                         double timeToLand = 10.0;
-                        
                         double velX = distanceX / timeToLand;
                         double velZ = distanceZ / timeToLand;
                         
@@ -380,24 +388,43 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 }
             }
 
-            // ================= 草方块实体跟踪与爆炸 =================
+            // ================= 草方块实体跟踪与爆炸【修复版】 =================
             if (this.level() instanceof ServerLevel serverLevel) {
                 for (Entity entity : serverLevel.getEntities(this, this.getBoundingBox().inflate(50.0))) {
                     if (entity instanceof FallingBlockEntity grassBlock && grassBlock.getTags().contains("boss_grass_projectile")) {
-                        // 【修复】去掉了 grassBlock.isOnGround()，改为只要有碰撞就触发
-                        if (grassBlock.horizontalCollision || grassBlock.verticalCollision) {
+                        boolean shouldExplode = false;
+                        
+                        // 【修复1】撞到方块（起飞后 3 tick 才开始检测，避免刚生成就触发）
+                        if (grassBlock.tickCount > 3 && (grassBlock.horizontalCollision || grassBlock.verticalCollision)) {
+                            shouldExplode = true;
+                        }
+                        
+                        // 【修复2】靠近玩家（1.5 格内）
+                        if (!shouldExplode && grassBlock.tickCount > 3) {
+                            for (Player p : serverLevel.getEntitiesOfClass(Player.class, grassBlock.getBoundingBox().inflate(1.5))) {
+                                shouldExplode = true;
+                                break;
+                            }
+                        }
+                        
+                        // 【修复3】超时清理（2 秒后自动消失）
+                        if (!shouldExplode && grassBlock.tickCount > 40) {
+                            shouldExplode = true;
+                        }
+                        
+                        if (shouldExplode) {
+                            // 爆炸特效与音效（不破坏地形）
                             serverLevel.sendParticles(ParticleTypes.EXPLOSION, grassBlock.getX(), grassBlock.getY(), grassBlock.getZ(), 3, 0.2, 0.2, 0.2, 0.05);
                             serverLevel.playSound(null, grassBlock.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.0F, 1.5F);
                             
+                            // 对周围 2 格玩家造成伤害
                             for (Entity nearby : serverLevel.getEntities(grassBlock, grassBlock.getBoundingBox().inflate(2.0))) {
                                 if (nearby instanceof LivingEntity living && nearby != this) {
                                     living.hurt(this.damageSources().mobAttack(this), 8.0F);
                                 }
                             }
-                            grassBlock.discard();
-                        }
-                        
-                        if (grassBlock.tickCount > 100) {
+                            
+                            // 【关键】立刻删除草方块，绝不让它变成真实方块
                             grassBlock.discard();
                         }
                     }
