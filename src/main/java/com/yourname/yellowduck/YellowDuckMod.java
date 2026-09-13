@@ -1,5 +1,7 @@
 package com.yourname.yellowduck;
 
+import com.yourname.yellowduck.entity.MountEntity;
+import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
 import com.yourname.yellowduck.registry.ModEntities;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -17,7 +19,7 @@ public class YellowDuckMod {
     }
 
     private void registerAttributes(EntityAttributeCreationEvent event) {
-        event.put(ModEntities.TWO_PHASE_BOSS.get(),
-                com.yourname.yellowduck.entity.TwoPhaseBossEntity.createAttributes().build());
+        event.put(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossEntity.createAttributes().build());
+        event.put(ModEntities.MOUNT.get(), MountEntity.createAttributes().build());
     }
 }
