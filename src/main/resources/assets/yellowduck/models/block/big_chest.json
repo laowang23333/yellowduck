@@ -1,1 +1,6 @@
-{ "parent": "minecraft:block/block" }
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "yellowduck:block/big_chest"
+  }
+}
