@@ -8,6 +8,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -37,25 +38,25 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     @Override
     protected void registerGoals() {
         super.registerGoals();
-        
+
         // 0. 浮在水面（防止淹死）
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        
-        // 1. 近战攻击玩家（1.0D是追击速度）
-        this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 1.0D, true));
-        
+
+        // 1. 近战攻击玩家（1.2D提升追击速度，让连击更紧凑）
+        this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 1.2D, true));
+
         // 2. 随机漫步
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.8D));
-        
+
         // 3. 看着玩家
         this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        
+
         // 4. 随机东张西望
         this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
 
         // 5. 受到攻击时反击
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
-        
+
         // 6. 主动索敌（主动攻击最近的玩家）
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
     }
@@ -98,13 +99,17 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         return this.cache;
     }
 
+    // ================= 基础属性（500万血量） =================
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 600.0D)
-                .add(Attributes.ATTACK_DAMAGE, 14.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.25D)
-                .add(Attributes.FOLLOW_RANGE, 35.0D);
+                .add(Attributes.MAX_HEALTH, 5000000.0D)   // 生命值 500万！
+                .add(Attributes.ARMOR, 12.0D)             // 护甲值12
+                .add(Attributes.KNOCKBACK_RESISTANCE, 0.8D) // 击退抗性0.8（不容易被玩家击退）
+                .add(Attributes.ATTACK_DAMAGE, 12.0D)     // 普通攻击伤害12
+                .add(Attributes.MOVEMENT_SPEED, 0.28D)    // 移动速度略低于玩家
+                .add(Attributes.FOLLOW_RANGE, 35.0D);     // 索敌范围
     }
+    // ======================================================================
 
     public boolean isPhaseTwo() {
         return this.entityData.get(IS_PHASE_TWO);
@@ -122,11 +127,19 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.entityData.set(IS_PHASE_TWO, tag.getBoolean("IsPhaseTwo"));
     }
 
-    // ================= 攻击时触发挥拳动画 =================
+    // ================= 攻击时触发挥拳动画 + 强化击退 =================
     @Override
     public boolean doHurtTarget(Entity target) {
+        // 触发一次挥拳动画
         this.triggerAnim("controller", "attack");
-        return super.doHurtTarget(target);
+
+        boolean success = super.doHurtTarget(target);
+
+        if (success && target instanceof LivingEntity livingTarget) {
+            // 强化击退效果（模拟摆拳和双拳重击的击飞感）
+            livingTarget.knockback(1.5D, this.getX() - target.getX(), this.getZ() - target.getZ());
+        }
+        return success;
     }
-    // ======================================================
+    // ==============================================================
 }
