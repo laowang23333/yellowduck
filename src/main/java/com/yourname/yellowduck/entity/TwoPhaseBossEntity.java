@@ -305,16 +305,17 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                             this.slamTargetZ = nearestPlayer.getZ();
                             
                             if (this.level() instanceof ServerLevel serverLevel) {
-                                // 【关键修复】从 Boss 头顶 2 格生成草方块
+                                // 从 Boss 头顶 2 格生成草方块
                                 FallingBlockEntity grassBlock = FallingBlockEntity.fall(
                                     serverLevel, 
                                     this.blockPosition().above(2), 
                                     Blocks.GRASS_BLOCK.defaultBlockState()
                                 );
                                 
-                                // 【关键修复1】禁用重力，让草方块走直线飞向玩家
+                                // 【修复1】禁用重力，让草方块走直线飞向玩家
                                 grassBlock.setNoGravity(true);
-                                // 【关键修复2】落地后不变方块，绝不破坏地形
+                                // 【修复2】直接赋公共变量，落地直接销毁，绝不变成真实方块
+                                grassBlock.cancelDrop = true;
                                 grassBlock.addTag("boss_grass_projectile");
                                 
                                 // 计算朝玩家的速度（含向下的分量，让飞行轨迹自然）
@@ -387,18 +388,18 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 }
             }
 
-            // ================= 草方块实体跟踪与爆炸【修复版】 =================
+            // ================= 草方块实体跟踪与爆炸 =================
             if (this.level() instanceof ServerLevel serverLevel) {
                 for (Entity entity : serverLevel.getEntities(this, this.getBoundingBox().inflate(50.0))) {
                     if (entity instanceof FallingBlockEntity grassBlock && grassBlock.getTags().contains("boss_grass_projectile")) {
                         boolean shouldExplode = false;
                         
-                        // 【修复1】撞到方块（起飞后 3 tick 才开始检测，避免刚生成就触发）
+                        // 撞到方块或实体
                         if (grassBlock.tickCount > 3 && (grassBlock.horizontalCollision || grassBlock.verticalCollision)) {
                             shouldExplode = true;
                         }
                         
-                        // 【修复2】靠近玩家（1.5 格内）
+                        // 靠近玩家（1.5 格内）
                         if (!shouldExplode && grassBlock.tickCount > 3) {
                             for (Player p : serverLevel.getEntitiesOfClass(Player.class, grassBlock.getBoundingBox().inflate(1.5))) {
                                 shouldExplode = true;
@@ -406,7 +407,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                             }
                         }
                         
-                        // 【修复3】超时清理（2 秒后自动消失）
+                        // 超时清理（2 秒后自动消失）
                         if (!shouldExplode && grassBlock.tickCount > 40) {
                             shouldExplode = true;
                         }
@@ -423,7 +424,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                                 }
                             }
                             
-                            // 【关键】立刻删除草方块，绝不让它变成真实方块
+                            // 立刻删除草方块
                             grassBlock.discard();
                         }
                     }
