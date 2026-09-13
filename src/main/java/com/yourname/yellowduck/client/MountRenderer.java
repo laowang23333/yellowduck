@@ -33,24 +33,27 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
     @Override
     public void render(MountEntity entity, float entityYaw, float partialTick,
                        PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
-        AnimationController ctrl = GltfEntityRenderer.getAnimationController(entity);
-        if (ctrl != null) {
-            String wantAnim;
-            if (entity.isVehicle()) {
-                // 被骑乘：检查是否在移动
-                double speedSqr = entity.getDeltaMovement().horizontalDistanceSqr();
-                if (speedSqr > 0.001D) {
-                    wantAnim = "Anim-1_walk";   // 走路
+        try {
+            AnimationController ctrl = this.getAnimationController(entity);
+            if (ctrl != null) {
+                String wantAnim;
+                if (entity.isVehicle()) {
+                    double speedSqr = entity.getDeltaMovement().horizontalDistanceSqr();
+                    if (speedSqr > 0.001D) {
+                        wantAnim = "Anim-1_walk";
+                    } else {
+                        wantAnim = "Anim-1_ride";
+                    }
                 } else {
-                    wantAnim = "Anim-1_ride";   // 骑乘待机
+                    wantAnim = "Anim-1_stand";
                 }
-            } else {
-                wantAnim = "Anim-1_stand";      // 平时待机
+                String current = ctrl.getAnimationName();
+                if (current == null || !current.equals(wantAnim)) {
+                    ctrl.play(wantAnim);
+                }
             }
-            String current = ctrl.getAnimationName();
-            if (current == null || !current.equals(wantAnim)) {
-                ctrl.play(wantAnim);
-            }
+        } catch (Throwable t) {
+            // 动画出错不影响模型渲染
         }
         super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
     }
