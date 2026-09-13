@@ -315,7 +315,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                                 // 【关键修复1】禁用重力，让草方块走直线飞向玩家
                                 grassBlock.setNoGravity(true);
                                 // 【关键修复2】落地后不变方块，绝不破坏地形
-                                grassBlock.setCancelDrop(true);
                                 grassBlock.addTag("boss_grass_projectile");
                                 
                                 // 计算朝玩家的速度（含向下的分量，让飞行轨迹自然）
