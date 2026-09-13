@@ -36,16 +36,13 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
         try {
             AnimationController ctrl = this.getAnimationController(entity);
             if (ctrl != null) {
+                // 统一按实体自身速度判断：走路 / 站立
+                double speedSqr = entity.getDeltaMovement().horizontalDistanceSqr();
                 String wantAnim;
-                if (entity.isVehicle()) {
-                    double speedSqr = entity.getDeltaMovement().horizontalDistanceSqr();
-                    if (speedSqr > 0.001D) {
-                        wantAnim = "Anim-1_walk";
-                    } else {
-                        wantAnim = "Anim-1_ride";
-                    }
+                if (speedSqr > 0.001D) {
+                    wantAnim = "Anim-1_walk";   // 移动中（无论是否被骑）
                 } else {
-                    wantAnim = "Anim-1_stand";
+                    wantAnim = "Anim-1_stand";  // 静止（骑乘待机也用它）
                 }
                 String current = ctrl.getAnimationName();
                 if (current == null || !current.equals(wantAnim)) {
