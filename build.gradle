@@ -46,6 +46,6 @@ dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.3.29'
     implementation fg.deobf('software.bernie.geckolib:geckolib-forge-1.20.1:4.7.1.1')
 
-    // Polymesh - glTF/GLB 渲染库（已替换 MCglTF）
+    // Polymesh - glTF/GLB 渲染库
     implementation fg.deobf("maven.modrinth:GmPRqxTy:jJiQUzrS")
 }
