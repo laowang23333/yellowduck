@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.entity;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -33,6 +34,16 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     public TwoPhaseBossEntity(EntityType<? extends PathfinderMob> entityType, Level level) {
         super(entityType, level);
     }
+
+    // ================= 修改 Jade 显示的名字 =================
+    @Override
+    public Component getName() {
+        if (this.entityData.get(IS_PHASE_TWO)) {
+            return Component.literal("肌肉大鸭");
+        }
+        return Component.literal("小黄鸭");
+    }
+    // ========================================================
 
     // ================= AI 行为（主动攻击 + 移动） =================
     @Override
@@ -99,7 +110,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         return this.cache;
     }
 
-    // ================= 基础属性（500万血量） =================
+    // ================= 基础属性（按策划案调整 + 500万血量） =================
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 5000000.0D)   // 生命值 500万！
