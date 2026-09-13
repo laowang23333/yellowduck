@@ -29,22 +29,19 @@ public class MountEntity extends PathfinderMob {
                 .add(Attributes.FOLLOW_RANGE, 35.0D);
     }
 
-    // 显示名：狮子狗
     @Override
     public Component getName() {
         return Component.literal("狮子狗");
     }
 
-    // 【新增】AI 目标：让坐骑平时会自己走动、看向玩家
     @Override
     protected void registerGoals() {
-        this.goalSelector.addGoal(0, new FloatGoal(this));                                   // 会浮水
-        this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 1.0D));         // 闲逛
-        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));         // 看向附近玩家
-        this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));                         // 随机转头
+        this.goalSelector.addGoal(0, new FloatGoal(this));
+        this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 1.0D));
+        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
     }
 
-    // 告诉 Minecraft 谁在控制这个坐骑
     @Override
     public LivingEntity getControllingPassenger() {
         if (this.getFirstPassenger() instanceof Player player) {
@@ -53,7 +50,6 @@ public class MountEntity extends PathfinderMob {
         return null;
     }
 
-    // 玩家按跳跃键时坐骑跳多高
     @Override
     protected float getJumpPower() {
         return 0.6F;
