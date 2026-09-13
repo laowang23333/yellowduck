@@ -24,6 +24,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
+import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -54,8 +55,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private boolean isRecovering = false; // 是否在地形恢复期
     
     private Vec3 dashDirection = Vec3.ZERO;    // 冲撞方向
-    private Vec3 slamTargetPos = Vec3.ZERO;    // 撼地落点
-    private double slamStartY = 0.0;           // 【新增】记录撼地起跳高度，用于限制高度
+    private double slamStartY = 0.0;           // 记录撼地起跳高度，用于限制高度
+    private double slamTargetX = 0.0;          // 撼地最终落点 X
+    private double slamTargetZ = 0.0;          // 撼地最终落点 Z
+    private double slamVelX = 0.0;             // 下坠时的水平速度 X
+    private double slamVelZ = 0.0;             // 下坠时的水平速度 Z
     // =================================================
 
     // ================= 变身过渡状态机 =================
@@ -214,11 +218,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
             // ================= 全局技能触发判定 =================
             if (this.entityData.get(IS_PHASE_TWO) && skillCooldown <= 0 && !isCharging && !isDashing && !isSlamming && !isRecovering) {
-                Player nearestPlayer = this.level().getNearestPlayer(this, 35.0D);
+                // 【修改】使用 50 格范围检测最近玩家
+                Player nearestPlayer = this.level().getNearestPlayer(this, 50.0D);
                 if (nearestPlayer != null) {
                     // 随机判定：平均每2秒判定一次
                     if (this.random.nextInt(40) == 0) {
-                        float healthRatio = this.getHealth() / this.getMaxHealth();
                         // 100%-80% 和 80%以下 都是随机二选一
                         if (this.random.nextBoolean()) {
                             startDash(nearestPlayer);
@@ -273,12 +277,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 if (this.dashTimer >= 20 || this.horizontalCollision) {
                     this.isDashing = false;
                     this.setDeltaMovement(Vec3.ZERO);
-                    // 冲撞结束，进入冷却
                     this.skillCooldown = 500 + this.random.nextInt(100); 
                 }
             }
 
-            // ================= 撼地逻辑【修复重点】 =================
+            // ================= 撼地逻辑【修复版：50格限制】 =================
             if (this.isSlamming) {
                 this.slamTimer++;
                 
@@ -286,52 +289,122 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 if (this.slamTimer <= 60) {
                     this.getNavigation().stop();
                     
-                    // 【修复高度限制】最高只能上升 12 格
+                    // 限制高度 12 格
                     if (this.getY() - this.slamStartY < 12.0) {
-                        this.setDeltaMovement(0, 0.4, 0); // 缓慢上升
+                        this.setDeltaMovement(0, 0.4, 0);
                     } else {
-                        this.setDeltaMovement(0, 0, 0); // 到达 12 格后悬停
+                        this.setDeltaMovement(0, 0, 0);
                     }
                     
-                    // 抓取动作与草方块粒子
                     if (this.slamTimer % 10 == 0) {
-                        this.triggerAnim("controller", "attack"); // 每半秒播放一次攻击动画
+                        this.triggerAnim("controller", "attack");
                         this.level().playSound(null, this.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundSource.HOSTILE, 1.0F, 1.2F);
                     }
-                    if (this.level() instanceof ServerLevel serverLevel) {
-                        serverLevel.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()), 
-                            this.getX(), this.getY() + 1.0, this.getZ(), 15, 0.5, 0.5, 0.5, 0.1);
-                    }
                 } 
-                // 2. 悬停阶段（第60到80 ticks = 1秒）
-                else if (this.slamTimer > 60 && this.slamTimer <= 80) {
-                    this.setDeltaMovement(0, 0, 0); // 悬停在空中
-                    if (this.level() instanceof ServerLevel serverLevel) {
-                        serverLevel.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()), 
-                            this.getX(), this.getY() + 1.0, this.getZ(), 10, 0.5, 0.5, 0.5, 0.1);
+                // 2. 悬停阶段（第60到360 ticks = 15秒）
+                else if (this.slamTimer > 60 && this.slamTimer <= 360) {
+                    this.setDeltaMovement(0, 0, 0);
+                    
+                    // 每 20 ticks 投掷草方块并更新目标（限制在 50 格内）
+                    if (this.slamTimer % 20 == 0) {
+                        // 【修改】使用 50 格范围检测最近玩家
+                        Player nearestPlayer = this.level().getNearestPlayer(this, 50.0D);
+                        if (nearestPlayer != null) {
+                            // 更新目标位置，为最后的下坠做准备
+                            this.slamTargetX = nearestPlayer.getX();
+                            this.slamTargetZ = nearestPlayer.getZ();
+                            
+                            if (this.level() instanceof ServerLevel serverLevel) {
+                                FallingBlockEntity grassBlock = FallingBlockEntity.fall(serverLevel, 
+                                    this.blockPosition().above(1), Blocks.GRASS_BLOCK.defaultBlockState());
+                                
+                                Vec3 dir = new Vec3(
+                                    nearestPlayer.getX() - this.getX(),
+                                    nearestPlayer.getY() + 1.0 - (this.getY() + 1.0),
+                                    nearestPlayer.getZ() - this.getZ()
+                                ).normalize().scale(1.2);
+                                
+                                grassBlock.setDeltaMovement(dir);
+                                grassBlock.addTag("boss_grass_projectile");
+                                serverLevel.addFreshEntity(grassBlock);
+                                this.level().playSound(null, this.blockPosition(), SoundEvents.SNOWBALL_THROW, SoundSource.HOSTILE, 1.0F, 0.5F);
+                            }
+                        }
+                        // 如果 50 格内没有玩家，不更新 slamTargetX/Z，Boss 将砸在最后一次记录的位置
+                    }
+                    
+                    if (this.slamTimer % 10 == 0) {
+                        this.triggerAnim("controller", "attack");
                     }
                 }
-                // 3. 下坠阶段（第80到90 ticks = 0.5秒）
-                else if (this.slamTimer > 80 && this.slamTimer <= 90) {
-                    this.setDeltaMovement(0, -2.5, 0); // 急速下坠
+                // 3. 下坠阶段（第360到370 ticks = 0.5秒）
+                else if (this.slamTimer > 360 && this.slamTimer <= 370) {
+                    // 在下坠的第1帧，计算砸向玩家的水平速度
+                    if (this.slamTimer == 361) {
+                        double distanceX = this.slamTargetX - this.getX();
+                        double distanceZ = this.slamTargetZ - this.getZ();
+                        
+                        // 预计下坠时间 10 ticks（0.5秒）
+                        double timeToLand = 10.0;
+                        
+                        double velX = distanceX / timeToLand;
+                        double velZ = distanceZ / timeToLand;
+                        
+                        // 限制最大水平速度（防止速度过快导致穿墙或像闪现）
+                        double maxSpeed = 1.5;
+                        double speedMag = Math.sqrt(velX * velX + velZ * velZ);
+                        if (speedMag > maxSpeed) {
+                            velX = (velX / speedMag) * maxSpeed;
+                            velZ = (velZ / speedMag) * maxSpeed;
+                        }
+                        
+                        this.slamVelX = velX;
+                        this.slamVelZ = velZ;
+                    }
+                    
+                    this.setDeltaMovement(this.slamVelX, -2.5, this.slamVelZ);
+                    
                     if (this.level() instanceof ServerLevel serverLevel) {
                         serverLevel.sendParticles(ParticleTypes.CRIT, this.getX(), this.getY(), this.getZ(), 20, 0.5, 0.5, 0.5, 0.1);
                     }
                 } 
                 // 4. 落地阶段
-                else if (this.slamTimer > 90) {
+                else if (this.slamTimer > 370) {
                     this.isSlamming = false;
                     this.isRecovering = true;
                     this.recoveryTimer = 0;
+                    this.setDeltaMovement(Vec3.ZERO);
 
-                    // 落地音效
                     this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.5F, 0.5F);
 
                     // 落地范围伤害（5格内）
                     for (Entity entity : this.level().getEntities(this, this.getBoundingBox().inflate(5.0))) {
                         if (entity instanceof LivingEntity living && entity != this) {
                             living.hurt(this.damageSources().mobAttack(this), 24.0F);
-                            living.setDeltaMovement(living.getDeltaMovement().x, 1.2, living.getDeltaMovement().z); // 振飞
+                            living.setDeltaMovement(living.getDeltaMovement().x, 1.2, living.getDeltaMovement().z);
+                        }
+                    }
+                }
+            }
+
+            // ================= 草方块实体跟踪与爆炸 =================
+            if (this.level() instanceof ServerLevel serverLevel) {
+                for (Entity entity : serverLevel.getEntities(this, this.getBoundingBox().inflate(50.0))) {
+                    if (entity instanceof FallingBlockEntity grassBlock && grassBlock.getTags().contains("boss_grass_projectile")) {
+                        if (grassBlock.horizontalCollision || grassBlock.verticalCollision || grassBlock.isOnGround()) {
+                            serverLevel.sendParticles(ParticleTypes.EXPLOSION, grassBlock.getX(), grassBlock.getY(), grassBlock.getZ(), 3, 0.2, 0.2, 0.2, 0.05);
+                            serverLevel.playSound(null, grassBlock.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.0F, 1.5F);
+                            
+                            for (Entity nearby : serverLevel.getEntities(grassBlock, grassBlock.getBoundingBox().inflate(2.0))) {
+                                if (nearby instanceof LivingEntity living && nearby != this) {
+                                    living.hurt(this.damageSources().mobAttack(this), 8.0F);
+                                }
+                            }
+                            grassBlock.discard();
+                        }
+                        
+                        if (grassBlock.tickCount > 100) {
+                            grassBlock.discard();
                         }
                     }
                 }
@@ -349,14 +422,13 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         double radius = 3.0;
                         double x = this.getX() + Math.cos(rad) * radius;
                         double z = this.getZ() + Math.sin(rad) * radius;
-                        serverLevel.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()), 
+                        serverLevel.sendParticles(new net.minecraft.core.particles.BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()), 
                             x, this.getY() + 0.2, z, 2, 0, 0, 0, 0.05);
                     }
                 }
 
-                if (this.recoveryTimer >= 60) { // 3秒后恢复结束
+                if (this.recoveryTimer >= 60) {
                     this.isRecovering = false;
-                    // 撼地完全结束，进入冷却
                     this.skillCooldown = 500 + this.random.nextInt(100);
                 }
             }
@@ -377,9 +449,18 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private void startSlam(Player target) {
         this.isSlamming = true;
         this.slamTimer = 0;
-        this.slamStartY = this.getY(); // 【记录起跳高度】
-        this.slamTargetPos = new Vec3(target.getX(), target.getY(), target.getZ());
-        this.triggerAnim("controller", "attack"); // 起跳瞬间播放一次攻击动画
+        this.slamStartY = this.getY();
+        
+        // 【修改】如果目标为 null（50格内没玩家），砸在原地
+        if (target != null) {
+            this.slamTargetX = target.getX();
+            this.slamTargetZ = target.getZ();
+        } else {
+            this.slamTargetX = this.getX();
+            this.slamTargetZ = this.getZ();
+        }
+        
+        this.triggerAnim("controller", "attack");
     }
     // ===================================================
 
