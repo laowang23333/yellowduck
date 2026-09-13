@@ -158,9 +158,9 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     // ================= 播放攻击动画（根据阶段自动切换） =================
     private void playAttackAnim() {
         if (this.entityData.get(IS_PHASE_TWO)) {
-            this.triggerAnim("controller", "combo"); // 二阶段用 combo
+            this.triggerAnim("controller", "combo");
         } else {
-            this.triggerAnim("controller", "bow_attack"); // 一阶段用 bow_attack
+            this.triggerAnim("controller", "bow_attack");
         }
     }
 
@@ -192,7 +192,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.35D);
         this.bossEvent.setName(Component.literal("肌肉大鸭"));
 
-        // 清空一阶段 AI，重新注册二阶段 AI（包含近战）
         this.goalSelector.removeAllGoals(goal -> true);
         this.targetSelector.removeAllGoals(goal -> true);
         this.goalSelector.addGoal(0, new FloatGoal(this));
@@ -203,7 +202,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
 
-        // 出场动画
         this.isEmerging = true;
         this.emergeTimer = 0;
         this.setInvulnerable(true);
@@ -229,20 +227,16 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         super.die(source);
     }
 
-    // ================= 【核心】伤害辅助方法：自动取消击退 =================
+    // ================= 伤害辅助方法：自动取消击退 =================
     private void dealDamage(LivingEntity target, float amount) {
         if (target == null || target == this || !target.isAlive()) return;
 
-        // 保存移动速度，用于后续消除击退
         Vec3 oldMotion = target.getDeltaMovement();
         boolean wasAlive = target.isAlive();
 
         target.hurt(this.damageSources().mobAttack(this), amount);
-
-        // 还原移动速度，抵消原版自带的击退效果
         target.setDeltaMovement(oldMotion);
 
-        // 击杀玩家回血（狂暴模式下）
         if (wasAlive && !target.isAlive() && target instanceof Player && isRageMode) {
             this.heal(500.0F);
             if (this.level() instanceof ServerLevel serverLevel) {
@@ -251,18 +245,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             }
         }
     }
-    // ====================================================================
 
     // ================= 三连击：触发起手 =================
     @Override
     public boolean doHurtTarget(Entity target) {
-        // 已经在连击中，不再触发
         if (comboStep > 0) return false;
         if (!(target instanceof LivingEntity living)) return false;
 
-        // 触发 combo 动画
         this.playAttackAnim();
-        // 记录连击目标和步骤
         this.comboStep = 1;
         this.comboTimer = 0;
         this.comboTarget = living;
@@ -275,7 +265,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
         comboTimer++;
 
-        // 目标死了/跑太远，取消连击
         if (comboTarget == null || !comboTarget.isAlive() || this.distanceTo(comboTarget) > 5.0) {
             comboStep = 0;
             comboTarget = null;
@@ -283,27 +272,21 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             return;
         }
 
-        // 第一拳（第 8 tick = 0.4 秒）
         if (comboStep == 1 && comboTimer >= 8) {
             dealDamage(comboTarget, 12.0F);
             comboStep = 2;
             comboTimer = 0;
-        }
-        // 第二拳（再 8 tick = 0.8 秒）
-        else if (comboStep == 2 && comboTimer >= 8) {
+        } else if (comboStep == 2 && comboTimer >= 8) {
             dealDamage(comboTarget, 12.0F);
             comboStep = 3;
             comboTimer = 0;
-        }
-        // 第三拳（再 11 tick = 1.35 秒）
-        else if (comboStep == 3 && comboTimer >= 11) {
+        } else if (comboStep == 3 && comboTimer >= 11) {
             dealDamage(comboTarget, 18.0F);
             comboStep = 0;
             comboTarget = null;
             comboTimer = 0;
         }
     }
-    // ====================================================================
 
     @Override
     public void tick() {
@@ -315,7 +298,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             if (!this.level().isClientSide) {
                 this.transformTimer++;
 
-                // 最后 1.2 秒触发 transform_charge 动画
                 if (this.transformTimer == 75) {
                     this.triggerAnim("controller", "transform_charge");
                     this.level().playSound(null, this.blockPosition(), SoundEvents.BEACON_POWER_SELECT, SoundSource.HOSTILE, 2.0F, 1.5F);
