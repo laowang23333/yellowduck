@@ -15,7 +15,8 @@ public class MountRenderer {
     private static final ResourceLocation MODEL_ID =
             new ResourceLocation("yellowduck", "mount");
 
-    private static final float MODEL_SCALE = 0.05F;
+    // 模型大小：0.05F → 0.10F
+    private static final float MODEL_SCALE = 0.10F;
 
     public static void register(EntityRenderersEvent.RegisterRenderers event,
                                 EntityType<? extends MountEntity> entityType) {
