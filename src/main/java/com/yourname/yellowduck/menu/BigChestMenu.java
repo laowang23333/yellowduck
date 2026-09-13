@@ -56,14 +56,99 @@ public class BigChestMenu extends AbstractContainerMenu {
             ItemStack inSlot = slot.getItem();
             result = inSlot.copy();
             if (index < 54) {
-                if (!moveItemStackTo(inSlot, 54, slots.size(), true)) return ItemStack.EMPTY;
+                // 注意：这里改成了自定义的方法 moveItemStackToCustom
+                if (!moveItemStackToCustom(inSlot, 54, slots.size(), true)) return ItemStack.EMPTY;
             } else {
-                if (!moveItemStackTo(inSlot, 0, 54, false)) return ItemStack.EMPTY;
+                // 注意：这里改成了自定义的方法 moveItemStackToCustom
+                if (!moveItemStackToCustom(inSlot, 0, 54, false)) return ItemStack.EMPTY;
             }
             if (inSlot.isEmpty()) slot.set(ItemStack.EMPTY);
             else slot.setChanged();
         }
         return result;
+    }
+
+    // ==========================================
+    // 新增：自定义快速移动逻辑，突破原版64限制
+    // ==========================================
+    protected boolean moveItemStackToCustom(ItemStack stack, int startIndex, int endIndex, boolean reverseOrder) {
+        boolean flag = false;
+        int i = startIndex;
+        if (reverseOrder) {
+            i = endIndex - 1;
+        }
+
+        if (stack.isStackable()) {
+            while (!stack.isEmpty()) {
+                if (reverseOrder) {
+                    if (i < startIndex) break;
+                } else {
+                    if (i >= endIndex) break;
+                }
+
+                Slot slot = this.slots.get(i);
+                ItemStack itemstack = slot.getItem();
+                if (!itemstack.isEmpty() && ItemStack.isSameItemSameTags(stack, itemstack)) {
+                    int j = itemstack.getCount() + stack.getCount();
+                    int maxSize = slot.getMaxStackSize(itemstack); // 读取我们 BigSlot 里的 256
+                    if (j <= maxSize) {
+                        stack.setCount(0);
+                        itemstack.setCount(j);
+                        slot.setChanged();
+                        flag = true;
+                    } else if (itemstack.getCount() < maxSize) {
+                        stack.shrink(maxSize - itemstack.getCount());
+                        itemstack.setCount(maxSize);
+                        slot.setChanged();
+                        flag = true;
+                    }
+                }
+
+                if (reverseOrder) {
+                    --i;
+                } else {
+                    ++i;
+                }
+            }
+        }
+
+        if (!stack.isEmpty()) {
+            if (reverseOrder) {
+                i = endIndex - 1;
+            } else {
+                i = startIndex;
+            }
+
+            while (true) {
+                if (reverseOrder) {
+                    if (i < startIndex) break;
+                } else {
+                    if (i >= endIndex) break;
+                }
+
+                Slot slot1 = this.slots.get(i);
+                ItemStack itemstack1 = slot1.getItem();
+                if (itemstack1.isEmpty() && slot1.mayPlace(stack)) {
+                    int maxSize = slot1.getMaxStackSize(stack);
+                    if (stack.getCount() > maxSize) {
+                        slot1.setByPlayer(stack.split(maxSize));
+                    } else {
+                        slot1.setByPlayer(stack.split(stack.getCount()));
+                    }
+                    slot1.setChanged();
+                    flag = true;
+                    break;
+                }
+
+                if (reverseOrder) {
+                    --i;
+                } else {
+                    ++i;
+                }
+            }
+        }
+
+        return flag;
     }
 
     @Override
@@ -74,6 +159,16 @@ public class BigChestMenu extends AbstractContainerMenu {
 
     private static class BigSlot extends Slot {
         public BigSlot(Container c, int i, int x, int y) { super(c, i, x, y); }
-        @Override public int getMaxStackSize() { return BigChestBlockEntity.MAX_STACK; }
+        
+        @Override 
+        public int getMaxStackSize() { 
+            return BigChestBlockEntity.MAX_STACK; 
+        }
+        
+        // 新增：让原版逻辑也能读到正确的最大值
+        @Override 
+        public int getMaxStackSize(ItemStack stack) { 
+            return BigChestBlockEntity.MAX_STACK; 
+        }
     }
 }
