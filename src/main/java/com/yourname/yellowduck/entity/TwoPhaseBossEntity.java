@@ -24,8 +24,9 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
-import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
@@ -305,31 +306,28 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                             this.slamTargetZ = nearestPlayer.getZ();
                             
                             if (this.level() instanceof ServerLevel serverLevel) {
-                                // 从 Boss 头顶 2 格生成草方块
-                                FallingBlockEntity grassBlock = FallingBlockEntity.fall(
-                                    serverLevel, 
-                                    this.blockPosition().above(2), 
-                                    Blocks.GRASS_BLOCK.defaultBlockState()
+                                // 【核心修复】用 ItemEntity（物品实体）代替 FallingBlockEntity
+                                // 优点：落地后绝对不会变成真实方块，彻底保护地形
+                                ItemEntity grassBlock = new ItemEntity(
+                                    serverLevel,
+                                    this.getX(), this.getY() + 2.0, this.getZ(),
+                                    new ItemStack(Blocks.GRASS_BLOCK.asItem())
                                 );
-                                
-                                // 【修复1】禁用重力，让草方块走直线飞向玩家
-                                grassBlock.setNoGravity(true);
-                                // 【修复2】直接赋公共变量，落地直接销毁，绝不变成真实方块
-                                grassBlock.cancelDrop = true;
+                                grassBlock.setNoGravity(true); // 禁用重力
+                                grassBlock.setPickUpDelay(Integer.MAX_VALUE); // 防止被玩家拾取
                                 grassBlock.addTag("boss_grass_projectile");
                                 
-                                // 计算朝玩家的速度（含向下的分量，让飞行轨迹自然）
+                                // 计算朝玩家的速度
                                 Vec3 toPlayer = new Vec3(
                                     nearestPlayer.getX() - this.getX(),
                                     nearestPlayer.getY() + 1.0 - (this.getY() + 2.0),
                                     nearestPlayer.getZ() - this.getZ()
                                 );
                                 
-                                // 1 秒（20 tick）内到达玩家
                                 double distance = toPlayer.length();
                                 double speed = distance / 20.0;
-                                if (speed > 1.5) speed = 1.5; // 速度上限
-                                if (speed < 0.3) speed = 0.3; // 速度下限
+                                if (speed > 1.5) speed = 1.5;
+                                if (speed < 0.3) speed = 0.3;
                                 
                                 grassBlock.setDeltaMovement(toPlayer.normalize().scale(speed));
                                 
@@ -388,10 +386,10 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 }
             }
 
-            // ================= 草方块实体跟踪与爆炸 =================
+            // ================= 草方块实体（ItemEntity）跟踪与爆炸 =================
             if (this.level() instanceof ServerLevel serverLevel) {
                 for (Entity entity : serverLevel.getEntities(this, this.getBoundingBox().inflate(50.0))) {
-                    if (entity instanceof FallingBlockEntity grassBlock && grassBlock.getTags().contains("boss_grass_projectile")) {
+                    if (entity instanceof ItemEntity grassBlock && grassBlock.getTags().contains("boss_grass_projectile")) {
                         boolean shouldExplode = false;
                         
                         // 撞到方块或实体
@@ -424,7 +422,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                                 }
                             }
                             
-                            // 立刻删除草方块
+                            // 立刻删除，绝不让它变成真实方块
                             grassBlock.discard();
                         }
                     }
