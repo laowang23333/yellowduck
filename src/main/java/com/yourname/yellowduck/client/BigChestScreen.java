@@ -8,8 +8,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 
 public class BigChestScreen extends AbstractContainerScreen<BigChestMenu> {
+    // 直接用原版的 54 格通用 GUI 纹理，不需要自己画
     private static final ResourceLocation TEXTURE =
-            new ResourceLocation("yellowduck", "textures/gui/big_chest.png");
+            new ResourceLocation("minecraft", "textures/gui/container/generic_54.png");
 
     public BigChestScreen(BigChestMenu menu, Inventory inv, Component title) {
         super(menu, inv, title);
