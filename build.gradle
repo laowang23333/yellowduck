@@ -31,9 +31,18 @@ repositories {
     maven { url = 'https://maven.minecraftforge.net/' }
     maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
     maven { url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/' }
+    // CurseForge Maven 仓库（MCglTF 依赖需要）
+    maven {
+        url = "https://cursemaven.com"
+        content {
+            includeGroup "curse.maven"
+        }
+    }
 }
 
 dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.3.29'
     implementation fg.deobf('software.bernie.geckolib:geckolib-forge-1.20.1:4.7.1.1')
+    // MCglTF Port for Forge 1.20.1
+    implementation fg.deobf("curse.maven:mcgltf-port-1527221:8002500")
 }
