@@ -9,10 +9,11 @@ import net.minecraftforge.registries.RegistryObject;
 
 public class ModBlockEntities {
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES =
-            DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, YellowDuckMod.MODID);
+            DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, YellowDuckMod.MOD_ID);
 
     public static final RegistryObject<BlockEntityType<BigChestBlockEntity>> BIG_CHEST =
             BLOCK_ENTITIES.register("big_chest",
-                    () -> BlockEntityType.Builder.of(BigChestBlockEntity::new,
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new BigChestBlockEntity(ModBlockEntities.BIG_CHEST.get(), pos, state),
                             ModBlocks.BIG_CHEST.get()).build(null));
 }
