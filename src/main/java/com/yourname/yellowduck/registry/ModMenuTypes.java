@@ -10,7 +10,7 @@ import net.minecraftforge.registries.RegistryObject;
 
 public class ModMenuTypes {
     public static final DeferredRegister<MenuType<?>> MENUS =
-            DeferredRegister.create(ForgeRegistries.MENU_TYPES, YellowDuckMod.MODID);
+            DeferredRegister.create(ForgeRegistries.MENU_TYPES, YellowDuckMod.MOD_ID);
 
     public static final RegistryObject<MenuType<BigChestMenu>> BIG_CHEST =
             MENUS.register("big_chest", () -> IForgeMenuType.create(BigChestMenu::new));
