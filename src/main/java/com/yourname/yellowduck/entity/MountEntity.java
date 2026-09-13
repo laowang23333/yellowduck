@@ -55,12 +55,11 @@ public class MountEntity extends PathfinderMob {
         return 0.6F;
     }
 
-    // 【1.20.1 正确方法】抬高玩家骑乘位置
-    // 默认是 bbHeight * 0.75，加 3.0 表示再往上抬 3 格
-    // 还陷在模型里就改 4.0、5.0；飘太高就改 2.0 或者 1.0
+    // 【改】骑乘高度：原来 3.0D 太高，改成 1.2D
+    // 还偏高 → 减小（1.0、0.8）；还偏低 → 增大（1.5、1.8）
     @Override
     public double getPassengersRidingOffset() {
-        return super.getPassengersRidingOffset() + 3.0D;
+        return super.getPassengersRidingOffset() + 1.2D;
     }
 
     @Override
