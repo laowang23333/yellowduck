@@ -56,7 +56,7 @@ public class MountEntity extends PathfinderMob {
         return 0.6F;
     }
 
-    // 【改】骑乘高度：1.2D → 1.1D
+    // 骑乘高度
     @Override
     public double getPassengersRidingOffset() {
         return super.getPassengersRidingOffset() + 1.1D;
@@ -65,14 +65,15 @@ public class MountEntity extends PathfinderMob {
     // 骑乘水平位置：往前挪 0.8 格
     private static final double FORWARD_OFFSET = 0.8D;
 
+    // 【改】用 MoveFunction 版本，可以改水平位置
     @Override
-    public void positionRider(Entity passenger) {
+    public void positionRider(Entity passenger, Entity.MoveFunction callback) {
         if (this.hasPassenger(passenger)) {
             double y = this.getY() + this.getPassengersRidingOffset() + passenger.getMyRidingOffset();
             double rad = Math.toRadians(this.getYRot());
             double dx = -Math.sin(rad) * FORWARD_OFFSET;
             double dz = Math.cos(rad) * FORWARD_OFFSET;
-            passenger.setPos(this.getX() + dx, y, this.getZ() + dz);
+            callback.accept(passenger, this.getX() + dx, y, this.getZ() + dz);
         }
     }
 
