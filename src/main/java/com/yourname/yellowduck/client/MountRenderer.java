@@ -15,12 +15,16 @@ public class MountRenderer {
     private static final ResourceLocation MODEL_ID =
             new ResourceLocation("yellowduck", "mount");
 
-    // 🎚️ 缩放：看不见就改这个数字
+    // 贴图路径：对应 assets/yellowduck/textures/mount.png
+    private static final ResourceLocation TEXTURE =
+            new ResourceLocation("yellowduck", "textures/mount.png");
+
+    // 缩放：看不见就改这个数字
     private static final float MODEL_SCALE = 0.05F;
 
     public static void register(EntityRenderersEvent.RegisterRenderers event,
                                 EntityType<? extends MountEntity> entityType) {
         event.registerEntityRenderer(entityType,
-                GltfEntityRendererFactory.create(MODEL_ID, MODEL_SCALE));
+                GltfEntityRendererFactory.create(MODEL_ID, TEXTURE, MODEL_SCALE));
     }
 }
