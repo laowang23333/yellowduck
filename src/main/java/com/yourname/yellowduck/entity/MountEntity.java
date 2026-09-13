@@ -4,7 +4,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
@@ -57,11 +56,11 @@ public class MountEntity extends PathfinderMob {
         return 0.6F;
     }
 
-    // 【新增】控制玩家骑在坐骑上的位置：Y=3 表示抬高 3 格
-    // 如果玩家还陷在模型里就加大（4.0、5.0），如果飘太高就减小（2.0）
+    // 【1.20.1 正确方法】抬高玩家骑乘位置：在原位置基础上加 3 格 Y
+    // 还陷在模型里就改 4.0、5.0；飘太高就改 2.0
     @Override
-    protected Vec3 getPassengerAttachmentPoint(Entity passenger, EntityDimensions dimensions, float partialTick) {
-        return new Vec3(0.0D, 3.0D, 0.0D);
+    public Vec3 getPassengerRidingPosition(Entity passenger) {
+        return super.getPassengerRidingPosition(passenger).add(0.0D, 3.0D, 0.0D);
     }
 
     @Override
