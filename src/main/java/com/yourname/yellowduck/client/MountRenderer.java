@@ -14,31 +14,39 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 @OnlyIn(Dist.CLIENT)
 public class MountRenderer extends EntityRenderer<MountEntity> implements IGltfModelReceiver {
 
+    // ============================================================
+    // 🎚️ 调试用缩放值：如果模型看不见，就改这个数字！
+    // 常用参考值：
+    //   1.0    = 原尺寸
+    //   0.1    = 缩小 10 倍
+    //   0.01   = 缩小 100 倍
+    //   10.0   = 放大 10 倍
+    //   100.0  = 放大 100 倍
+    //   0.001  = 缩小 1000 倍
+    // ============================================================
+    private static final float MODEL_SCALE = 0.05F;
+
     protected RenderedGltfModel renderedModel;
 
     public MountRenderer(EntityRendererProvider.Context context) {
         super(context);
     }
 
-    // 告诉 MCglTF 模型文件在哪
     @Override
     public ResourceLocation getModelLocation() {
         return new ResourceLocation("yellowduck", "models/entity/mount.glb");
     }
 
-    // 模型加载完成后保存引用
     @Override
     public void onReceiveSharedModel(RenderedGltfModel model) {
         this.renderedModel = model;
     }
 
-    // EntityRenderer 必须实现的方法，返回一个贴图位置（这里随便给一个，因为我们用 glb 自带的贴图）
     @Override
     public ResourceLocation getTextureLocation(MountEntity entity) {
         return new ResourceLocation("yellowduck", "textures/entity/mount.png");
     }
 
-    // 实际渲染
     @Override
     public void render(MountEntity entity, float entityYaw, float partialTicks, PoseStack poseStack,
                        MultiBufferSource buffer, int packedLight) {
@@ -53,11 +61,12 @@ public class MountRenderer extends EntityRenderer<MountEntity> implements IGltfM
         // 让模型跟随身体朝向
         poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(180.0F - entityYaw));
 
-        // 如果你的模型比例不对，可以在这里调整：
-        // poseStack.scale(1.0F, 1.0F, 1.0F);
-        // poseStack.translate(0, 0, 0);
+        // 应用缩放
+        poseStack.scale(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
 
-        // 调用 MCglTF 渲染（不需要参数，它自己从 PoseStack 和 RenderSystem 拿状态）
+        // 如果需要调整模型上下/前后位置，可以改这里：
+        // poseStack.translate(0, 0.5, 0);
+
         renderedModel.renderedGltfScenes.get(0).renderForVanilla();
 
         poseStack.popPose();
