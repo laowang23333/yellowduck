@@ -11,7 +11,7 @@ import net.minecraftforge.registries.RegistryObject;
 
 public class ModBlocks {
     public static final DeferredRegister<Block> BLOCKS =
-            DeferredRegister.create(ForgeRegistries.BLOCKS, YellowDuckMod.MODID);
+            DeferredRegister.create(ForgeRegistries.BLOCKS, YellowDuckMod.MOD_ID);
 
     public static final RegistryObject<Block> BIG_CHEST = BLOCKS.register("big_chest",
             () -> new BigChestBlock(BlockBehaviour.Properties.of()
