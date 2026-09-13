@@ -21,6 +21,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -68,10 +69,10 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 1.2D, true));
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.8D));
-        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, net.minecraft.world.entity.player.Player.class, 8.0F));
+        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
         this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.player.Player.class, true));
+        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
     }
 
     @Override
@@ -105,24 +106,18 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         }
     }
 
+    // ================= 【核心修复】死亡拦截 =================
     @Override
-    public boolean hurt(DamageSource source, float amount) {
-        // 1. 变身过程中免疫一切伤害
-        if (this.isTransforming) {
-            return false;
+    public void die(DamageSource source) {
+        // 如果不是二阶段，且没有在变身中，拦截死亡
+        if (!this.level().isClientSide && !this.entityData.get(IS_PHASE_TWO) && !this.isTransforming) {
+            this.setHealth(1.0F); // 强行锁住 1 滴血
+            this.startTransform(); // 开始 5 秒变身过渡
+            return; // 阻止真正的死亡
         }
-        
-        // 2. 拦截一阶段致命伤害
-        if (!this.level().isClientSide && !this.entityData.get(IS_PHASE_TWO)) {
-            if (this.getHealth() - amount <= 0) {
-                this.setHealth(1.0F);
-                this.startTransform();
-                return false;
-            }
-        }
-        return super.hurt(source, amount);
+        super.die(source); // 否则，正常死亡
     }
-    // ===================================================
+    // =======================================================
 
     @Override
     public void tick() {
@@ -149,7 +144,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 // 5秒 = 100 ticks
                 if (this.transformTimer >= 100) {
                     this.isTransforming = false;
-                    // 1. 制造爆炸
+                    // 1. 制造不破坏方块的爆炸
                     this.level().explode(this, this.getX(), this.getY(), this.getZ(), 3.0F, false, Level.ExplosionInteraction.NONE);
 
                     // 2. 生成二阶段实体
@@ -163,15 +158,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
                             // 3. 发送屏幕正中间标题（给50格内的玩家）
                             Component titleMsg = Component.literal("§4鸭神§e降临");
-                            // 【修复】把 Player 改为 ServerPlayer
                             for (ServerPlayer player : serverLevel.getEntitiesOfClass(ServerPlayer.class, this.getBoundingBox().inflate(50))) {
                                 player.connection.send(new ClientboundSetTitleTextPacket(titleMsg));
                             }
                         }
                     }
-                    this.discard();
+                    this.discard(); // 删除一阶段实体
                 }
-                return;
+                return; // 变身过程中跳过常规逻辑
             }
             // ===============================================
 
