@@ -3,6 +3,8 @@ package com.yourname.yellowduck.entity;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
@@ -53,6 +55,13 @@ public class MountEntity extends PathfinderMob {
     @Override
     protected float getJumpPower() {
         return 0.6F;
+    }
+
+    // 【新增】控制玩家骑在坐骑上的位置：Y=3 表示抬高 3 格
+    // 如果玩家还陷在模型里就加大（4.0、5.0），如果飘太高就减小（2.0）
+    @Override
+    protected Vec3 getPassengerAttachmentPoint(Entity passenger, EntityDimensions dimensions, float partialTick) {
+        return new Vec3(0.0D, 3.0D, 0.0D);
     }
 
     @Override
