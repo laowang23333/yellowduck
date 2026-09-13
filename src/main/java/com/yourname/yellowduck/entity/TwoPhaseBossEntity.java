@@ -65,6 +65,10 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private int groundSlamTimer = 0;
     private int eggThrowTimer = 0;
 
+    // 【新增】动画计时器，用于控制一次性动画的显示时长
+    private int attackAnimTimer = 0;
+    private int recoverAnimTimer = 0;
+
     private boolean isCharging = false;
     private boolean isDashing = false;
     private boolean isSlamming = false;
@@ -93,7 +97,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     // =================================================
 
     // ================= 三连击（combo）状态机 =================
-    private int comboStep = 0;               // 0 = 未连击, 1/2/3 = 连击进行中
+    private int comboStep = 0;
     private int comboTimer = 0;
     private LivingEntity comboTarget = null;
     // ======================================================
@@ -141,7 +145,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     protected void registerGoals() {
         super.registerGoals();
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        // 一阶段没有近战
         this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.8D));
         this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 20.0F));
         this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
@@ -155,12 +158,12 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.entityData.define(IS_PHASE_TWO, false);
     }
 
-    // ================= 播放攻击动画（根据阶段自动切换） =================
+    // ================= 攻击动画计时器 =================
     private void playAttackAnim() {
         if (this.entityData.get(IS_PHASE_TWO)) {
-            this.triggerAnim("controller", "combo");
+            this.attackAnimTimer = 36; // combo 动画 1.8 秒
         } else {
-            this.triggerAnim("controller", "bow_attack");
+            this.attackAnimTimer = 30; // bow_attack 动画 1.5 秒
         }
     }
 
@@ -227,7 +230,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         super.die(source);
     }
 
-    // ================= 伤害辅助方法：自动取消击退 =================
+    // ================= 伤害辅助方法：取消击退 =================
     private void dealDamage(LivingEntity target, float amount) {
         if (target == null || target == this || !target.isAlive()) return;
 
@@ -246,7 +249,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         }
     }
 
-    // ================= 三连击：触发起手 =================
+    // ================= 三连击 =================
     @Override
     public boolean doHurtTarget(Entity target) {
         if (comboStep > 0) return false;
@@ -259,10 +262,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         return true;
     }
 
-    // ================= 三连击：tick 中判定三段伤害 =================
     private void tickCombo() {
         if (comboStep <= 0) return;
-
         comboTimer++;
 
         if (comboTarget == null || !comboTarget.isAlive() || this.distanceTo(comboTarget) > 5.0) {
@@ -290,6 +291,10 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
     @Override
     public void tick() {
+        // 攻击动画计时器递减（无论什么状态都递减，防止卡住）
+        if (attackAnimTimer > 0) attackAnimTimer--;
+        if (recoverAnimTimer > 0) recoverAnimTimer--;
+
         // ================= 一阶段变身期间 =================
         if (this.isTransforming) {
             this.getNavigation().stop();
@@ -297,11 +302,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
             if (!this.level().isClientSide) {
                 this.transformTimer++;
-
-                if (this.transformTimer == 75) {
-                    this.triggerAnim("controller", "transform_charge");
-                    this.level().playSound(null, this.blockPosition(), SoundEvents.BEACON_POWER_SELECT, SoundSource.HOSTILE, 2.0F, 1.5F);
-                }
 
                 if (this.level() instanceof ServerLevel serverLevel) {
                     double angle = this.transformTimer * 0.3;
@@ -344,10 +344,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             this.getNavigation().stop();
             this.setDeltaMovement(Vec3.ZERO);
 
-            if (this.emergeTimer == 1) {
-                this.triggerAnim("controller", "transform_emerge");
-            }
-
             if (this.level() instanceof ServerLevel serverLevel) {
                 for (int i = 0; i < 360; i += 60) {
                     double rad = Math.toRadians(i);
@@ -373,11 +369,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.bossEvent.setProgress(this.getHealth() / this.getMaxHealth());
 
         if (!this.level().isClientSide) {
-            if (skillCooldown > 0) {
-                skillCooldown--;
-            }
+            if (skillCooldown > 0) skillCooldown--;
 
-            // ================= 三连击 tick 判定 =================
             this.tickCombo();
 
             // ================= 一阶段：投掷鸡蛋 =================
@@ -387,26 +380,24 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 if (this.eggThrowTimer >= 30) {
                     this.eggThrowTimer = 0;
                     Player target = this.level().getNearestPlayer(this, 20.0D);
-                    if (target != null) {
-                        if (this.level() instanceof ServerLevel serverLevel) {
-                            ThrownEgg egg = new ThrownEgg(serverLevel, this);
-                            egg.setPos(this.getX(), this.getY() + 1.5, this.getZ());
+                    if (target != null && this.level() instanceof ServerLevel serverLevel) {
+                        ThrownEgg egg = new ThrownEgg(serverLevel, this);
+                        egg.setPos(this.getX(), this.getY() + 1.5, this.getZ());
 
-                            double dx = target.getX() - this.getX();
-                            double dy = target.getY() + 0.5 - (this.getY() + 1.5);
-                            double dz = target.getZ() - this.getZ();
-                            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                            if (dist > 0.01) {
-                                double speed = 1.0;
-                                egg.setDeltaMovement(dx / dist * speed, dy / dist * speed + 0.15, dz / dist * speed);
-                            }
-
-                            serverLevel.addFreshEntity(egg);
-                            this.thrownEggs.add(egg);
-
-                            this.level().playSound(null, this.blockPosition(), SoundEvents.EGG_THROW, SoundSource.HOSTILE, 1.0F, 1.0F);
-                            this.playAttackAnim();
+                        double dx = target.getX() - this.getX();
+                        double dy = target.getY() + 0.5 - (this.getY() + 1.5);
+                        double dz = target.getZ() - this.getZ();
+                        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        if (dist > 0.01) {
+                            double speed = 1.0;
+                            egg.setDeltaMovement(dx / dist * speed, dy / dist * speed + 0.15, dz / dist * speed);
                         }
+
+                        serverLevel.addFreshEntity(egg);
+                        this.thrownEggs.add(egg);
+
+                        this.level().playSound(null, this.blockPosition(), SoundEvents.EGG_THROW, SoundSource.HOSTILE, 1.0F, 1.0F);
+                        this.playAttackAnim();
                     }
                 }
 
@@ -414,12 +405,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 while (it.hasNext()) {
                     ThrownEgg egg = it.next();
 
-                    if (!egg.isAlive()) {
-                        it.remove();
-                        continue;
-                    }
-
-                    if (egg.tickCount > 60) {
+                    if (!egg.isAlive() || egg.tickCount > 60) {
                         egg.discard();
                         it.remove();
                         continue;
@@ -440,9 +426,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     }
 
                     if (egg.horizontalCollision || egg.verticalCollision) {
-                        if (this.level() instanceof ServerLevel serverLevel) {
-                            serverLevel.sendParticles(ParticleTypes.CRIT, egg.getX(), egg.getY(), egg.getZ(), 5, 0.2, 0.2, 0.2, 0.05);
-                        }
                         egg.discard();
                         it.remove();
                     }
@@ -460,36 +443,32 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 }
             }
 
-            if (isRageMode && this.tickCount % 5 == 0) {
-                if (this.level() instanceof ServerLevel serverLevel) {
-                    serverLevel.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, this.getX(), this.getY() + 1.5, this.getZ(), 8, 0.5, 0.5, 0.5, 0.05);
-                }
+            if (isRageMode && this.tickCount % 5 == 0 && this.level() instanceof ServerLevel serverLevel) {
+                serverLevel.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, this.getX(), this.getY() + 1.5, this.getZ(), 8, 0.5, 0.5, 0.5, 0.05);
             }
 
-            // ================= 全局技能触发判定 =================
+            // ================= 全局技能触发 =================
             if (this.entityData.get(IS_PHASE_TWO) && skillCooldown <= 0 && !isBusy() && comboStep == 0) {
                 Player nearestPlayer = this.level().getNearestPlayer(this, 50.0D);
-                if (nearestPlayer != null) {
-                    if (this.random.nextInt(15) == 0) {
-                        if (healthRatio > 0.8f) {
-                            if (this.random.nextBoolean()) startDash(nearestPlayer);
-                            else startSlam(nearestPlayer);
-                        } else if (healthRatio > 0.5f) {
-                            int r = this.random.nextInt(3);
-                            if (r == 0) startSlam(nearestPlayer);
-                            else if (r == 1) startGrab();
-                            else startLaser();
-                        } else {
-                            int r = this.random.nextInt(7);
-                            switch (r) {
-                                case 0: startSlam(nearestPlayer); break;
-                                case 1: startGrab(); break;
-                                case 2: startLaser(); break;
-                                case 3: startMeteorShower(); break;
-                                case 4: startBlackHole(); break;
-                                case 5: startDeathGaze(); break;
-                                default: startGroundSlam(); break;
-                            }
+                if (nearestPlayer != null && this.random.nextInt(15) == 0) {
+                    if (healthRatio > 0.8f) {
+                        if (this.random.nextBoolean()) startDash(nearestPlayer);
+                        else startSlam(nearestPlayer);
+                    } else if (healthRatio > 0.5f) {
+                        int r = this.random.nextInt(3);
+                        if (r == 0) startSlam(nearestPlayer);
+                        else if (r == 1) startGrab();
+                        else startLaser();
+                    } else {
+                        int r = this.random.nextInt(7);
+                        switch (r) {
+                            case 0: startSlam(nearestPlayer); break;
+                            case 1: startGrab(); break;
+                            case 2: startLaser(); break;
+                            case 3: startMeteorShower(); break;
+                            case 4: startBlackHole(); break;
+                            case 5: startDeathGaze(); break;
+                            default: startGroundSlam(); break;
                         }
                     }
                 }
@@ -501,22 +480,16 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 this.getNavigation().stop();
                 this.setDeltaMovement(Vec3.ZERO);
 
-                if (this.chargeTimer == 1) {
-                    this.triggerAnim("controller", "charge_windup");
-                }
-
-                if (this.chargeTimer % 10 == 0) {
-                    if (this.level() instanceof ServerLevel serverLevel) {
-                        this.level().playSound(null, this.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundSource.HOSTILE, 1.0F, 1.0F);
-                        for (int i = 0; i < 360; i += 45) {
-                            double rad = Math.toRadians(i + this.chargeTimer * 5);
-                            double radius = 1.5;
-                            double x = this.getX() + Math.cos(rad) * radius;
-                            double z = this.getZ() + Math.sin(rad) * radius;
-                            serverLevel.sendParticles(ParticleTypes.FLAME, x, this.getY() + 0.5, z, 3, 0, 0, 0, 0.05);
-                            serverLevel.sendParticles(ParticleTypes.LAVA, x, this.getY() + 0.5, z, 1, 0, 0, 0, 0.05);
-                            serverLevel.sendParticles(ParticleTypes.CRIT, x, this.getY() + 1.0, z, 5, 0, 0, 0, 0.1);
-                        }
+                if (this.chargeTimer % 10 == 0 && this.level() instanceof ServerLevel serverLevel) {
+                    this.level().playSound(null, this.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundSource.HOSTILE, 1.0F, 1.0F);
+                    for (int i = 0; i < 360; i += 45) {
+                        double rad = Math.toRadians(i + this.chargeTimer * 5);
+                        double radius = 1.5;
+                        double x = this.getX() + Math.cos(rad) * radius;
+                        double z = this.getZ() + Math.sin(rad) * radius;
+                        serverLevel.sendParticles(ParticleTypes.FLAME, x, this.getY() + 0.5, z, 3, 0, 0, 0, 0.05);
+                        serverLevel.sendParticles(ParticleTypes.LAVA, x, this.getY() + 0.5, z, 1, 0, 0, 0, 0.05);
+                        serverLevel.sendParticles(ParticleTypes.CRIT, x, this.getY() + 1.0, z, 5, 0, 0, 0, 0.1);
                     }
                 }
 
@@ -524,7 +497,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     this.isCharging = false;
                     this.isDashing = true;
                     this.dashTimer = 0;
-                    this.triggerAnim("controller", "charge_run");
                     this.setDeltaMovement(this.dashDirection.x * 0.5, 0, this.dashDirection.z * 0.5);
                 }
             }
@@ -545,20 +517,17 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 if (this.dashTimer >= 20 || this.horizontalCollision) {
                     this.isDashing = false;
                     this.setDeltaMovement(Vec3.ZERO);
-                    this.triggerAnim("controller", "charge_recover");
+                    this.recoverAnimTimer = 16; // 0.8 秒的恢复动画
                     this.skillCooldown = 500 + this.random.nextInt(100);
                 }
             }
 
-            // ================= 撼地逻辑 =================
+            // ================= 撼地 =================
             if (this.isSlamming) {
                 this.slamTimer++;
 
                 if (this.slamTimer <= 60) {
                     this.getNavigation().stop();
-                    if (this.slamTimer == 1) {
-                        this.triggerAnim("controller", "slam_windup");
-                    }
                     if (this.getY() - this.slamStartY < 12.0) {
                         this.setDeltaMovement(0, 0.4, 0);
                     } else {
@@ -568,9 +537,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         this.level().playSound(null, this.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundSource.HOSTILE, 1.0F, 1.2F);
                     }
                 } else if (this.slamTimer > 60 && this.slamTimer <= 360) {
-                    if (this.slamTimer == 61) {
-                        this.triggerAnim("controller", "slam_air");
-                    }
                     this.setDeltaMovement(0, 0, 0);
 
                     if (this.slamTimer % 20 == 0) {
@@ -641,7 +607,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     this.isRecovering = true;
                     this.recoveryTimer = 0;
                     this.setDeltaMovement(Vec3.ZERO);
-                    this.triggerAnim("controller", "slam_land");
 
                     this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.5F, 0.5F);
                     float slamDmg = isRageMode ? 40.0F : 24.0F;
@@ -655,15 +620,13 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 }
             }
 
-            // ================= 惯手技能逻辑 =================
+            // ================= 惯手 =================
             if (this.isGrabbing) {
                 this.grabTimer++;
                 this.getNavigation().stop();
                 this.setDeltaMovement(Vec3.ZERO);
 
-                if (this.grabTimer == 1) {
-                    this.playAttackAnim();
-                }
+                if (this.grabTimer == 1) this.playAttackAnim();
 
                 if (this.grabTimer <= 20) {
                     for (Player p : grabbedPlayers) {
@@ -679,15 +642,13 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     }
                 }
 
-                if (this.grabTimer <= 60 && this.grabTimer % 5 == 0) {
-                    if (this.level() instanceof ServerLevel serverLevel) {
-                        for (int i = 0; i < 360; i += 10) {
-                            double rad = Math.toRadians(i);
-                            double x = this.getX() + Math.cos(rad) * 5.0;
-                            double z = this.getZ() + Math.sin(rad) * 5.0;
-                            serverLevel.sendParticles(ParticleTypes.FLAME, x, this.getY() + 0.5, z, 2, 0, 0, 0, 0.05);
-                            serverLevel.sendParticles(ParticleTypes.LAVA, x, this.getY() + 0.5, z, 1, 0, 0, 0, 0.05);
-                        }
+                if (this.grabTimer <= 60 && this.grabTimer % 5 == 0 && this.level() instanceof ServerLevel serverLevel) {
+                    for (int i = 0; i < 360; i += 10) {
+                        double rad = Math.toRadians(i);
+                        double x = this.getX() + Math.cos(rad) * 5.0;
+                        double z = this.getZ() + Math.sin(rad) * 5.0;
+                        serverLevel.sendParticles(ParticleTypes.FLAME, x, this.getY() + 0.5, z, 2, 0, 0, 0, 0.05);
+                        serverLevel.sendParticles(ParticleTypes.LAVA, x, this.getY() + 0.5, z, 1, 0, 0, 0, 0.05);
                     }
                 }
 
@@ -701,22 +662,18 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         for (Entity entity : this.level().getEntities(this, this.getBoundingBox().inflate(5.0))) {
                             if (entity instanceof LivingEntity living && entity != this) {
                                 float damage = 20.0F;
-                                if (living instanceof Player p && grabbedPlayers.contains(p)) {
-                                    damage = 40.0F;
-                                }
+                                if (living instanceof Player p && grabbedPlayers.contains(p)) damage = 40.0F;
                                 dealDamage(living, damage);
                                 living.setDeltaMovement(living.getDeltaMovement().x, 1.0, living.getDeltaMovement().z);
                             }
                         }
-
                         serverLevel.sendParticles(ParticleTypes.EXPLOSION_EMITTER, this.getX(), this.getY() + 1.0, this.getZ(), 3, 1.0, 1.0, 1.0, 0.1);
                     }
-
                     this.grabbedPlayers.clear();
                 }
             }
 
-            // ================= 毁灭光束逻辑 =================
+            // ================= 毁灭光束 =================
             if (this.isLasing) {
                 this.laserTimer++;
                 this.getNavigation().stop();
@@ -726,50 +683,32 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     if (this.laserTimer <= 100) {
                         if (this.laserTimer == 1) {
                             List<Player> players = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(50.0));
-                            if (!players.isEmpty()) {
-                                this.laserTarget = players.get(this.random.nextInt(players.size()));
-                            }
+                            if (!players.isEmpty()) this.laserTarget = players.get(this.random.nextInt(players.size()));
                             this.laserDir = Vec3.ZERO;
                             this.playAttackAnim();
                             this.level().playSound(null, this.blockPosition(), SoundEvents.BEACON_ACTIVATE, SoundSource.HOSTILE, 2.0F, 0.5F);
                         }
-
                         if (this.laserTimer % 3 == 0 && this.laserTarget != null) {
                             Vec3 toTarget = this.laserTarget.position().add(0, 1, 0).subtract(this.position().add(0, 1.5, 0)).normalize();
                             Vec3 spawnPos = this.position().add(0, 1.5, 0).add(toTarget.scale(2));
                             serverLevel.sendParticles(ParticleTypes.END_ROD, spawnPos.x, spawnPos.y, spawnPos.z, 12, 0.8, 0.8, 0.8, 0.2);
                             serverLevel.sendParticles(ParticleTypes.DRAGON_BREATH, spawnPos.x, spawnPos.y, spawnPos.z, 8, 0.6, 0.6, 0.6, 0.15);
                         }
-
                         if (this.laserTimer == 100) {
                             this.level().playSound(null, this.blockPosition(), SoundEvents.BEACON_POWER_SELECT, SoundSource.HOSTILE, 2.0F, 0.5F);
                         }
                     } else if (this.laserTimer <= 300) {
                         if (this.laserTarget == null || !this.laserTarget.isAlive() || this.laserTarget.distanceTo(this) > 50) {
                             List<Player> players = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(50.0));
-                            if (!players.isEmpty()) {
-                                this.laserTarget = players.get(this.random.nextInt(players.size()));
-                            } else {
-                                this.laserTarget = null;
-                            }
+                            this.laserTarget = players.isEmpty() ? null : players.get(this.random.nextInt(players.size()));
                         }
-
                         if (this.laserTarget != null) {
                             Vec3 laserStart = this.position().add(0, 1.5, 0);
                             Vec3 targetDir = this.laserTarget.position().add(0, 1, 0).subtract(laserStart).normalize();
-
-                            if (this.laserDir == Vec3.ZERO) {
-                                this.laserDir = targetDir;
-                            } else {
-                                this.laserDir = this.laserDir.scale(0.95).add(targetDir.scale(0.05)).normalize();
-                            }
-
+                            if (this.laserDir == Vec3.ZERO) this.laserDir = targetDir;
+                            else this.laserDir = this.laserDir.scale(0.95).add(targetDir.scale(0.05)).normalize();
                             renderLaserBeam(serverLevel, laserStart, this.laserDir, 40);
-
-                            if (this.laserTimer % 10 == 0) {
-                                damageEntitiesInBeam(serverLevel, laserStart, this.laserDir, 40, 25.0F);
-                            }
-
+                            if (this.laserTimer % 10 == 0) damageEntitiesInBeam(serverLevel, laserStart, this.laserDir, 40, 25.0F);
                             if (this.laserTimer % 5 == 0) {
                                 this.level().playSound(null, this.blockPosition(), SoundEvents.GUARDIAN_ATTACK, SoundSource.HOSTILE, 1.5F, 0.5F);
                             }
@@ -788,44 +727,25 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 this.meteorTimer++;
                 this.getNavigation().stop();
 
-                if (this.meteorTimer == 1) {
-                    this.playAttackAnim();
-                }
+                if (this.meteorTimer == 1) this.playAttackAnim();
 
                 if (this.meteorTimer <= 60) {
-                    if (this.getY() - this.slamStartY < 15.0) {
-                        this.setDeltaMovement(0, 0.5, 0);
-                    } else {
-                        this.setDeltaMovement(0, 0, 0);
-                    }
+                    if (this.getY() - this.slamStartY < 15.0) this.setDeltaMovement(0, 0.5, 0);
+                    else this.setDeltaMovement(0, 0, 0);
                 } else if (this.meteorTimer <= 220) {
                     this.setDeltaMovement(0, 0, 0);
-
                     if (this.meteorTimer % 8 == 0) {
                         List<Player> players = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(50.0));
-                        if (!players.isEmpty()) {
-                            if (this.level() instanceof ServerLevel serverLevel) {
-                                Player target = players.get(this.random.nextInt(players.size()));
-
-                                ItemEntity meteor = new ItemEntity(
-                                        serverLevel,
-                                        this.getX(), this.getY(), this.getZ(),
-                                        new ItemStack(Blocks.GRASS_BLOCK.asItem())
-                                );
-                                meteor.setNoGravity(true);
-                                meteor.setPickUpDelay(Integer.MAX_VALUE);
-                                meteor.addTag("boss_meteor_projectile");
-
-                                Vec3 toTarget = new Vec3(
-                                        target.getX() - this.getX(),
-                                        target.getY() + 1.0 - this.getY(),
-                                        target.getZ() - this.getZ()
-                                ).normalize().scale(1.5);
-                                meteor.setDeltaMovement(toTarget);
-
-                                serverLevel.addFreshEntity(meteor);
-                                this.level().playSound(null, this.blockPosition(), SoundEvents.FIREWORK_ROCKET_LAUNCH, SoundSource.HOSTILE, 1.0F, 0.8F);
-                            }
+                        if (!players.isEmpty() && this.level() instanceof ServerLevel serverLevel) {
+                            Player target = players.get(this.random.nextInt(players.size()));
+                            ItemEntity meteor = new ItemEntity(serverLevel, this.getX(), this.getY(), this.getZ(), new ItemStack(Blocks.GRASS_BLOCK.asItem()));
+                            meteor.setNoGravity(true);
+                            meteor.setPickUpDelay(Integer.MAX_VALUE);
+                            meteor.addTag("boss_meteor_projectile");
+                            Vec3 toTarget = new Vec3(target.getX() - this.getX(), target.getY() + 1.0 - this.getY(), target.getZ() - this.getZ()).normalize().scale(1.5);
+                            meteor.setDeltaMovement(toTarget);
+                            serverLevel.addFreshEntity(meteor);
+                            this.level().playSound(null, this.blockPosition(), SoundEvents.FIREWORK_ROCKET_LAUNCH, SoundSource.HOSTILE, 1.0F, 0.8F);
                         }
                     }
                 } else if (this.meteorTimer > 220 && this.meteorTimer <= 230) {
@@ -835,45 +755,37 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     this.isRecovering = true;
                     this.recoveryTimer = 0;
                     this.setDeltaMovement(Vec3.ZERO);
-
                     this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 2.0F, 0.5F);
-
                     for (Entity entity : this.level().getEntities(this, this.getBoundingBox().inflate(6.0))) {
                         if (entity instanceof LivingEntity living && entity != this) {
                             dealDamage(living, isRageMode ? 30.0F : 18.0F);
                             living.setDeltaMovement(living.getDeltaMovement().x, 1.2, living.getDeltaMovement().z);
                         }
                     }
-
                     this.skillCooldown = 300 + this.random.nextInt(100);
                 }
             }
 
-            // ================= 黑洞牵引 =================
+            // ================= 黑洞 =================
             if (this.isBlackHole) {
                 this.blackHoleTimer++;
                 this.getNavigation().stop();
                 this.setDeltaMovement(Vec3.ZERO);
 
-                if (this.blackHoleTimer == 1) {
-                    this.playAttackAnim();
-                }
+                if (this.blackHoleTimer == 1) this.playAttackAnim();
 
                 if (this.level() instanceof ServerLevel serverLevel) {
                     if (this.blackHoleTimer <= 60) {
                         for (int i = 0; i < 360; i += 20) {
                             double rad = Math.toRadians(i + this.blackHoleTimer * 8);
-                            double radius = 2.0;
-                            double x = this.getX() + Math.cos(rad) * radius;
-                            double z = this.getZ() + Math.sin(rad) * radius;
+                            double x = this.getX() + Math.cos(rad) * 2.0;
+                            double z = this.getZ() + Math.sin(rad) * 2.0;
                             serverLevel.sendParticles(ParticleTypes.SQUID_INK, x, this.getY() + 1.5, z, 3, 0, 0, 0, 0.05);
                             serverLevel.sendParticles(ParticleTypes.PORTAL, x, this.getY() + 1.5, z, 2, 0, 0, 0, 0.1);
                         }
-
                         if (this.blackHoleTimer == 1) {
                             this.level().playSound(null, this.blockPosition(), SoundEvents.ENDER_DRAGON_GROWL, SoundSource.HOSTILE, 2.0F, 0.5F);
                         }
-
                         for (Player p : this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(30.0))) {
                             Vec3 pull = this.position().add(0, 1, 0).subtract(p.position()).normalize().scale(0.3);
                             p.setDeltaMovement(p.getDeltaMovement().add(pull));
@@ -883,7 +795,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         serverLevel.sendParticles(ParticleTypes.EXPLOSION_EMITTER, this.getX(), this.getY() + 1.0, this.getZ(), 2, 1.0, 1.0, 1.0, 0.2);
                         if (this.blackHoleTimer == 61) {
                             this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 2.0F, 0.5F);
-
                             for (Entity entity : this.level().getEntities(this, this.getBoundingBox().inflate(5.0))) {
                                 if (entity instanceof LivingEntity living && entity != this) {
                                     dealDamage(living, isRageMode ? 45.0F : 30.0F);
@@ -904,9 +815,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 this.getNavigation().stop();
                 this.setDeltaMovement(Vec3.ZERO);
 
-                if (this.gazeTimer == 1) {
-                    this.playAttackAnim();
-                }
+                if (this.gazeTimer == 1) this.playAttackAnim();
 
                 if (this.level() instanceof ServerLevel serverLevel) {
                     if (this.gazeTimer <= 40) {
@@ -919,7 +828,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                             }
                             this.level().playSound(null, this.blockPosition(), SoundEvents.WARDEN_HEARTBEAT, SoundSource.HOSTILE, 2.0F, 0.5F);
                         }
-
                         if (this.gazeTarget != null) {
                             serverLevel.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, this.gazeTarget.getX(), this.gazeTarget.getY() + 1.0, this.gazeTarget.getZ(), 8, 0.5, 1.0, 0.5, 0.1);
                             serverLevel.sendParticles(ParticleTypes.SOUL_FIRE_FLAME, this.getX(), this.getY() + 2.0, this.getZ(), 3, 0.2, 0.2, 0.2, 0.05);
@@ -927,7 +835,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     } else if (this.gazeTimer <= 100) {
                         Vec3 gazeStart = this.position().add(0, 1.5, 0);
                         renderDeathGazeBeam(serverLevel, gazeStart, this.gazeDir, 40);
-
                         if (this.gazeTimer % 6 == 0) {
                             damageEntitiesInBeam(serverLevel, gazeStart, this.gazeDir, 40, 20.0F);
                             this.level().playSound(null, this.blockPosition(), SoundEvents.WARDEN_SONIC_BOOM, SoundSource.HOSTILE, 1.5F, 0.5F);
@@ -965,13 +872,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         if (this.groundSlamTimer == 31) {
                             this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 2.0F, 0.5F);
                             serverLevel.sendParticles(ParticleTypes.EXPLOSION_EMITTER, this.getX(), this.getY() + 1.0, this.getZ(), 2, 2.0, 0.5, 2.0, 0.1);
-
                             for (Entity entity : this.level().getEntities(this, this.getBoundingBox().inflate(8.0))) {
                                 if (entity instanceof LivingEntity living && entity != this) {
                                     Vec3 toEntity = entity.position().subtract(this.position());
                                     double dist = toEntity.length();
                                     double dot = toEntity.normalize().dot(this.getLookAngle());
-
                                     if (dist < 8.0 && dot > 0.5) {
                                         dealDamage(living, isRageMode ? 45.0F : 30.0F);
                                         living.setDeltaMovement(living.getDeltaMovement().x, 1.0, living.getDeltaMovement().z);
@@ -986,48 +891,37 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 }
             }
 
-            // ================= 草方块实体跟踪与爆炸 =================
+            // ================= 草方块爆炸 =================
             if (this.level() instanceof ServerLevel serverLevel) {
                 for (Entity entity : serverLevel.getEntities(this, this.getBoundingBox().inflate(50.0))) {
                     if (entity instanceof ItemEntity grassBlock &&
                             (grassBlock.getTags().contains("boss_grass_projectile") || grassBlock.getTags().contains("boss_meteor_projectile"))) {
-
                         boolean isMeteor = grassBlock.getTags().contains("boss_meteor_projectile");
                         boolean shouldExplode = false;
 
-                        if (grassBlock.tickCount > 3 && (grassBlock.horizontalCollision || grassBlock.verticalCollision)) {
-                            shouldExplode = true;
-                        }
-
+                        if (grassBlock.tickCount > 3 && (grassBlock.horizontalCollision || grassBlock.verticalCollision)) shouldExplode = true;
                         if (!shouldExplode && grassBlock.tickCount > 3) {
                             for (Player p : serverLevel.getEntitiesOfClass(Player.class, grassBlock.getBoundingBox().inflate(1.5))) {
                                 shouldExplode = true;
                                 break;
                             }
                         }
-
-                        if (!shouldExplode && grassBlock.tickCount > 40) {
-                            shouldExplode = true;
-                        }
+                        if (!shouldExplode && grassBlock.tickCount > 40) shouldExplode = true;
 
                         if (shouldExplode) {
                             serverLevel.sendParticles(ParticleTypes.EXPLOSION, grassBlock.getX(), grassBlock.getY(), grassBlock.getZ(), 3, 0.2, 0.2, 0.2, 0.05);
                             serverLevel.playSound(null, grassBlock.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.0F, 1.5F);
-
                             float dmg = isMeteor ? 15.0F : 8.0F;
                             for (Entity nearby : serverLevel.getEntities(grassBlock, grassBlock.getBoundingBox().inflate(2.0))) {
-                                if (nearby instanceof LivingEntity living && nearby != this) {
-                                    dealDamage(living, dmg);
-                                }
+                                if (nearby instanceof LivingEntity living && nearby != this) dealDamage(living, dmg);
                             }
-
                             grassBlock.discard();
                         }
                     }
                 }
             }
 
-            // ================= 地形恢复逻辑 =================
+            // ================= 地形恢复 =================
             if (this.isRecovering) {
                 this.recoveryTimer++;
                 this.getNavigation().stop();
@@ -1036,9 +930,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 if (this.level() instanceof ServerLevel serverLevel) {
                     for (int i = 0; i < 360; i += 30) {
                         double rad = Math.toRadians(i + this.recoveryTimer * 10);
-                        double radius = 3.0;
-                        double x = this.getX() + Math.cos(rad) * radius;
-                        double z = this.getZ() + Math.sin(rad) * radius;
+                        double x = this.getX() + Math.cos(rad) * 3.0;
+                        double z = this.getZ() + Math.sin(rad) * 3.0;
                         serverLevel.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()),
                                 x, this.getY() + 0.2, z, 2, 0, 0, 0, 0.05);
                     }
@@ -1067,7 +960,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             Vec3 p = start.add(dir.scale(d));
             level.sendParticles(ParticleTypes.END_ROD, p.x, p.y, p.z, 2, 0.05, 0.05, 0.05, 0.01);
         }
-
         for (double d = 0; d < length; d += 0.5) {
             Vec3 center = start.add(dir.scale(d));
             for (int angle = 0; angle < 360; angle += 45) {
@@ -1079,7 +971,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 level.sendParticles(ParticleTypes.DRAGON_BREATH, x, y, z, 1, 0, 0, 0, 0.02);
             }
         }
-
         for (double d = 0; d < length; d += 1.0) {
             Vec3 p = start.add(dir.scale(d));
             level.sendParticles(ParticleTypes.SOUL_FIRE_FLAME, p.x, p.y, p.z, 1, 0.1, 0.1, 0.1, 0.02);
@@ -1096,7 +987,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             Vec3 p = start.add(dir.scale(d));
             level.sendParticles(ParticleTypes.SOUL_FIRE_FLAME, p.x, p.y, p.z, 2, 0.05, 0.05, 0.05, 0.01);
         }
-
         for (double d = 0; d < length; d += 0.4) {
             Vec3 center = start.add(dir.scale(d));
             for (int angle = 0; angle < 360; angle += 60) {
@@ -1118,9 +1008,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 if (proj > 0 && proj < length) {
                     Vec3 closestPoint = start.add(dir.scale(proj));
                     double dist = entity.position().distanceTo(closestPoint);
-                    if (dist < 1.5) {
-                        dealDamage(living, damage);
-                    }
+                    if (dist < 1.5) dealDamage(living, damage);
                 }
             }
         }
@@ -1192,12 +1080,49 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.groundSlamTimer = 0;
     }
 
+    // ================= 【核心修复】controller 里根据状态返回动画，不用 triggerAnim =================
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, "controller", 5, state -> {
-            if (isTransforming || isEmerging) {
-                return state.setAndContinue(RawAnimation.begin());
+            // 1. 变身动画（一阶段）
+            if (isTransforming) {
+                return state.setAndContinue(RawAnimation.begin().thenLoop("transform_charge"));
             }
+            // 2. 出场动画（二阶段）
+            if (isEmerging) {
+                return state.setAndContinue(RawAnimation.begin().thenLoop("transform_emerge"));
+            }
+            // 3. 冲撞蓄力
+            if (isCharging) {
+                return state.setAndContinue(RawAnimation.begin().thenLoop("charge_windup"));
+            }
+            // 4. 冲撞冲刺
+            if (isDashing) {
+                return state.setAndContinue(RawAnimation.begin().thenLoop("charge_run"));
+            }
+            // 5. 冲撞恢复
+            if (recoverAnimTimer > 0) {
+                return state.setAndContinue(RawAnimation.begin().thenLoop("charge_recover"));
+            }
+            // 6. 撼地（按 slamTimer 分段）
+            if (isSlamming) {
+                if (slamTimer <= 60) {
+                    return state.setAndContinue(RawAnimation.begin().thenLoop("slam_windup"));
+                } else if (slamTimer <= 370) {
+                    return state.setAndContinue(RawAnimation.begin().thenLoop("slam_air"));
+                } else {
+                    return state.setAndContinue(RawAnimation.begin().thenLoop("slam_land"));
+                }
+            }
+            // 7. 攻击动画（一阶段 bow_attack / 二阶段 combo）
+            if (attackAnimTimer > 0) {
+                if (entityData.get(IS_PHASE_TWO)) {
+                    return state.setAndContinue(RawAnimation.begin().thenLoop("combo"));
+                } else {
+                    return state.setAndContinue(RawAnimation.begin().thenLoop("bow_attack"));
+                }
+            }
+            // 8. 默认 idle / walk
             if (state.isMoving()) {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("walk"));
             } else {
@@ -1205,6 +1130,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             }
         }));
     }
+    // ==========================================================================================
 
     @Override
     public AnimatableInstanceCache getAnimatableInstanceCache() {
