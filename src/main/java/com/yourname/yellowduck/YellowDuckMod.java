@@ -15,8 +15,10 @@ public class YellowDuckMod {
     public YellowDuckMod() {
         IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
         com.yourname.yellowduck.registry.ModBlocks.BLOCKS.register(bus);
+        com.yourname.yellowduck.registry.ModBlocks.ITEMS.register(bus);
         com.yourname.yellowduck.registry.ModBlockEntities.BLOCK_ENTITIES.register(bus);
         com.yourname.yellowduck.registry.ModMenuTypes.MENUS.register(bus);
+        com.yourname.yellowduck.registry.ModCreativeTabs.CREATIVE_TABS.register(bus);
         ModEntities.ENTITIES.register(bus);
         bus.addListener(this::registerAttributes);
     }
