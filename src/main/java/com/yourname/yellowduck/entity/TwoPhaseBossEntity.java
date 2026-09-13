@@ -56,12 +56,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private int slamTimer = 0;
     private int recoveryTimer = 0;
     private int grabTimer = 0;
+    private int laserTimer = 0;
     
     private boolean isCharging = false;
     private boolean isDashing = false;
     private boolean isSlamming = false;
     private boolean isRecovering = false;
     private boolean isGrabbing = false;
+    private boolean isLasing = false;
     
     private Vec3 dashDirection = Vec3.ZERO;
     private double slamStartY = 0.0;
@@ -71,6 +73,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private double slamVelZ = 0.0;
     private final List<Player> grabbedPlayers = new ArrayList<>();
     // =================================================
+
+    // ================= 激光技能专用变量 =================
+    private Player laserTarget = null;    // 激光锁定的玩家
+    private Vec3 laserDir = Vec3.ZERO;    // 激光当前方向（用于缓慢追踪）
+    // ====================================================
 
     // ================= 变身过渡状态机 =================
     private boolean isTransforming = false;
@@ -135,6 +142,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.isSlamming = false;
         this.isRecovering = false;
         this.isGrabbing = false;
+        this.isLasing = false;
         this.setDeltaMovement(Vec3.ZERO);
         this.getNavigation().stop();
         this.setTarget(null);
@@ -158,8 +166,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
     @Override
     public boolean hurt(DamageSource source, float amount) {
-        if (this.isTransforming || this.isGrabbing) {
-            return false; // 技能释放期间无敌，防止被打断
+        if (this.isTransforming || this.isGrabbing || this.isLasing) {
+            return false;
         }
         return super.hurt(source, amount);
     }
@@ -227,35 +235,28 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             }
 
             // ================= 全局技能触发判定 =================
-            if (this.entityData.get(IS_PHASE_TWO) && skillCooldown <= 0 && !isCharging && !isDashing && !isSlamming && !isRecovering && !isGrabbing) {
+            if (this.entityData.get(IS_PHASE_TWO) && skillCooldown <= 0 && !isCharging && !isDashing && !isSlamming && !isRecovering && !isGrabbing && !isLasing) {
                 Player nearestPlayer = this.level().getNearestPlayer(this, 50.0D);
                 if (nearestPlayer != null) {
                     if (this.random.nextInt(40) == 0) {
                         float healthRatio = this.getHealth() / this.getMaxHealth();
                         
                         if (healthRatio > 0.8f) {
-                            // 100%-80% 冲撞/撼地随机
+                            // 100%-80%：冲撞 / 撼地 随机
                             if (this.random.nextBoolean()) {
                                 startDash(nearestPlayer);
-                            } else {
-                                startSlam(nearestPlayer);
-                            }
-                        } else if (healthRatio > 0.5f) {
-                            // 79%-50% 惯手 / 撼地 随机
-                            if (this.random.nextBoolean()) {
-                                startGrab();
                             } else {
                                 startSlam(nearestPlayer);
                             }
                         } else {
-                            // 50% 以下，全技能随机（目前是冲撞/撼地/惯手三选一）
+                            // 80% 以下：撼地 / 惯手 / 毁灭光束 随机三选一
                             int r = this.random.nextInt(3);
                             if (r == 0) {
-                                startDash(nearestPlayer);
-                            } else if (r == 1) {
                                 startSlam(nearestPlayer);
-                            } else {
+                            } else if (r == 1) {
                                 startGrab();
+                            } else {
+                                startLaser();
                             }
                         }
                     }
@@ -414,26 +415,20 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 this.getNavigation().stop();
                 this.setDeltaMovement(Vec3.ZERO);
 
-                // 阶段1：拉人并禁锢1秒（前20 ticks）
                 if (this.grabTimer <= 20) {
                     for (Player p : grabbedPlayers) {
-                        // 强制将玩家拉回Boss身边
                         p.teleportTo(this.getX(), this.getY(), this.getZ());
                         p.setDeltaMovement(Vec3.ZERO);
-                        // 施加缓慢效果（1秒，等级10）
                         p.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 20, 10, false, false));
                     }
                 }
                 
-                // 阶段2：1秒后释放玩家，但继续画火焰圈预警（第20到60 ticks）
                 if (this.grabTimer == 21) {
                     for (Player p : grabbedPlayers) {
-                        // 移除缓慢效果（已经过期了，这里是保险）
                         p.removeEffect(MobEffects.MOVEMENT_SLOWDOWN);
                     }
                 }
 
-                // 火焰圈预警（每 5 ticks 画一次，持续 3 秒）
                 if (this.grabTimer <= 60 && this.grabTimer % 5 == 0) {
                     if (this.level() instanceof ServerLevel serverLevel) {
                         for (int i = 0; i < 360; i += 10) {
@@ -446,25 +441,107 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     }
                 }
 
-                // 阶段3：3秒后（60 ticks）引爆范围打击
                 if (this.grabTimer > 60) {
                     this.isGrabbing = false;
-                    this.skillCooldown = 600 + this.random.nextInt(100); // 30秒冷却
+                    this.skillCooldown = 600 + this.random.nextInt(100);
                     
                     if (this.level() instanceof ServerLevel serverLevel) {
-                        // 爆炸音效
                         this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 2.0F, 0.5F);
                         
-                        // 范围伤害（5格内）
                         for (Entity entity : this.level().getEntities(this, this.getBoundingBox().inflate(5.0))) {
                             if (entity instanceof LivingEntity living && entity != this) {
-                                living.hurt(this.damageSources().mobAttack(this), 20.0F);
+                                float damage = 20.0F;
+                                if (living instanceof Player p && grabbedPlayers.contains(p)) {
+                                    damage = 40.0F;
+                                }
+                                living.hurt(this.damageSources().mobAttack(this), damage);
                                 living.setDeltaMovement(living.getDeltaMovement().x, 1.0, living.getDeltaMovement().z);
                             }
                         }
                         
-                        // 爆炸粒子效果
                         serverLevel.sendParticles(ParticleTypes.EXPLOSION_EMITTER, this.getX(), this.getY() + 1.0, this.getZ(), 3, 1.0, 1.0, 1.0, 0.1);
+                    }
+                    
+                    this.grabbedPlayers.clear();
+                }
+            }
+
+            // ================= 毁灭光束技能逻辑 =================
+            if (this.isLasing) {
+                this.laserTimer++;
+                this.getNavigation().stop();
+                this.setDeltaMovement(Vec3.ZERO);
+                
+                if (this.level() instanceof ServerLevel serverLevel) {
+                    // 阶段1：蓄力 5 秒（前 100 ticks）
+                    if (this.laserTimer <= 100) {
+                        if (this.laserTimer == 1) {
+                            // 随机选一个有玩家的方向
+                            List<Player> players = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(50.0));
+                            if (!players.isEmpty()) {
+                                this.laserTarget = players.get(this.random.nextInt(players.size()));
+                            } else {
+                                this.laserTarget = this.level().getNearestPlayer(this, 50.0D);
+                            }
+                            this.laserDir = Vec3.ZERO;
+                            this.level().playSound(null, this.blockPosition(), SoundEvents.BEACON_ACTIVATE, SoundSource.HOSTILE, 2.0F, 0.5F);
+                        }
+                        
+                        // 粒子在 Boss 面前汇聚
+                        if (this.laserTimer % 3 == 0 && this.laserTarget != null) {
+                            Vec3 toTarget = this.laserTarget.position().add(0, 1, 0).subtract(this.position().add(0, 1.5, 0)).normalize();
+                            Vec3 spawnPos = this.position().add(0, 1.5, 0).add(toTarget.scale(2));
+                            serverLevel.sendParticles(ParticleTypes.END_ROD, spawnPos.x, spawnPos.y, spawnPos.z, 12, 0.8, 0.8, 0.8, 0.2);
+                            serverLevel.sendParticles(ParticleTypes.DRAGON_BREATH, spawnPos.x, spawnPos.y, spawnPos.z, 8, 0.6, 0.6, 0.6, 0.15);
+                        }
+                        
+                        if (this.laserTimer == 100) {
+                            this.level().playSound(null, this.blockPosition(), SoundEvents.BEACON_POWER_SELECT, SoundSource.HOSTILE, 2.0F, 0.5F);
+                        }
+                    }
+                    // 阶段2：发射激光 10 秒（100 到 300 ticks）
+                    else if (this.laserTimer <= 300) {
+                        // 如果目标死了/跑了，重新随机选一个
+                        if (this.laserTarget == null || !this.laserTarget.isAlive() || this.laserTarget.distanceTo(this) > 50) {
+                            List<Player> players = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(50.0));
+                            if (!players.isEmpty()) {
+                                this.laserTarget = players.get(this.random.nextInt(players.size()));
+                            } else {
+                                this.laserTarget = null;
+                            }
+                        }
+                        
+                        if (this.laserTarget != null) {
+                            Vec3 laserStart = this.position().add(0, 1.5, 0);
+                            Vec3 targetDir = this.laserTarget.position().add(0, 1, 0).subtract(laserStart).normalize();
+                            
+                            // 缓慢追踪（每 tick 只向目标方向转动 5%）
+                            if (this.laserDir == Vec3.ZERO) {
+                                this.laserDir = targetDir;
+                            } else {
+                                this.laserDir = this.laserDir.scale(0.95).add(targetDir.scale(0.05)).normalize();
+                            }
+                            
+                            // 渲染粗激光束
+                            renderLaserBeam(serverLevel, laserStart, this.laserDir, 40);
+                            
+                            // 每 10 ticks（0.5 秒）造成一次伤害
+                            if (this.laserTimer % 10 == 0) {
+                                damageEntitiesInBeam(serverLevel, laserStart, this.laserDir, 40);
+                            }
+                            
+                            // 每 5 ticks 播放一次音效
+                            if (this.laserTimer % 5 == 0) {
+                                this.level().playSound(null, this.blockPosition(), SoundEvents.GUARDIAN_ATTACK, SoundSource.HOSTILE, 1.5F, 0.5F);
+                            }
+                        }
+                    }
+                    // 阶段3：结束
+                    else {
+                        this.isLasing = false;
+                        this.laserTarget = null;
+                        this.laserDir = Vec3.ZERO;
+                        this.skillCooldown = 400 + this.random.nextInt(100); // 20 秒冷却
                     }
                 }
             }
@@ -531,6 +608,57 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         }
     }
 
+    // ================= 渲染粗激光束 =================
+    private void renderLaserBeam(ServerLevel level, Vec3 start, Vec3 dir, double length) {
+        Vec3 up = new Vec3(0, 1, 0);
+        if (Math.abs(dir.dot(up)) > 0.99) up = new Vec3(1, 0, 0);
+        Vec3 right = dir.cross(up).normalize();
+        Vec3 upPerp = right.cross(dir).normalize();
+        
+        // 1. 内芯：亮白色实心光束（END_ROD）
+        for (double d = 0; d < length; d += 0.4) {
+            Vec3 p = start.add(dir.scale(d));
+            level.sendParticles(ParticleTypes.END_ROD, p.x, p.y, p.z, 2, 0.05, 0.05, 0.05, 0.01);
+        }
+        
+        // 2. 外层：紫色能量环（DRAGON_BREATH），形成光束的“粗”感（半径 1 格 = 粗 2 格）
+        for (double d = 0; d < length; d += 0.5) {
+            Vec3 center = start.add(dir.scale(d));
+            for (int angle = 0; angle < 360; angle += 45) {
+                double rad = Math.toRadians(angle + d * 30);
+                double radius = 1.0; // 光束半径 1 格，直径 2 格
+                double x = center.x + right.x * Math.cos(rad) * radius + upPerp.x * Math.sin(rad) * radius;
+                double y = center.y + right.y * Math.cos(rad) * radius + upPerp.y * Math.sin(rad) * radius;
+                double z = center.z + right.z * Math.cos(rad) * radius + upPerp.z * Math.sin(rad) * radius;
+                level.sendParticles(ParticleTypes.DRAGON_BREATH, x, y, z, 1, 0, 0, 0, 0.02);
+            }
+        }
+        
+        // 3. 点缀：灵魂火粒子（蓝白色），让光束更有层次
+        for (double d = 0; d < length; d += 1.0) {
+            Vec3 p = start.add(dir.scale(d));
+            level.sendParticles(ParticleTypes.SOUL_FIRE_FLAME, p.x, p.y, p.z, 1, 0.1, 0.1, 0.1, 0.02);
+        }
+    }
+
+    // ================= 激光束伤害判定 =================
+    private void damageEntitiesInBeam(ServerLevel level, Vec3 start, Vec3 dir, double length) {
+        for (Entity entity : level.getEntities(this, this.getBoundingBox().inflate(length))) {
+            if (entity instanceof LivingEntity living && entity != this) {
+                Vec3 toEntity = entity.position().add(0, entity.getBbHeight() / 2, 0).subtract(start);
+                double proj = toEntity.dot(dir);
+                if (proj > 0 && proj < length) {
+                    Vec3 closestPoint = start.add(dir.scale(proj));
+                    double dist = entity.position().distanceTo(closestPoint);
+                    if (dist < 1.5) { // 光束半径 1.5 格内（比视觉略大，方便命中）
+                        living.hurt(this.damageSources().mobAttack(this), 25.0F);
+                        living.setDeltaMovement(living.getDeltaMovement().x, 0.3, living.getDeltaMovement().z);
+                    }
+                }
+            }
+        }
+    }
+
     // ================= 技能启动辅助方法 =================
     private void startDash(Player target) {
         this.isCharging = true;
@@ -563,11 +691,9 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.grabTimer = 0;
         this.grabbedPlayers.clear();
         
-        // 获取50格内所有玩家
         List<Player> players = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(50.0));
-        Collections.shuffle(players); // 随机打乱
+        Collections.shuffle(players);
         
-        // 取前5名（如果没有5名，就有多少拿多少）
         int count = 0;
         for (Player p : players) {
             if (count >= 5) break;
@@ -577,6 +703,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         
         this.triggerAnim("controller", "attack");
         this.level().playSound(null, this.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundSource.HOSTILE, 1.5F, 0.5F);
+    }
+
+    private void startLaser() {
+        this.isLasing = true;
+        this.laserTimer = 0;
+        this.laserTarget = null;
+        this.laserDir = Vec3.ZERO;
+        this.triggerAnim("controller", "attack");
     }
     // ===================================================
 
