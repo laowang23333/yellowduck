@@ -3,6 +3,7 @@ package com.yourname.yellowduck.entity;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
@@ -55,11 +56,27 @@ public class MountEntity extends PathfinderMob {
         return 0.6F;
     }
 
-    // 【改】骑乘高度：原来 3.0D 太高，改成 1.2D
-    // 还偏高 → 减小（1.0、0.8）；还偏低 → 增大（1.5、1.8）
+    // 骑乘高度（Y 方向）
     @Override
     public double getPassengersRidingOffset() {
         return super.getPassengersRidingOffset() + 1.2D;
+    }
+
+    // 【新增】骑乘水平位置：把玩家往前挪
+    // FORWARD_OFFSET 就是往前挪的格数，0.8 大约挪到脖子位置
+    // 还想更前 → 加大（1.0、1.2）；想往后 → 减小（0.5、0.3）
+    private static final double FORWARD_OFFSET = 0.8D;
+
+    @Override
+    public void positionRider(Entity passenger) {
+        if (this.hasPassenger(passenger)) {
+            double y = this.getY() + this.getPassengersRidingOffset() + passenger.getMyRidingOffset();
+            // 根据实体朝向计算前方向量
+            double rad = Math.toRadians(this.getYRot());
+            double dx = -Math.sin(rad) * FORWARD_OFFSET;
+            double dz = Math.cos(rad) * FORWARD_OFFSET;
+            passenger.setPos(this.getX() + dx, y, this.getZ() + dz);
+        }
     }
 
     @Override
