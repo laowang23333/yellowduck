@@ -2,6 +2,8 @@ package com.yourname.yellowduck.menu;
 
 import com.yourname.yellowduck.block.BigChestBlockEntity;
 import com.yourname.yellowduck.registry.ModMenuTypes;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
@@ -13,10 +15,20 @@ import net.minecraft.world.item.ItemStack;
 public class BigChestMenu extends AbstractContainerMenu {
     private final Container container;
 
-    public BigChestMenu(int id, Inventory playerInv) {
-        this(id, playerInv, new SimpleContainer(BigChestBlockEntity.SIZE));
+    // 客户端打开 GUI 时用的（从网络读 BlockPos）
+    public BigChestMenu(int id, Inventory playerInv, FriendlyByteBuf data) {
+        this(id, playerInv, getContainer(playerInv, data));
     }
 
+    private static Container getContainer(Inventory inv, FriendlyByteBuf data) {
+        BlockPos pos = data.readBlockPos();
+        if (inv.player.level().getBlockEntity(pos) instanceof BigChestBlockEntity be) {
+            return be;
+        }
+        return new SimpleContainer(BigChestBlockEntity.SIZE);
+    }
+
+    // 服务端打开 GUI 时用的（直接传 Container）
     public BigChestMenu(int id, Inventory playerInv, Container container) {
         super(ModMenuTypes.BIG_CHEST.get(), id);
         this.container = container;
