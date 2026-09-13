@@ -218,7 +218,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
             // ================= 全局技能触发判定 =================
             if (this.entityData.get(IS_PHASE_TWO) && skillCooldown <= 0 && !isCharging && !isDashing && !isSlamming && !isRecovering) {
-                // 【修改】使用 50 格范围检测最近玩家
                 Player nearestPlayer = this.level().getNearestPlayer(this, 50.0D);
                 if (nearestPlayer != null) {
                     // 随机判定：平均每2秒判定一次
@@ -307,7 +306,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     
                     // 每 20 ticks 投掷草方块并更新目标（限制在 50 格内）
                     if (this.slamTimer % 20 == 0) {
-                        // 【修改】使用 50 格范围检测最近玩家
                         Player nearestPlayer = this.level().getNearestPlayer(this, 50.0D);
                         if (nearestPlayer != null) {
                             // 更新目标位置，为最后的下坠做准备
@@ -330,7 +328,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                                 this.level().playSound(null, this.blockPosition(), SoundEvents.SNOWBALL_THROW, SoundSource.HOSTILE, 1.0F, 0.5F);
                             }
                         }
-                        // 如果 50 格内没有玩家，不更新 slamTargetX/Z，Boss 将砸在最后一次记录的位置
                     }
                     
                     if (this.slamTimer % 10 == 0) {
@@ -339,18 +336,15 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 }
                 // 3. 下坠阶段（第360到370 ticks = 0.5秒）
                 else if (this.slamTimer > 360 && this.slamTimer <= 370) {
-                    // 在下坠的第1帧，计算砸向玩家的水平速度
                     if (this.slamTimer == 361) {
                         double distanceX = this.slamTargetX - this.getX();
                         double distanceZ = this.slamTargetZ - this.getZ();
                         
-                        // 预计下坠时间 10 ticks（0.5秒）
                         double timeToLand = 10.0;
                         
                         double velX = distanceX / timeToLand;
                         double velZ = distanceZ / timeToLand;
                         
-                        // 限制最大水平速度（防止速度过快导致穿墙或像闪现）
                         double maxSpeed = 1.5;
                         double speedMag = Math.sqrt(velX * velX + velZ * velZ);
                         if (speedMag > maxSpeed) {
@@ -377,7 +371,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
                     this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.5F, 0.5F);
 
-                    // 落地范围伤害（5格内）
                     for (Entity entity : this.level().getEntities(this, this.getBoundingBox().inflate(5.0))) {
                         if (entity instanceof LivingEntity living && entity != this) {
                             living.hurt(this.damageSources().mobAttack(this), 24.0F);
@@ -391,7 +384,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             if (this.level() instanceof ServerLevel serverLevel) {
                 for (Entity entity : serverLevel.getEntities(this, this.getBoundingBox().inflate(50.0))) {
                     if (entity instanceof FallingBlockEntity grassBlock && grassBlock.getTags().contains("boss_grass_projectile")) {
-                        if (grassBlock.horizontalCollision || grassBlock.verticalCollision || grassBlock.isOnGround()) {
+                        // 【修复】去掉了 grassBlock.isOnGround()，改为只要有碰撞就触发
+                        if (grassBlock.horizontalCollision || grassBlock.verticalCollision) {
                             serverLevel.sendParticles(ParticleTypes.EXPLOSION, grassBlock.getX(), grassBlock.getY(), grassBlock.getZ(), 3, 0.2, 0.2, 0.2, 0.05);
                             serverLevel.playSound(null, grassBlock.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.0F, 1.5F);
                             
@@ -422,7 +416,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         double radius = 3.0;
                         double x = this.getX() + Math.cos(rad) * radius;
                         double z = this.getZ() + Math.sin(rad) * radius;
-                        serverLevel.sendParticles(new net.minecraft.core.particles.BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()), 
+                        serverLevel.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()), 
                             x, this.getY() + 0.2, z, 2, 0, 0, 0, 0.05);
                     }
                 }
@@ -451,7 +445,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.slamTimer = 0;
         this.slamStartY = this.getY();
         
-        // 【修改】如果目标为 null（50格内没玩家），砸在原地
         if (target != null) {
             this.slamTargetX = target.getX();
             this.slamTargetZ = target.getZ();
