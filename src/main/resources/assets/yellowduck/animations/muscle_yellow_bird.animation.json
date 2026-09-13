@@ -824,6 +824,7 @@
 			}
 		},
 		"charge_windup": {
+			"loop": true,
 			"animation_length": 0.6,
 			"bones": {
 				"bird_root": {
