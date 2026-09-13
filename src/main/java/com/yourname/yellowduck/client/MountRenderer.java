@@ -1,7 +1,7 @@
 package com.yourname.yellowduck.client;
 
-import com.phe.polymesh.api.GltfEntityRendererFactory;
-import com.phe.polymesh.api.GltfRenderOptions;
+import dev.phe.polymesh.client.GltfEntityRendererFactory;
+import com.yourname.yellowduck.entity.MountEntity;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.api.distmarker.Dist;
@@ -21,19 +21,18 @@ public class MountRenderer {
     // ============================================================
     private static final float MODEL_SCALE = 0.05F;
 
-    // 模型名称（对应 models/gltf/ 文件夹下的文件名，不带 .glb 后缀）
+    // 模型名称（对应 assets/yellowduck/models/gltf/ 文件夹下的文件名，不带 .glb 后缀）
     private static final String MODEL_NAME = "mount";
 
     /**
      * 在 ClientEvents 中调用此方法注册实体渲染器
      */
-    public static void register(EntityRenderersEvent.RegisterRenderers event, EntityType<?> entityType) {
+    public static void register(EntityRenderersEvent.RegisterRenderers event,
+                                EntityType<? extends MountEntity> entityType) {
         event.registerEntityRenderer(entityType,
                 GltfEntityRendererFactory.create(
                         new ResourceLocation("yellowduck", MODEL_NAME),
-                        GltfRenderOptions.builder()
-                                .scale(MODEL_SCALE)
-                                .build()
+                        MODEL_SCALE
                 )
         );
     }
