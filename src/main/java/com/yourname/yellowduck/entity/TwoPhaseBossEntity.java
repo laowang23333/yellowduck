@@ -55,6 +55,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     
     private Vec3 dashDirection = Vec3.ZERO;    // 冲撞方向
     private Vec3 slamTargetPos = Vec3.ZERO;    // 撼地落点
+    private double slamStartY = 0.0;           // 【新增】记录撼地起跳高度，用于限制高度
     // =================================================
 
     // ================= 变身过渡状态机 =================
@@ -215,24 +216,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             if (this.entityData.get(IS_PHASE_TWO) && skillCooldown <= 0 && !isCharging && !isDashing && !isSlamming && !isRecovering) {
                 Player nearestPlayer = this.level().getNearestPlayer(this, 35.0D);
                 if (nearestPlayer != null) {
-                    // 加入随机判定：平均每2秒判定一次，防止冷却一到就立刻放技能，让Boss显得有“大脑”
+                    // 随机判定：平均每2秒判定一次
                     if (this.random.nextInt(40) == 0) {
                         float healthRatio = this.getHealth() / this.getMaxHealth();
-                        
-                        // 在 100%-80% 阶段，冲撞和撼地随机二选一
-                        if (healthRatio > 0.8f) {
-                            if (this.random.nextBoolean()) {
-                                startDash(nearestPlayer);
-                            } else {
-                                startSlam(nearestPlayer);
-                            }
+                        // 100%-80% 和 80%以下 都是随机二选一
+                        if (this.random.nextBoolean()) {
+                            startDash(nearestPlayer);
                         } else {
-                            // 80% 以下阶段，同样随机二选一（后续可以加入更多技能）
-                            if (this.random.nextBoolean()) {
-                                startDash(nearestPlayer);
-                            } else {
-                                startSlam(nearestPlayer);
-                            }
+                            startSlam(nearestPlayer);
                         }
                     }
                 }
@@ -279,39 +270,68 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         living.hurt(this.damageSources().mobAttack(this), 16.0F);
                     }
                 }
-                // 冲撞结束条件
                 if (this.dashTimer >= 20 || this.horizontalCollision) {
                     this.isDashing = false;
                     this.setDeltaMovement(Vec3.ZERO);
-                    // 【核心修改】冲撞结束后，才开始计算冷却（25秒 + 0~5秒随机）
+                    // 冲撞结束，进入冷却
                     this.skillCooldown = 500 + this.random.nextInt(100); 
                 }
             }
 
-            // ================= 撼地逻辑 =================
+            // ================= 撼地逻辑【修复重点】 =================
             if (this.isSlamming) {
                 this.slamTimer++;
                 
-                if (this.slamTimer <= 40) { // 前2秒：升空
+                // 1. 升空阶段（前60 ticks = 3秒）
+                if (this.slamTimer <= 60) {
                     this.getNavigation().stop();
-                    this.setDeltaMovement(0, 1.5, 0);
+                    
+                    // 【修复高度限制】最高只能上升 12 格
+                    if (this.getY() - this.slamStartY < 12.0) {
+                        this.setDeltaMovement(0, 0.4, 0); // 缓慢上升
+                    } else {
+                        this.setDeltaMovement(0, 0, 0); // 到达 12 格后悬停
+                    }
+                    
+                    // 抓取动作与草方块粒子
+                    if (this.slamTimer % 10 == 0) {
+                        this.triggerAnim("controller", "attack"); // 每半秒播放一次攻击动画
+                        this.level().playSound(null, this.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundSource.HOSTILE, 1.0F, 1.2F);
+                    }
                     if (this.level() instanceof ServerLevel serverLevel) {
                         serverLevel.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()), 
-                            this.getX(), this.getY() + 1.0, this.getZ(), 5, 0.5, 0.5, 0.5, 0.1);
+                            this.getX(), this.getY() + 1.0, this.getZ(), 15, 0.5, 0.5, 0.5, 0.1);
                     }
-                } else if (this.slamTimer > 40 && this.slamTimer <= 45) { // 急速下坠
-                    this.setDeltaMovement(0, -2.5, 0);
-                } else if (this.slamTimer > 45) { // 落地
+                } 
+                // 2. 悬停阶段（第60到80 ticks = 1秒）
+                else if (this.slamTimer > 60 && this.slamTimer <= 80) {
+                    this.setDeltaMovement(0, 0, 0); // 悬停在空中
+                    if (this.level() instanceof ServerLevel serverLevel) {
+                        serverLevel.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.GRASS_BLOCK.defaultBlockState()), 
+                            this.getX(), this.getY() + 1.0, this.getZ(), 10, 0.5, 0.5, 0.5, 0.1);
+                    }
+                }
+                // 3. 下坠阶段（第80到90 ticks = 0.5秒）
+                else if (this.slamTimer > 80 && this.slamTimer <= 90) {
+                    this.setDeltaMovement(0, -2.5, 0); // 急速下坠
+                    if (this.level() instanceof ServerLevel serverLevel) {
+                        serverLevel.sendParticles(ParticleTypes.CRIT, this.getX(), this.getY(), this.getZ(), 20, 0.5, 0.5, 0.5, 0.1);
+                    }
+                } 
+                // 4. 落地阶段
+                else if (this.slamTimer > 90) {
                     this.isSlamming = false;
                     this.isRecovering = true;
                     this.recoveryTimer = 0;
 
+                    // 落地音效
                     this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.5F, 0.5F);
 
+                    // 落地范围伤害（5格内）
                     for (Entity entity : this.level().getEntities(this, this.getBoundingBox().inflate(5.0))) {
                         if (entity instanceof LivingEntity living && entity != this) {
                             living.hurt(this.damageSources().mobAttack(this), 24.0F);
-                            living.setDeltaMovement(living.getDeltaMovement().x, 1.2, living.getDeltaMovement().z);
+                            living.setDeltaMovement(living.getDeltaMovement().x, 1.2, living.getDeltaMovement().z); // 振飞
                         }
                     }
                 }
@@ -334,9 +354,9 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     }
                 }
 
-                if (this.recoveryTimer >= 60) {
+                if (this.recoveryTimer >= 60) { // 3秒后恢复结束
                     this.isRecovering = false;
-                    // 【核心修改】地形恢复结束后，才开始计算冷却（25秒 + 0~5秒随机）
+                    // 撼地完全结束，进入冷却
                     this.skillCooldown = 500 + this.random.nextInt(100);
                 }
             }
@@ -357,8 +377,9 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private void startSlam(Player target) {
         this.isSlamming = true;
         this.slamTimer = 0;
+        this.slamStartY = this.getY(); // 【记录起跳高度】
         this.slamTargetPos = new Vec3(target.getX(), target.getY(), target.getZ());
-        this.triggerAnim("controller", "attack");
+        this.triggerAnim("controller", "attack"); // 起跳瞬间播放一次攻击动画
     }
     // ===================================================
 
