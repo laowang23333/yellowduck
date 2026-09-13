@@ -7,10 +7,12 @@ import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.BossEvent;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -51,6 +53,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private int transformTimer = 0;
     // ===================================================
 
+    // ================= 原版Boss血条 =================
+    private final ServerBossEvent bossEvent = new ServerBossEvent(
+            Component.literal("小黄鸭"),
+            BossEvent.BossBarColor.YELLOW,
+            BossEvent.BossBarOverlay.PROGRESS
+    );
+    // ===============================================
+
     public TwoPhaseBossEntity(EntityType<? extends PathfinderMob> entityType, Level level) {
         super(entityType, level);
     }
@@ -61,6 +71,18 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             return Component.literal("肌肉大鸭");
         }
         return Component.literal("小黄鸭");
+    }
+
+    @Override
+    public void startSeenByPlayer(ServerPlayer player) {
+        super.startSeenByPlayer(player);
+        this.bossEvent.addPlayer(player);
+    }
+
+    @Override
+    public void stopSeenByPlayer(ServerPlayer player) {
+        super.stopSeenByPlayer(player);
+        this.bossEvent.removePlayer(player);
     }
 
     @Override
@@ -81,7 +103,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.entityData.define(IS_PHASE_TWO, false);
     }
 
-    // ================= 触发过渡（死亡拦截） =================
     private void startTransform() {
         this.isTransforming = true;
         this.transformTimer = 0;
@@ -90,7 +111,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.setDeltaMovement(Vec3.ZERO);
         this.getNavigation().stop();
         this.setTarget(null);
-        this.setInvulnerable(true); // 【新增】变身期间设置为无敌状态，确保绝对安全
+        this.setInvulnerable(true);
     }
 
     public void enterPhaseTwo() {
@@ -100,6 +121,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.getAttribute(Attributes.MAX_HEALTH).setBaseValue(5000000.0D);
         this.setHealth(5000000.0F);
         this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.35D);
+        this.bossEvent.setName(Component.literal("肌肉大鸭"));
         
         this.level().playSound(null, this.blockPosition(), SoundEvents.WITHER_SPAWN, SoundSource.HOSTILE, 1.0F, 1.0F);
         if (this.level() instanceof ServerLevel serverLevel) {
@@ -107,10 +129,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         }
     }
 
-    // ================= 【核心修复】伤害拦截 =================
     @Override
     public boolean hurt(DamageSource source, float amount) {
-        // 只要处于变身过渡状态，免疫一切伤害，防止被玩家乱刀砍死
         if (this.isTransforming) {
             return false;
         }
@@ -119,28 +139,23 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
     @Override
     public void die(DamageSource source) {
-        // 如果不是二阶段，且没有在变身中，拦截死亡
         if (!this.level().isClientSide && !this.entityData.get(IS_PHASE_TWO) && !this.isTransforming) {
-            this.setHealth(1.0F); // 强行锁住 1 滴血
-            this.startTransform(); // 开始 5 秒变身过渡
-            return; // 阻止真正的死亡
+            this.setHealth(1.0F);
+            this.startTransform();
+            return;
         }
-        super.die(source); // 否则，正常死亡
+        super.die(source);
     }
-    // =======================================================
 
     @Override
     public void tick() {
-        super.tick();
+        // 【修复1】变身期间直接返回，彻底冻结AI
+        if (this.isTransforming) {
+            this.getNavigation().stop();
+            this.setDeltaMovement(Vec3.ZERO);
 
-        if (!this.level().isClientSide) {
-            // ================= 变身过渡逻辑 =================
-            if (this.isTransforming) {
+            if (!this.level().isClientSide) {
                 this.transformTimer++;
-                this.getNavigation().stop();
-                this.setDeltaMovement(Vec3.ZERO);
-
-                // 粒子环绕特效
                 if (this.level() instanceof ServerLevel serverLevel) {
                     double angle = this.transformTimer * 0.3;
                     double radius = 2.0;
@@ -151,15 +166,12 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     serverLevel.sendParticles(ParticleTypes.END_ROD, x, this.getY() + 1.5, z, 2, 0, 0, 0, 0);
                 }
 
-                // 5秒 = 100 ticks
                 if (this.transformTimer >= 100) {
                     this.isTransforming = false;
-                    this.setInvulnerable(false); // 取消无敌
+                    this.setInvulnerable(false);
                     
-                    // 1. 制造不破坏方块的爆炸
                     this.level().explode(this, this.getX(), this.getY(), this.getZ(), 3.0F, false, Level.ExplosionInteraction.NONE);
 
-                    // 2. 生成二阶段实体
                     if (this.level() instanceof ServerLevel serverLevel) {
                         EntityType<?> type = this.getType();
                         Entity newEntity = type.create(serverLevel);
@@ -168,54 +180,70 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                             boss.enterPhaseTwo();
                             serverLevel.addFreshEntity(boss);
 
-                            // 3. 发送屏幕正中间标题（给50格内的玩家）
                             Component titleMsg = Component.literal("§4鸭神§e降临");
                             for (ServerPlayer player : serverLevel.getEntitiesOfClass(ServerPlayer.class, this.getBoundingBox().inflate(50))) {
                                 player.connection.send(new ClientboundSetTitleTextPacket(titleMsg));
                             }
                         }
                     }
-                    this.discard(); // 删除一阶段实体
+                    this.discard();
                 }
-                return; // 变身过程中跳过常规逻辑
             }
-            // ===============================================
+            return;
+        }
 
-            // 冷却时间递减
+        super.tick();
+
+        this.bossEvent.setProgress(this.getHealth() / this.getMaxHealth());
+
+        if (!this.level().isClientSide) {
             if (dashCooldown > 0) {
                 dashCooldown--;
             }
 
-            // 冲撞技能触发
-            float healthRatio = this.getHealth() / this.getMaxHealth();
-            if (this.entityData.get(IS_PHASE_TWO) && healthRatio <= 1.0f && healthRatio > 0.8f && dashCooldown <= 0 && !isCharging && !isDashing) {
-                this.isCharging = true;
-                this.chargeTimer = 0;
-                this.dashCooldown = 500;
-                
-                if (this.getTarget() != null) {
+            // 【修复2】二阶段冲撞技能触发
+            if (this.entityData.get(IS_PHASE_TWO) && dashCooldown <= 0 && !isCharging && !isDashing) {
+                Player nearestPlayer = this.level().getNearestPlayer(this, 35.0D);
+                if (nearestPlayer != null) {
+                    this.isCharging = true;
+                    this.chargeTimer = 0;
+                    this.dashCooldown = 500;
+                    
                     this.dashDirection = new Vec3(
-                            this.getTarget().getX() - this.getX(),
+                            nearestPlayer.getX() - this.getX(),
                             0,
-                            this.getTarget().getZ() - this.getZ()
-                    ).normalize();
-                } else {
-                    this.dashDirection = new Vec3(
-                            this.getLookAngle().x,
-                            0,
-                            this.getLookAngle().z
+                            nearestPlayer.getZ() - this.getZ()
                     ).normalize();
                 }
             }
 
-            // 蓄力阶段
+            // 【修复3】蓄力阶段（3秒 = 60 ticks，粒子拉满，带音效）
             if (this.isCharging) {
                 this.chargeTimer++;
-                if (this.level() instanceof ServerLevel serverLevel) {
-                    serverLevel.sendParticles(ParticleTypes.CRIT, this.getX(), this.getY() + 1.0, this.getZ(), 5, 0.5, 0.5, 0.5, 0.1);
+                this.getNavigation().stop(); // 强制停止移动
+                this.setDeltaMovement(Vec3.ZERO); // 强制原地定身
+
+                // 每 10 tick 播放一次音效和粒子
+                if (this.chargeTimer % 10 == 0) {
+                    if (this.level() instanceof ServerLevel serverLevel) {
+                        // 播放劫掠兽咆哮音效
+                        this.level().playSound(null, this.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundSource.HOSTILE, 1.0F, 1.0F);
+                        
+                        // 环绕 Boss 生成显眼的粒子
+                        for (int i = 0; i < 360; i += 45) {
+                            double rad = Math.toRadians(i + this.chargeTimer * 5);
+                            double radius = 1.5;
+                            double x = this.getX() + Math.cos(rad) * radius;
+                            double z = this.getZ() + Math.sin(rad) * radius;
+                            
+                            serverLevel.sendParticles(ParticleTypes.FLAME, x, this.getY() + 0.5, z, 3, 0, 0, 0, 0.05);
+                            serverLevel.sendParticles(ParticleTypes.LAVA, x, this.getY() + 0.5, z, 1, 0, 0, 0, 0.05);
+                            serverLevel.sendParticles(ParticleTypes.CRIT, x, this.getY() + 1.0, z, 5, 0, 0, 0, 0.1);
+                        }
+                    }
                 }
 
-                if (this.chargeTimer >= 40) {
+                if (this.chargeTimer >= 60) { // 3秒蓄力完毕
                     this.isCharging = false;
                     this.isDashing = true;
                     this.dashTimer = 0;
