@@ -90,6 +90,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.setDeltaMovement(Vec3.ZERO);
         this.getNavigation().stop();
         this.setTarget(null);
+        this.setInvulnerable(true); // 【新增】变身期间设置为无敌状态，确保绝对安全
     }
 
     public void enterPhaseTwo() {
@@ -106,7 +107,16 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         }
     }
 
-    // ================= 【核心修复】死亡拦截 =================
+    // ================= 【核心修复】伤害拦截 =================
+    @Override
+    public boolean hurt(DamageSource source, float amount) {
+        // 只要处于变身过渡状态，免疫一切伤害，防止被玩家乱刀砍死
+        if (this.isTransforming) {
+            return false;
+        }
+        return super.hurt(source, amount);
+    }
+
     @Override
     public void die(DamageSource source) {
         // 如果不是二阶段，且没有在变身中，拦截死亡
@@ -144,6 +154,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 // 5秒 = 100 ticks
                 if (this.transformTimer >= 100) {
                     this.isTransforming = false;
+                    this.setInvulnerable(false); // 取消无敌
+                    
                     // 1. 制造不破坏方块的爆炸
                     this.level().explode(this, this.getX(), this.getY(), this.getZ(), 3.0F, false, Level.ExplosionInteraction.NONE);
 
