@@ -18,6 +18,7 @@ public class ModCreativeTabs {
                     .icon(() -> new ItemStack(ModBlocks.BIG_CHEST_ITEM.get()))
                     .displayItems((params, output) -> {
                         output.accept(ModBlocks.BIG_CHEST_ITEM.get());
+                        output.accept(ModBlocks.JINYUANQUAN.get());
                     })
                     .build());
 }
