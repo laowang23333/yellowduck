@@ -27,6 +27,12 @@ minecraft {
     }
 }
 
+// 👇 新增：Mixin 配置块
+mixin {
+    add sourceSets.main, "yellowduck.refmap.json"
+    config "yellowduck.mixins.json"
+}
+
 repositories {
     maven { url = 'https://maven.minecraftforge.net/' }
     maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
@@ -48,4 +54,7 @@ dependencies {
 
     // Polymesh - glTF/GLB 渲染库
     implementation fg.deobf("maven.modrinth:GmPRqxTy:jJiQUzrS")
+
+    // 👇 新增：Mixin 注解处理器
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
