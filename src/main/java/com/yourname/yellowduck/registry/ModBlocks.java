@@ -2,7 +2,8 @@ package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.block.BigChestBlock;
-import com.yourname.yellowduck.block.MeetStoneBlock; // 新增导入
+import com.yourname.yellowduck.block.MeetStoneBlock;
+import com.yourname.yellowduck.block.ProfessorSilkBlock;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -36,7 +37,7 @@ public class ModBlocks {
             () -> new Item(new Item.Properties()));
 
     // ==========================================
-    // 新增：奶块石柱（两格高）
+    // 奶块石柱（两格高）
     // ==========================================
     public static final RegistryObject<Block> MEET_STONE = BLOCKS.register("meet_stone",
             () -> new MeetStoneBlock(BlockBehaviour.Properties.of()
@@ -44,4 +45,18 @@ public class ModBlocks {
 
     public static final RegistryObject<Item> MEET_STONE_ITEM = ITEMS.register("meet_stone",
             () -> new BlockItem(MEET_STONE.get(), new Item.Properties()));
+
+    // ==========================================
+    // Professor Silk 两格高模型方块
+    // ==========================================
+    public static final RegistryObject<Block> PROFESSOR_SILK = BLOCKS.register("professor_silk",
+            () -> new ProfessorSilkBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.WOOL)
+                    .strength(1.5F)
+                    .noOcclusion()
+                    .noCollission()
+                    .isViewBlocking((s, l, p) -> false)));
+
+    public static final RegistryObject<Item> PROFESSOR_SILK_ITEM = ITEMS.register("professor_silk",
+            () -> new BlockItem(PROFESSOR_SILK.get(), new Item.Properties()));
 }
