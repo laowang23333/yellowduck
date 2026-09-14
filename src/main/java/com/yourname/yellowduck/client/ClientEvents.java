@@ -15,8 +15,12 @@ public class ClientEvents {
 
     @SubscribeEvent
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        // 👇 补上了这一段！小黄鸭 Boss 的渲染器
+        event.registerEntityRenderer(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossRenderer::new);
+        
         // 坐骑
         MountRenderer.register(event, ModEntities.MOUNT.get());
+        
         // 大箱子方块实体
         event.registerBlockEntityRenderer(
                 ModBlockEntities.BIG_CHEST.get(),
