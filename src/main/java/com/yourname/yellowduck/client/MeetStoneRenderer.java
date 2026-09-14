@@ -6,9 +6,9 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
 
-// 下面这两个 Import 路径
-import net.mehvahdjukaar.polymesh.client.renderer.GltfBlockEntityRenderer; 
-import net.mehvahdjukaar.polymesh.client.renderer.GltfRenderOptions;
+// ⚠️ 请务必把下面这两行，换成你 BigChestRenderer.java 里面成功使用的 Import！⚠️
+import com.yourname.yellowduck.client.GltfBlockEntityRenderer;
+import com.yourname.yellowduck.client.GltfRenderOptions;
 
 public class MeetStoneRenderer extends GltfBlockEntityRenderer<MeetStoneBlockEntity> {
     private static final ResourceLocation MODEL_DOWN = new ResourceLocation("yellowduck", "models/gltf/meet_stone_1.glb");
