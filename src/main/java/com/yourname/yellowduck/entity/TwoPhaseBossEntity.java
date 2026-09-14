@@ -236,7 +236,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             return false;
         }
         boolean result = super.hurt(source, amount);
-        
+
         // ========== 一阶段受伤播放 niganma.ogg，带 3 秒冷却 ==========
         if (result && !this.level().isClientSide && !this.entityData.get(IS_PHASE_TWO)) {
             if (!this.isPlayingNiganma && this.niganmaCooldown <= 0) {
@@ -248,7 +248,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
             }
         }
         // ==========================================================
-        
+
         return result;
     }
 
@@ -286,14 +286,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         if (!(target instanceof LivingEntity living)) return false;
 
         this.playAttackAnim();
-        
+
         // ========== 一阶段近战攻击播放 jijiji.ogg ==========
         if (!this.level().isClientSide && !this.entityData.get(IS_PHASE_TWO)) {
             this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
                     ModSounds.JIJIJI.get(), this.getSoundSource(), 1.0F, 1.0F);
         }
         // ==================================================
-        
+
         this.comboStep = 1;
         this.comboTimer = 0;
         this.comboTarget = living;
@@ -450,6 +450,9 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         serverLevel.addFreshEntity(egg);
                         this.thrownEggs.add(egg);
                         this.level().playSound(null, this.blockPosition(), SoundEvents.EGG_THROW, SoundSource.HOSTILE, 1.0F, 1.0F);
+                        // 👇 新增：扔鸡蛋时播放 jijiji.ogg
+                        this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
+                                ModSounds.JIJIJI.get(), this.getSoundSource(), 1.0F, 1.0F);
                         this.playAttackAnim();
                     }
                 }
