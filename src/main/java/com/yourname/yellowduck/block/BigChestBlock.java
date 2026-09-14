@@ -40,7 +40,7 @@ public class BigChestBlock extends BaseEntityBlock {
                                  Player player, InteractionHand hand, BlockHitResult hit) {
         if (!level.isClientSide && level.getBlockEntity(pos) instanceof BigChestBlockEntity be) {
             NetworkHooks.openScreen((ServerPlayer) player, new MenuProvider() {
-                @Override public Component getDisplayName() { return Component.literal("大箱子"); }
+                @Override public Component getDisplayName() { return Component.literal("海盗箱"); }
                 @Override public AbstractContainerMenu createMenu(int id, Inventory inv, Player p) {
                     return new BigChestMenu(id, inv, be);
                 }
