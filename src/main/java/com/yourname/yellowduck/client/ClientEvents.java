@@ -17,19 +17,24 @@ public class ClientEvents {
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
         // 小黄鸭 Boss 渲染器
         event.registerEntityRenderer(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossRenderer::new);
-        
+
         // 狮子狗坐骑渲染器
         MountRenderer.register(event, ModEntities.MOUNT.get());
-        
+
         // 大箱子方块实体渲染器
         event.registerBlockEntityRenderer(
                 ModBlockEntities.BIG_CHEST.get(),
                 BigChestRenderer::new);
 
-        // 👇 副本柱子：只注册“总调度器”，解决上下重叠/覆盖问题！
+        // 副本柱子：只注册"总调度器"，解决上下重叠/覆盖问题！
         event.registerBlockEntityRenderer(
                 ModBlockEntities.MEET_STONE.get(),
                 MeetStoneMainRenderer::new);
+
+        // Professor Silk 方块实体渲染器
+        event.registerBlockEntityRenderer(
+                ModBlockEntities.PROFESSOR_SILK.get(),
+                ProfessorSilkRenderer::new);
     }
 
     @SubscribeEvent
