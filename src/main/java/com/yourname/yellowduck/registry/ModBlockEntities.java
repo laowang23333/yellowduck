@@ -2,7 +2,8 @@ package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.block.BigChestBlockEntity;
-import com.yourname.yellowduck.block.MeetStoneBlockEntity; // 新增导入
+import com.yourname.yellowduck.block.MeetStoneBlockEntity;
+import com.yourname.yellowduck.block.ProfessorSilkBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -22,11 +23,20 @@ public class ModBlockEntities {
                             ModBlocks.BIG_CHEST.get()).build(null));
 
     // ==========================================
-    // 新增：奶块石柱
+    // 奶块石柱
     // ==========================================
     public static final RegistryObject<BlockEntityType<MeetStoneBlockEntity>> MEET_STONE =
             BLOCK_ENTITIES.register("meet_stone",
                     () -> BlockEntityType.Builder.of(
                             (pos, state) -> new MeetStoneBlockEntity(ModBlockEntities.MEET_STONE.get(), pos, state),
                             ModBlocks.MEET_STONE.get()).build(null));
+
+    // ==========================================
+    // Professor Silk 模型方块
+    // ==========================================
+    public static final RegistryObject<BlockEntityType<ProfessorSilkBlockEntity>> PROFESSOR_SILK =
+            BLOCK_ENTITIES.register("professor_silk",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new ProfessorSilkBlockEntity(ModBlockEntities.PROFESSOR_SILK.get(), pos, state),
+                            ModBlocks.PROFESSOR_SILK.get()).build(null));
 }
