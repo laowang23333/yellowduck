@@ -6,4 +6,5 @@ license="All rights reserved"
 modId="yellowduck"
 version="1.0"
 displayName="tianmingBoss"
-description="这是谁？！"
+description="netcraft扩展"
+mixins=["yellowduck.mixins.json"]
