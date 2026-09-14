@@ -1,11 +1,13 @@
 package com.yourname.yellowduck.mixin;
 
 import com.yourname.yellowduck.menu.BigChestMenu;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -13,11 +15,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(AbstractContainerScreen.class)
 public abstract class BigChestGuiMixin {
 
-    // 直接跳过原版"数量>64就不画"的逻辑，自己画
+    @Shadow protected int leftPos;
+    @Shadow protected int topPos;
+
+    @Shadow protected abstract void renderSlot(GuiGraphics g, Slot slot);
+
     @Inject(method = "renderSlot", at = @At("HEAD"), cancellable = true)
     private void yellowduck$renderBigStack(GuiGraphics g, Slot slot, CallbackInfo ci) {
         AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
-        if (!(self.getMenu() instanceof BigChestMenu)) return; // 只管大箱子
+        if (!(self.getMenu() instanceof BigChestMenu)) return;
 
         ItemStack stack = slot.getItem();
         if (stack.isEmpty()) return;
@@ -25,23 +31,20 @@ public abstract class BigChestGuiMixin {
         int x = slot.x;
         int y = slot.y;
 
-        // 1. 画图标
         g.renderItem(stack, x, y);
 
-        // 2. 画数量数字（自定义，不调用原版 renderItemDecorations）
+        // 画数量
         g.pose().pushPose();
         g.pose().translate(0.0F, 0.0F, 200.0F);
-
         String countText = String.valueOf(stack.getCount());
-        int color = 0xFFFFFF;
-        if (stack.getCount() > 999) color = 0xFF5555; // >999 红色警示
-        g.drawString(self.getMinecraft().font, countText,
-                x + 17 - self.getMinecraft().font.width(countText),
+        int color = stack.getCount() > 999 ? 0xFF5555 : 0xFFFFFF;
+        Minecraft mc = Minecraft.getInstance();
+        g.drawString(mc.font, countText,
+                x + 17 - mc.font.width(countText),
                 y + 9, color, true);
-
         g.pose().popPose();
 
-        // 3. 画耐久条
+        // 耐久条
         if (stack.isBarVisible()) {
             int barWidth = stack.getBarWidth();
             int barColor = stack.getBarColor();
@@ -49,10 +52,6 @@ public abstract class BigChestGuiMixin {
             g.fill(x + 2, y + 13, x + 2 + barWidth, y + 15, 0xFF000000 | barColor);
         }
 
-        // 4. 画冷却遮罩（可选，一般箱子物品没冷却）
-        float cooldown = slot.getItem().getPopTime(); // 用 item 冷却
-        // 简单跳过
-
-        ci.cancel(); // 完全接管，不再走原版
+        ci.cancel();
     }
 }
