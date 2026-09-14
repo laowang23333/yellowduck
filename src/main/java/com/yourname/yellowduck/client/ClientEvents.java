@@ -15,16 +15,21 @@ public class ClientEvents {
 
     @SubscribeEvent
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        // 👇 补上了这一段！小黄鸭 Boss 的渲染器
+        // 小黄鸭 Boss 渲染器
         event.registerEntityRenderer(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossRenderer::new);
         
-        // 坐骑
+        // 狮子狗坐骑渲染器
         MountRenderer.register(event, ModEntities.MOUNT.get());
         
-        // 大箱子方块实体
+        // 大箱子方块实体渲染器
         event.registerBlockEntityRenderer(
                 ModBlockEntities.BIG_CHEST.get(),
                 BigChestRenderer::new);
+
+        // 👇 新增：奶块石柱方块实体渲染器
+        event.registerBlockEntityRenderer(
+                ModBlockEntities.MEET_STONE.get(),
+                MeetStoneRenderer::new);
     }
 
     @SubscribeEvent
