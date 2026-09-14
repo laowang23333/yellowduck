@@ -21,21 +21,24 @@ public class ClientEvents {
         // 狮子狗坐骑渲染器
         MountRenderer.register(event, ModEntities.MOUNT.get());
         
-        // 大箱子方块实体渲染器
+        // 海盗箱方块实体渲染器
         event.registerBlockEntityRenderer(
                 ModBlockEntities.BIG_CHEST.get(),
                 BigChestRenderer::new);
 
-        // 👇 新增：奶块石柱方块实体渲染器
+        // 👇 副本柱子：上下两半分别用两个独立的渲染器
         event.registerBlockEntityRenderer(
                 ModBlockEntities.MEET_STONE.get(),
-                MeetStoneRenderer::new);
+                MeetStoneDownRenderer::new);
+        event.registerBlockEntityRenderer(
+                ModBlockEntities.MEET_STONE.get(),
+                MeetStoneUpRenderer::new);
     }
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
-            // 大箱子 GUI
+            // 海盗箱 GUI
             MenuScreens.register(ModMenuTypes.BIG_CHEST.get(), BigChestScreen::new);
         });
     }
