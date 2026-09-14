@@ -1,6 +1,9 @@
 package com.yourname.yellowduck.entity;
 
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -19,6 +22,10 @@ import net.minecraft.world.phys.Vec3;
 
 public class MountEntity extends PathfinderMob {
 
+    // 【新增】同步给客户端的走路状态
+    public static final EntityDataAccessor<Boolean> IS_WALKING =
+            SynchedEntityData.defineId(MountEntity.class, EntityDataSerializers.BOOLEAN);
+
     public MountEntity(EntityType<? extends PathfinderMob> entityType, Level level) {
         super(entityType, level);
     }
@@ -33,6 +40,24 @@ public class MountEntity extends PathfinderMob {
     @Override
     public Component getName() {
         return Component.literal("狮子狗");
+    }
+
+    // 【新增】注册同步数据
+    @Override
+    protected void defineSynchedData() {
+        super.defineSynchedData();
+        this.entityData.define(IS_WALKING, false);
+    }
+
+    // 【新增】每 tick 在服务端判断是否在走，并同步
+    @Override
+    public void tick() {
+        super.tick();
+        if (!this.level().isClientSide()) {
+            double speedSqr = this.getDeltaMovement().horizontalDistanceSqr();
+            boolean walking = speedSqr > 0.0001;
+            this.entityData.set(IS_WALKING, walking);
+        }
     }
 
     @Override
