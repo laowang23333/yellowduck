@@ -29,8 +29,8 @@ import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.ThrownEgg;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
@@ -107,7 +107,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private double slamVelX = 0.0;
     private double slamVelZ = 0.0;
     private final List<Player> grabbedPlayers = new ArrayList<>();
-    private final List<ThrownEgg> thrownEggs = new ArrayList<>();
+    private final List<ItemEntity> thrownEggs = new ArrayList<>();
 
     private Player laserTarget = null;
     private Vec3 laserDir = Vec3.ZERO;
@@ -435,8 +435,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     this.eggThrowTimer = 0;
                     Player target = this.level().getNearestPlayer(this, 20.0D);
                     if (target != null && this.level() instanceof ServerLevel serverLevel) {
-                        ThrownEgg egg = new ThrownEgg(serverLevel, this);
-                        egg.setPos(this.getX(), this.getY() + 1.5, this.getZ());
+                        // 用 ItemEntity 替代 ThrownEgg：不会生成小鸡
+                        ItemEntity egg = new ItemEntity(serverLevel, this.getX(), this.getY() + 1.5, this.getZ(), new ItemStack(Items.EGG));
+                        egg.setNoGravity(true);
+                        egg.setPickUpDelay(Integer.MAX_VALUE);
+                        egg.addTag("boss_egg_projectile");
 
                         double dx = target.getX() - this.getX();
                         double dy = target.getY() + 0.5 - (this.getY() + 1.5);
@@ -450,16 +453,16 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                         serverLevel.addFreshEntity(egg);
                         this.thrownEggs.add(egg);
                         this.level().playSound(null, this.blockPosition(), SoundEvents.EGG_THROW, SoundSource.HOSTILE, 1.0F, 1.0F);
-                        // 👇 新增：扔鸡蛋时播放 jijiji.ogg
+                        // 扔鸡蛋时播放 jijiji.ogg
                         this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
                                 ModSounds.JIJIJI.get(), this.getSoundSource(), 1.0F, 1.0F);
                         this.playAttackAnim();
                     }
                 }
 
-                Iterator<ThrownEgg> it = this.thrownEggs.iterator();
+                Iterator<ItemEntity> it = this.thrownEggs.iterator();
                 while (it.hasNext()) {
-                    ThrownEgg egg = it.next();
+                    ItemEntity egg = it.next();
                     if (!egg.isAlive() || egg.tickCount > 60) {
                         egg.discard();
                         it.remove();
