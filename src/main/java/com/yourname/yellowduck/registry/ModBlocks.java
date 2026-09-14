@@ -24,4 +24,10 @@ public class ModBlocks {
 
     public static final RegistryObject<Item> BIG_CHEST_ITEM = ITEMS.register("big_chest",
             () -> new BlockItem(BIG_CHEST.get(), new Item.Properties()));
+
+    // ==========================================
+    // 新增：鲸元卷物品注册
+    // ==========================================
+    public static final RegistryObject<Item> JINYUANQUAN = ITEMS.register("jinyuanquan",
+            () -> new Item(new Item.Properties()));
 }
