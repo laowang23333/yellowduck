@@ -5,11 +5,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
-// 👇 关键：补上这几个缺失的 Import
-// ⚠️ 注意：下面这两个 Import 路径，请务必参考你 BigChestRenderer 里的写法！
-// 通常是类似 com.tom.polymesh.client.renderer.GltfBlockEntityRenderer 或类似路径
-import com.tom.polymesh.client.renderer.GltfBlockEntityRenderer; 
-import com.tom.polymesh.client.renderer.GltfRenderOptions;
+
+// 下面这两个 Import 路径
+import net.mehvahdjukaar.polymesh.client.renderer.GltfBlockEntityRenderer; 
+import net.mehvahdjukaar.polymesh.client.renderer.GltfRenderOptions;
 
 public class MeetStoneRenderer extends GltfBlockEntityRenderer<MeetStoneBlockEntity> {
     private static final ResourceLocation MODEL_DOWN = new ResourceLocation("yellowduck", "models/gltf/meet_stone_1.glb");
