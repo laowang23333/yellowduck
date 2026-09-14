@@ -56,6 +56,9 @@ public class SakurawitchEntity extends PathfinderMob {
     private static final int STATE_CHARGE_SPRAY = 1;
     private static final int STATE_CAST_SPRAY = 2;
 
+    // 普攻动画总时长（tick），期间禁止新的攻击
+    private static final int ATTACK_ANIM_LENGTH = 27;
+
     private int skillCooldown = 0;
     private int deathTimer = 0;
     private int stateTimer = 0;
@@ -101,7 +104,6 @@ public class SakurawitchEntity extends PathfinderMob {
         this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 16.0F));
         this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
-        // mustSee = false：35 格内不要求视线就能锁定
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, false));
     }
 
@@ -117,22 +119,28 @@ public class SakurawitchEntity extends PathfinderMob {
         this.entityData.define(SKILL_STATE, STATE_IDLE);
     }
 
+    // ================= 攻击 =================
     @Override
     public boolean doHurtTarget(Entity target) {
+        // 1) 技能播放中：不允许普攻
         if (this.entityData.get(SKILL_STATE) != STATE_IDLE) return false;
+
+        // 2) 攻击动画播放中：不允许再次攻击（关键！）
+        //    这样每次攻击动画只造成一次伤害
+        if (this.entityData.get(ATTACK_TIMER) > 0) return false;
+
         boolean hit = super.doHurtTarget(target);
         if (hit && !this.level().isClientSide && target instanceof Player p) {
+            // 叠魔法易伤
             MobEffectInstance cur = p.getEffect(ModEffects.MAGIC_VULNERABILITY.get());
             int lvl = (cur == null ? 0 : cur.getAmplifier() + 1);
-            if (lvl < 10) {
-                p.addEffect(new MobEffectInstance(ModEffects.MAGIC_VULNERABILITY.get(),
-                        200, lvl, false, true));
-            } else {
-                p.addEffect(new MobEffectInstance(ModEffects.MAGIC_VULNERABILITY.get(),
-                        200, 9, false, true));
-            }
+            if (lvl > 10) lvl = 10;
+            p.addEffect(new MobEffectInstance(ModEffects.MAGIC_VULNERABILITY.get(),
+                    200, Math.min(9, lvl), false, true));
+
+            // 起动画 & 锁攻击
             this.entityData.set(ATTACK_INDEX, 1);
-            this.entityData.set(ATTACK_TIMER, 27);
+            this.entityData.set(ATTACK_TIMER, ATTACK_ANIM_LENGTH);
             this.level().playSound(null, this.blockPosition(), SoundEvents.PLAYER_ATTACK_SWEEP,
                     SoundSource.HOSTILE, 1.2F, 0.8F);
         }
@@ -166,14 +174,19 @@ public class SakurawitchEntity extends PathfinderMob {
             return;
         }
 
-        // ===== 临时诊断日志：每 40 tick 打印一次 =====
-        if (this.tickCount % 40 == 0) {
-            Entity t = this.getTarget();
-            System.out.println("[小樱 debug] tick=" + this.tickCount
-                    + " target=" + (t == null ? "null" : t.getName().getString())
-                    + " pos=" + this.blockPosition());
+        // ===== 强制锁定：每 20 tick 检查 =====
+        if (this.tickCount % 20 == 0) {
+            Entity current = this.getTarget();
+            boolean needNew = current == null || !current.isAlive()
+                    || this.distanceTo(current) > 40.0;
+            if (needNew) {
+                Player nearest = this.level().getNearestPlayer(this, 35.0);
+                if (nearest != null && !nearest.isCreative() && !nearest.isSpectator() && nearest.isAlive()) {
+                    this.setTarget(nearest);
+                }
+            }
         }
-        // ==============================================
+        // =====================================
 
         if (skillCooldown > 0) skillCooldown--;
         attackTimerDecay();
