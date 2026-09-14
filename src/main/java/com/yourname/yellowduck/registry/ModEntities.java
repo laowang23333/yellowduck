@@ -32,7 +32,7 @@ public class ModEntities {
     public static final RegistryObject<EntityType<SakurawitchEntity>> SAKURA_WITCH =
             ENTITIES.register("sakurawitch", () ->
                     EntityType.Builder.<SakurawitchEntity>of(SakurawitchEntity::new, MobCategory.MONSTER)
-                            .sized(0.9F, 2.4F)
+                            .sized(1.3F, 2.8F)
                             .clientTrackingRange(10)
                             .build("sakurawitch"));
 }
