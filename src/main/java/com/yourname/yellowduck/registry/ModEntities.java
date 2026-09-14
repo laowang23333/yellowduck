@@ -2,6 +2,7 @@ package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.entity.MountEntity;
+import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
@@ -24,4 +25,14 @@ public class ModEntities {
                     EntityType.Builder.<MountEntity>of(MountEntity::new, MobCategory.CREATURE)
                             .sized(1.5F, 1.5F)
                             .build("mount"));
+
+    // ==========================================
+    // 小樱 Boss
+    // ==========================================
+    public static final RegistryObject<EntityType<SakurawitchEntity>> SAKURA_WITCH =
+            ENTITIES.register("sakurawitch", () ->
+                    EntityType.Builder.<SakurawitchEntity>of(SakurawitchEntity::new, MobCategory.MONSTER)
+                            .sized(0.9F, 2.4F)
+                            .clientTrackingRange(10)
+                            .build("sakurawitch"));
 }
