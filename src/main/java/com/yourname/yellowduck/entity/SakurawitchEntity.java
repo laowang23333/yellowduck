@@ -1,16 +1,21 @@
 package com.yourname.yellowduck.entity;
 
+import com.yourname.yellowduck.registry.ModEffects;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
@@ -27,9 +32,12 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class SakurawitchEntity extends PathfinderMob {
 
-    // ===== 同步到客户端的状态（渲染器读这些决定播什么动画）=====
+    // ===== 同步状态 =====
     public static final EntityDataAccessor<Boolean> IS_WALKING =
             SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.BOOLEAN);
     public static final EntityDataAccessor<Integer> ATTACK_INDEX =
@@ -38,10 +46,40 @@ public class SakurawitchEntity extends PathfinderMob {
             SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.INT);
     public static final EntityDataAccessor<Boolean> IS_DYING =
             SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.BOOLEAN);
-    // ==========================================================
+    public static final EntityDataAccessor<Integer> PHASE =
+            SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.INT);
+    public static final EntityDataAccessor<Integer> FIRE_MARK_STACKS =
+            SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.INT);
+    public static final EntityDataAccessor<Integer> SKILL_STATE =
+            SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.INT);
+    // =====================
+
+    // 状态机
+    private static final int STATE_IDLE = 0;
+    private static final int STATE_CHARGE_SPRAY = 1;   // 蓄力火焰喷射
+    private static final int STATE_CAST_SPRAY = 2;     // 喷射释放瞬间
 
     private int skillCooldown = 0;
     private int deathTimer = 0;
+    private int stateTimer = 0;
+
+    // 火焰喷射
+    private int fireSprayCD = 200;   // 出场后 10 秒开始第一次
+    private Player sprayTarget = null;
+    private int sprayVisualTimer = 0;
+
+    // 火焰印记
+    private int fireMarkTimer = 0;
+
+    // 火焰喷发
+    private int fireEruptionCD = 160;
+    private final List<Eruption> eruptions = new ArrayList<>();
+
+    private static class Eruption {
+        BlockPos pos;
+        int ticksLeft;
+        Eruption(BlockPos p, int t) { pos = p; ticksLeft = t; }
+    }
 
     private final ServerBossEvent bossEvent = new ServerBossEvent(
             Component.literal("小樱"),
@@ -54,21 +92,13 @@ public class SakurawitchEntity extends PathfinderMob {
     }
 
     @Override
-    public Component getName() {
-        return Component.literal("小樱");
-    }
+    public Component getName() { return Component.literal("小樱"); }
 
     @Override
-    public void startSeenByPlayer(ServerPlayer player) {
-        super.startSeenByPlayer(player);
-        this.bossEvent.addPlayer(player);
-    }
+    public void startSeenByPlayer(ServerPlayer player) { super.startSeenByPlayer(player); bossEvent.addPlayer(player); }
 
     @Override
-    public void stopSeenByPlayer(ServerPlayer player) {
-        super.stopSeenByPlayer(player);
-        this.bossEvent.removePlayer(player);
-    }
+    public void stopSeenByPlayer(ServerPlayer player) { super.stopSeenByPlayer(player); bossEvent.removePlayer(player); }
 
     @Override
     protected void registerGoals() {
@@ -88,72 +118,346 @@ public class SakurawitchEntity extends PathfinderMob {
         this.entityData.define(ATTACK_INDEX, 0);
         this.entityData.define(ATTACK_TIMER, 0);
         this.entityData.define(IS_DYING, false);
+        this.entityData.define(PHASE, 1);
+        this.entityData.define(FIRE_MARK_STACKS, 0);
+        this.entityData.define(SKILL_STATE, STATE_IDLE);
     }
 
+    // ================= 普通攻击 =================
     @Override
     public boolean doHurtTarget(Entity target) {
+        if (this.entityData.get(SKILL_STATE) != STATE_IDLE) return false; // 技能中不普攻
         boolean hit = super.doHurtTarget(target);
-        if (hit && !this.level().isClientSide) {
-            // 普通攻击固定播 attack_01
-            int idx = 1;
-            this.entityData.set(ATTACK_INDEX, idx);
-            this.entityData.set(ATTACK_TIMER, attackDurationTicks(idx));
+        if (hit && !this.level().isClientSide && target instanceof Player p) {
+            // 魔法易伤层数 +1
+            MobEffectInstance cur = p.getEffect(ModEffects.MAGIC_VULNERABILITY.get());
+            int lvl = (cur == null ? 0 : cur.getAmplifier() + 1);
+            if (lvl < 10) {
+                p.addEffect(new MobEffectInstance(ModEffects.MAGIC_VULNERABILITY.get(),
+                        200, lvl, false, true));
+            } else {
+                p.addEffect(new MobEffectInstance(ModEffects.MAGIC_VULNERABILITY.get(),
+                        200, 9, false, true));
+            }
+            // 播攻击动画
+            this.entityData.set(ATTACK_INDEX, 1);
+            this.entityData.set(ATTACK_TIMER, 27);
             this.level().playSound(null, this.blockPosition(), SoundEvents.PLAYER_ATTACK_SWEEP,
                     SoundSource.HOSTILE, 1.2F, 0.8F);
         }
         return hit;
     }
 
-    private int attackDurationTicks(int idx) {
-        switch (idx) {
-            case 1: case 2: return 27;    // 1.33s
-            case 3: return 30;            // 1.47s
-            case 4: return 31;            // 1.53s
-            case 5: return 165;           // 8.25s
-            case 6: return 24;            // 1.20s
-            default: return 27;
-        }
-    }
-
+    // ================= tick =================
     @Override
     public void tick() {
         super.tick();
 
-        if (!this.level().isClientSide) {
-            if (this.skillCooldown > 0) this.skillCooldown--;
-            if (this.skillCooldown == 0 && this.random.nextInt(40) == 0) this.skillCooldown = 200;
-
-            // 更新走路状态
-            double dx = this.getX() - this.xo;
-            double dz = this.getZ() - this.zo;
-            boolean moving = (dx * dx + dz * dz) > 1.0E-5;
-            this.entityData.set(IS_WALKING, moving);
-
-            // 攻击动画计时
-            int at = this.entityData.get(ATTACK_TIMER);
-            if (at > 0) {
-                this.entityData.set(ATTACK_TIMER, at - 1);
-                if (at - 1 == 0) {
-                    this.entityData.set(ATTACK_INDEX, 0);
+        if (this.level().isClientSide) {
+            // 客户端：仅做喷射粒子
+            if (this.entityData.get(SKILL_STATE) == STATE_CAST_SPRAY) {
+                Vec3 look = this.getLookAngle();
+                Vec3 start = this.position().add(0, 1.5, 0);
+                for (double d = 0; d < 12; d += 0.4) {
+                    Vec3 p = start.add(look.scale(d));
+                    this.level().addParticle(ParticleTypes.FLAME, p.x, p.y, p.z, 0, 0, 0);
                 }
             }
+            return;
+        }
 
-            this.bossEvent.setProgress(this.getHealth() / this.getMaxHealth());
+        // ========== 服务端 ==========
+        if (this.entityData.get(IS_DYING)) {
+            this.setDeltaMovement(Vec3.ZERO);
+            this.getNavigation().stop();
+            this.deathTimer++;
+            if (this.deathTimer >= 30) {
+                this.entityData.set(IS_DYING, false);
+                super.die(this.damageSources().generic());
+            }
+            return;
+        }
 
-            // 死亡动画期间无敌、不能移动
-            if (this.entityData.get(IS_DYING)) {
-                this.setDeltaMovement(Vec3.ZERO);
-                this.getNavigation().stop();
-                this.deathTimer++;
-                if (this.deathTimer >= 30) {
-                    this.entityData.set(IS_DYING, false);
-                    super.die(this.damageSources().generic());
-                }
-                return;
+        if (skillCooldown > 0) skillCooldown--;
+        if (attackTimerDecay()) return;
+        updateWalkingState();
+        updatePhase();
+        updateBossBar();
+
+        // 死亡/变形中不跑技能
+        if (this.isDeadOrDying()) return;
+
+        updateFireSpray();
+        updateFireMark();
+        updateFireEruption();
+    }
+
+    private boolean attackTimerDecay() {
+        int at = this.entityData.get(ATTACK_TIMER);
+        if (at > 0) {
+            this.entityData.set(ATTACK_TIMER, at - 1);
+            if (at - 1 == 0) this.entityData.set(ATTACK_INDEX, 0);
+        }
+        return false;
+    }
+
+    private void updateWalkingState() {
+        double dx = this.getX() - this.xo;
+        double dz = this.getZ() - this.zo;
+        this.entityData.set(IS_WALKING, (dx * dx + dz * dz) > 1.0E-5);
+    }
+
+    private void updateBossBar() {
+        this.bossEvent.setProgress(this.getHealth() / this.getMaxHealth());
+    }
+
+    private void updatePhase() {
+        float ratio = this.getHealth() / this.getMaxHealth();
+        int newPhase = ratio > 0.8F ? 1 : (ratio > 0.5F ? 2 : 3);
+        if (newPhase != this.entityData.get(PHASE)) {
+            this.entityData.set(PHASE, newPhase);
+            if (newPhase == 2) {
+                this.level().playSound(null, this.blockPosition(), SoundEvents.BLAZE_SHOOT,
+                        SoundSource.HOSTILE, 2.0F, 0.6F);
+            } else if (newPhase == 3) {
+                this.level().playSound(null, this.blockPosition(), SoundEvents.WITHER_SPAWN,
+                        SoundSource.HOSTILE, 1.5F, 1.2F);
             }
         }
     }
 
+    // ================= 技能 2：火焰喷射 =================
+    private void updateFireSpray() {
+        int state = this.entityData.get(SKILL_STATE);
+
+        if (state == STATE_IDLE) {
+            if (fireSprayCD > 0) fireSprayCD--;
+            if (fireSprayCD <= 0 && this.getTarget() != null) {
+                // 随机点名一个玩家（30 格内）
+                List<Player> ps = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(30));
+                ps.removeIf(p -> p.isCreative() || p.isSpectator() || !p.isAlive());
+                if (!ps.isEmpty()) {
+                    this.sprayTarget = ps.get(this.random.nextInt(ps.size()));
+                    this.entityData.set(SKILL_STATE, STATE_CHARGE_SPRAY);
+                    this.stateTimer = 0;
+                    this.getNavigation().stop();
+                    this.setDeltaMovement(Vec3.ZERO);
+                    // 提示被点名玩家
+                    if (this.sprayTarget instanceof ServerPlayer sp) {
+                        sp.displayClientMessage(Component.literal("§c⚠ 你被小樱点名，火焰喷射即将到来！"), true);
+                    }
+                    this.level().playSound(null, this.blockPosition(), SoundEvents.BLAZE_SHOOT,
+                            SoundSource.HOSTILE, 2.0F, 0.5F);
+                } else {
+                    fireSprayCD = 100; // 没找到玩家，5 秒后再试
+                }
+            }
+        } else if (state == STATE_CHARGE_SPRAY) {
+            this.stateTimer++;
+            this.getNavigation().stop();
+            this.setDeltaMovement(Vec3.ZERO);
+
+            // 蓄力期间，盯着目标看
+            if (this.sprayTarget != null && this.sprayTarget.isAlive()) {
+                Vec3 dir = this.sprayTarget.position().subtract(this.position());
+                float yaw = (float) Math.toDegrees(Math.atan2(-dir.x, dir.z));
+                this.setYRot(yaw);
+                this.yHeadRot = yaw;
+                this.yBodyRot = yaw;
+
+                // 目标脚下粒子
+                if (this.level() instanceof ServerLevel sl) {
+                    Vec3 tp = this.sprayTarget.position();
+                    for (int i = 0; i < 6; i++) {
+                        double ang = this.random.nextDouble() * Math.PI * 2;
+                        double r = this.random.nextDouble() * 0.8;
+                        sl.sendParticles(ParticleTypes.FLAME,
+                                tp.x + Math.cos(ang) * r, tp.y + 0.1, tp.z + Math.sin(ang) * r,
+                                1, 0, 0, 0, 0);
+                    }
+                }
+            }
+
+            // 蓄力 8 秒（160 tick）
+            if (this.stateTimer >= 160) {
+                this.entityData.set(SKILL_STATE, STATE_CAST_SPRAY);
+                this.stateTimer = 0;
+                castFireSpray();
+            }
+        } else if (state == STATE_CAST_SPRAY) {
+            this.stateTimer++;
+            if (this.stateTimer >= 20) { // 喷射持续 1 秒
+                this.entityData.set(SKILL_STATE, STATE_IDLE);
+                this.stateTimer = 0;
+                this.sprayTarget = null;
+                this.fireSprayCD = 600; // 30 秒 CD
+            }
+        }
+    }
+
+    private void castFireSpray() {
+        if (!(this.level() instanceof ServerLevel sl)) return;
+        Vec3 look = this.getLookAngle();
+        Vec3 start = this.position().add(0, 1.5, 0);
+
+        // 找出扇形内的玩家
+        List<Player> hit = new ArrayList<>();
+        for (Player p : sl.getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(15))) {
+            if (p.isCreative() || p.isSpectator() || !p.isAlive()) continue;
+            Vec3 toP = p.position().add(0, 1, 0).subtract(start).normalize();
+            double dot = toP.dot(look);
+            if (dot > 0.5) { // 60 度扇形
+                hit.add(p);
+            }
+        }
+
+        // 分摊：≥2 人时，每人伤害 ×0.5
+        float baseDmg = 30.0F;
+        float dmg = hit.size() >= 2 ? baseDmg * 0.5F : baseDmg;
+
+        for (Player p : hit) {
+            applyMagicDamage(p, dmg);
+        }
+
+        // 喷射结束提示
+        if (sprayTarget instanceof ServerPlayer sp && !hit.contains(sp)) {
+            sp.displayClientMessage(Component.literal("§a✔ 你躲开了火焰喷射"), true);
+        }
+
+        this.level().playSound(null, this.blockPosition(), SoundEvents.BLAZE_SHOOT,
+                SoundSource.HOSTILE, 2.0F, 0.8F);
+    }
+
+    // ================= 技能 3：火焰印记 =================
+    private void updateFireMark() {
+        int phase = this.entityData.get(PHASE);
+        if (phase < 2) return;
+
+        fireMarkTimer++;
+        if (fireMarkTimer >= 40) { // 每 2 秒 1 层
+            fireMarkTimer = 0;
+            int stacks = this.entityData.get(FIRE_MARK_STACKS) + 1;
+            this.entityData.set(FIRE_MARK_STACKS, stacks);
+            // 脚底粒子
+            if (this.level() instanceof ServerLevel sl) {
+                for (int i = 0; i < 20; i++) {
+                    double ang = i * Math.PI * 2 / 20;
+                    double r = 1.5;
+                    sl.sendParticles(ParticleTypes.FLAME,
+                            this.getX() + Math.cos(ang) * r, this.getY() + 0.2, this.getZ() + Math.sin(ang) * r,
+                            1, 0, 0, 0, 0);
+                }
+            }
+            this.level().playSound(null, this.blockPosition(), SoundEvents.FIRECHARGE_USE,
+                    SoundSource.HOSTILE, 1.0F, 1.2F);
+
+            if (stacks >= 10) {
+                this.entityData.set(FIRE_MARK_STACKS, 0);
+                explodeFireMark();
+            }
+        }
+    }
+
+    private void explodeFireMark() {
+        if (!(this.level() instanceof ServerLevel sl)) return;
+
+        // 警告提示
+        for (ServerPlayer sp : sl.getEntitiesOfClass(ServerPlayer.class, this.getBoundingBox().inflate(30))) {
+            sp.displayClientMessage(Component.literal("§4☠ 火焰爆炸！"), true);
+        }
+        this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE,
+                SoundSource.HOSTILE, 3.0F, 0.6F);
+
+        // 对每个玩家：周围 5 格内有其他玩家 → 伤害叠加
+        List<Player> all = sl.getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(30));
+        for (Player p : all) {
+            if (p.isCreative() || p.isSpectator() || !p.isAlive()) continue;
+
+            long nearby = all.stream()
+                    .filter(o -> o != p && o.isAlive()
+                            && !o.isCreative() && !o.isSpectator()
+                            && o.distanceToSqr(p) < 25.0) // 5 格内
+                    .count();
+
+            float dmg = 40.0F * (1.0F + nearby);
+            applyMagicDamage(p, dmg);
+        }
+    }
+
+    // ================= 技能 4：火焰喷发（脚下火） =================
+    private void updateFireEruption() {
+        int phase = this.entityData.get(PHASE);
+        if (phase < 3) return;
+
+        fireEruptionCD--;
+        if (fireEruptionCD <= 0) {
+            fireEruptionCD = 160; // 8 秒
+            List<Player> ps = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(30));
+            ps.removeIf(p -> p.isCreative() || p.isSpectator() || !p.isAlive());
+            if (!ps.isEmpty()) {
+                Player t = ps.get(this.random.nextInt(ps.size()));
+                BlockPos bp = t.blockPosition();
+                this.eruptions.add(new Eruption(bp, 100)); // 5 秒后爆发
+                if (t instanceof ServerPlayer sp) {
+                    sp.displayClientMessage(Component.literal("§c⚠ 你脚下出现火焰，快离开！"), true);
+                }
+                this.level().playSound(null, bp, SoundEvents.FIRECHARGE_USE,
+                        SoundSource.HOSTILE, 1.5F, 0.8F);
+            }
+        }
+
+        // 更新已有火焰区域
+        if (!(this.level() instanceof ServerLevel sl)) return;
+        for (int i = eruptions.size() - 1; i >= 0; i--) {
+            Eruption e = eruptions.get(i);
+
+            // 地面火焰粒子
+            for (int j = 0; j < 10; j++) {
+                double ang = j * Math.PI * 2 / 10;
+                double r = 2.0;
+                sl.sendParticles(ParticleTypes.FLAME,
+                        e.pos.getX() + 0.5 + Math.cos(ang) * r,
+                        e.pos.getY() + 0.1,
+                        e.pos.getZ() + 0.5 + Math.sin(ang) * r,
+                        1, 0, 0, 0, 0);
+            }
+
+            e.ticksLeft--;
+            if (e.ticksLeft <= 0) {
+                // 爆发
+                this.level().playSound(null, e.pos, SoundEvents.GENERIC_EXPLODE,
+                        SoundSource.HOSTILE, 2.0F, 1.0F);
+                sl.sendParticles(ParticleTypes.EXPLOSION_EMITTER,
+                        e.pos.getX() + 0.5, e.pos.getY() + 0.5, e.pos.getZ() + 0.5,
+                        3, 1.5, 0.5, 1.5, 0.1);
+
+                for (Player p : sl.getEntitiesOfClass(Player.class,
+                        new net.minecraft.world.phys.AABB(e.pos).inflate(3.0))) {
+                    if (p.isCreative() || p.isSpectator()) continue;
+                    if (p.blockPosition().equals(e.pos) || p.position().distanceToSqr(
+                            e.pos.getX() + 0.5, p.getY(), e.pos.getZ() + 0.5) < 9.0) {
+                        applyMagicDamage(p, 60.0F);
+                    }
+                }
+                eruptions.remove(i);
+            }
+        }
+    }
+
+    // ================= 魔法伤害计算 =================
+    private void applyMagicDamage(Player p, float baseDmg) {
+        // 读魔法易伤层数
+        MobEffectInstance eff = p.getEffect(ModEffects.MAGIC_VULNERABILITY.get());
+        int stacks = eff == null ? 0 : eff.getAmplifier() + 1;
+        float mult = 1.0F + 0.05F * stacks;
+        float finalDmg = baseDmg * mult;
+
+        p.hurt(this.damageSources().indirectMagic(this, this), finalDmg);
+        this.level().playSound(null, p.blockPosition(), SoundEvents.FIRECHARGE_USE,
+                SoundSource.HOSTILE, 0.8F, 1.0F);
+    }
+
+    // ================= 死亡 / 受伤 =================
     @Override
     public boolean hurt(DamageSource source, float amount) {
         if (this.entityData.get(IS_DYING)) return false;
@@ -163,7 +467,6 @@ public class SakurawitchEntity extends PathfinderMob {
     @Override
     public void die(DamageSource source) {
         if (!this.level().isClientSide && !this.entityData.get(IS_DYING)) {
-            // 先播死亡动画，30 tick 后再真死
             this.entityData.set(IS_DYING, true);
             this.deathTimer = 0;
             this.setHealth(0.0F);
@@ -174,20 +477,21 @@ public class SakurawitchEntity extends PathfinderMob {
     }
 
     @Override
-    public boolean removeWhenFarAway(double distance) {
-        return false;
-    }
+    public boolean removeWhenFarAway(double distance) { return false; }
 
+    // ================= 存档 =================
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
-        tag.putInt("SkillCooldown", this.skillCooldown);
+        tag.putInt("SkillCooldown", skillCooldown);
+        tag.putInt("FireSprayCD", fireSprayCD);
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         this.skillCooldown = tag.getInt("SkillCooldown");
+        this.fireSprayCD = tag.getInt("FireSprayCD");
     }
 
     public static AttributeSupplier.Builder createAttributes() {
