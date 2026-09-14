@@ -1,6 +1,5 @@
 package com.yourname.yellowduck.block;
 
-import com.yourname.yellowduck.CountHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.nbt.CompoundTag;
@@ -14,7 +13,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 public class BigChestBlockEntity extends BlockEntity implements Container {
     public static final int SIZE = 54;
-    public static final int MAX_STACK = 256;
+    public static final int MAX_STACK = 127;
 
     private final NonNullList<ItemStack> items = NonNullList.withSize(SIZE, ItemStack.EMPTY);
 
@@ -42,9 +41,8 @@ public class BigChestBlockEntity extends BlockEntity implements Container {
 
     @Override
     public void setItem(int slot, ItemStack stack) {
-        // 超 64 的堆叠压缩：count=1 + NBT(BigChestRealCount)，避免网络 byte 截断
-        ItemStack stored = CountHelper.compress(stack);
-        items.set(slot, stored);
+        items.set(slot, stack);
+        if (stack.getCount() > getMaxStackSize()) stack.setCount(getMaxStackSize());
         setChanged();
     }
 
@@ -62,23 +60,8 @@ public class BigChestBlockEntity extends BlockEntity implements Container {
         if (stack.isEmpty()) return false;
         ItemStack cur = items.get(slot);
         if (cur.isEmpty()) return true;
-        // 用"真实数量"比较，且忽略我们自己的 realCount key
-        if (!sameItemIgnoringRealCount(cur, stack)) return false;
-        int curReal = CountHelper.getRealCount(cur);
-        int addReal = CountHelper.getRealCount(stack);
-        return curReal + addReal <= MAX_STACK;
-    }
-
-    private static boolean sameItemIgnoringRealCount(ItemStack a, ItemStack b) {
-        if (a.getItem() != b.getItem()) return false;
-        CompoundTag ta = a.getTag();
-        CompoundTag tb = b.getTag();
-        if (ta == null && tb == null) return true;
-        CompoundTag ca = ta == null ? new CompoundTag() : ta.copy();
-        CompoundTag cb = tb == null ? new CompoundTag() : tb.copy();
-        ca.remove(CountHelper.REAL_COUNT_KEY);
-        cb.remove(CountHelper.REAL_COUNT_KEY);
-        return ca.equals(cb);
+        if (!ItemStack.isSameItemSameTags(cur, stack)) return false;
+        return cur.getCount() + stack.getCount() <= MAX_STACK;
     }
 
     @Override public void clearContent() { items.clear(); }
