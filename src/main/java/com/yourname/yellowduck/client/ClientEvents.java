@@ -15,6 +15,9 @@ public class ClientEvents {
 
     @SubscribeEvent
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        // 小樱 Boss 渲染器
+        SakurawitchRenderer.register(event, ModEntities.SAKURA_WITCH.get());
+        
         // 小黄鸭 Boss 渲染器
         event.registerEntityRenderer(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossRenderer::new);
 
