@@ -1,5 +1,6 @@
 package com.yourname.yellowduck.entity;
 
+import com.yourname.yellowduck.registry.ModSounds;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -84,6 +85,11 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     private int eggThrowTimer = 0;
     private int attackAnimTimer = 0;
     private int recoverAnimTimer = 0;
+
+    // ================= 音效冷却 =================
+    private int niganmaCooldown = 0;
+    private boolean isPlayingNiganma = false;
+    // ===========================================
 
     private boolean isGrabbing = false;
     private boolean isLasing = false;
@@ -229,7 +235,21 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         if (this.entityData.get(IS_TRANSFORMING) || this.entityData.get(IS_EMERGING) || this.isGrabbing || this.isLasing || this.isDeathGaze || this.isBlackHole) {
             return false;
         }
-        return super.hurt(source, amount);
+        boolean result = super.hurt(source, amount);
+        
+        // ========== 一阶段受伤播放 niganma.ogg，带 3 秒冷却 ==========
+        if (result && !this.level().isClientSide && !this.entityData.get(IS_PHASE_TWO)) {
+            if (!this.isPlayingNiganma && this.niganmaCooldown <= 0) {
+                this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
+                        ModSounds.NIGANMA.get(), this.getSoundSource(), 1.0F, 1.0F);
+                this.isPlayingNiganma = true;
+                // 音频时长 + 3 秒冷却，约 80 tick（4秒）。若音效较长，把 80 改大
+                this.niganmaCooldown = 80;
+            }
+        }
+        // ==========================================================
+        
+        return result;
     }
 
     @Override
@@ -266,6 +286,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         if (!(target instanceof LivingEntity living)) return false;
 
         this.playAttackAnim();
+        
+        // ========== 一阶段近战攻击播放 jijiji.ogg ==========
+        if (!this.level().isClientSide && !this.entityData.get(IS_PHASE_TWO)) {
+            this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
+                    ModSounds.JIJIJI.get(), this.getSoundSource(), 1.0F, 1.0F);
+        }
+        // ==================================================
+        
         this.comboStep = 1;
         this.comboTimer = 0;
         this.comboTarget = living;
@@ -311,6 +339,14 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 recoverAnimTimer--;
                 if (recoverAnimTimer <= 0) this.entityData.set(IS_DASH_RECOVERING, false);
             }
+            // ========== 受伤音效冷却 ==========
+            if (this.niganmaCooldown > 0) {
+                this.niganmaCooldown--;
+                if (this.niganmaCooldown <= 0) {
+                    this.isPlayingNiganma = false;
+                }
+            }
+            // ==================================
         }
 
         // ================= 一阶段变身期间 =================
@@ -1039,34 +1075,27 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, "controller", 3, state -> {
-            // 变身动画
             if (this.entityData.get(IS_TRANSFORMING)) {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("transform_charge"));
             }
-            // 出场动画
             if (this.entityData.get(IS_EMERGING)) {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("transform_emerge"));
             }
-            // 冲撞蓄力
             if (this.entityData.get(IS_CHARGING)) {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("charge_windup"));
             }
-            // 冲撞冲刺
             if (this.entityData.get(IS_DASHING)) {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("charge_run"));
             }
-            // 冲撞恢复
             if (this.entityData.get(IS_DASH_RECOVERING)) {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("charge_recover"));
             }
-            // 撼地（按阶段）
             if (this.entityData.get(IS_SLAMMING)) {
                 int phase = this.entityData.get(SLAM_PHASE);
                 if (phase == 1) return state.setAndContinue(RawAnimation.begin().thenLoop("slam_windup"));
                 if (phase == 2) return state.setAndContinue(RawAnimation.begin().thenLoop("slam_air"));
                 if (phase == 3) return state.setAndContinue(RawAnimation.begin().thenLoop("slam_land"));
             }
-            // 攻击动画
             if (this.entityData.get(IS_ATTACKING)) {
                 if (this.entityData.get(IS_PHASE_TWO)) {
                     return state.setAndContinue(RawAnimation.begin().thenLoop("combo"));
@@ -1074,7 +1103,6 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                     return state.setAndContinue(RawAnimation.begin().thenLoop("bow_attack"));
                 }
             }
-            // 默认
             if (state.isMoving()) {
                 return state.setAndContinue(RawAnimation.begin().thenLoop("walk"));
             } else {
