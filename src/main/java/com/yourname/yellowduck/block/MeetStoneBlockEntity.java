@@ -7,7 +7,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
 public class MeetStoneBlockEntity extends BlockEntity {
-    // 接收 BlockEntityType 参数
+    // 接收 BlockEntityType 参数，和 ModBlockEntities 里的注册方式匹配
     public MeetStoneBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
     }
