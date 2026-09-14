@@ -23,7 +23,6 @@ public class MeetStoneBlock extends Block implements EntityBlock {
 
     @Nullable @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        // 传入 BlockEntityType 参数
         return new MeetStoneBlockEntity(ModBlockEntities.MEET_STONE.get(), pos, state);
     }
 }
