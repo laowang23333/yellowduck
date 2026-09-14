@@ -27,18 +27,30 @@ minecraft {
     }
 }
 
-// 👇 新增：Mixin 配置块
-mixin {
-    add sourceSets.main, "yellowduck.refmap.json"
-    config "yellowduck.mixins.json"
+// 👇 ForgeGradle 6 标准做法：把 Mixin 配置写进 manifest 和 sourceSet
+jar {
+    manifest {
+        attributes([
+                "Specification-Title"     : "yellowduck",
+                "Specification-Vendor"    : "yourname",
+                "Specification-Version"   : "1",
+                "Implementation-Title"    : project.name,
+                "Implementation-Version"  : project.jar.archiveVersion,
+                "Implementation-Vendor"   : "yourname",
+                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                "MixinConfigs"            : "yellowduck.mixins.json"
+        ])
+    }
 }
+
+// 👇 让 IDE 和处理时能找到 refmap
+sourceSets.main.resources.srcDirs += 'src/main/resources'
 
 repositories {
     maven { url = 'https://maven.minecraftforge.net/' }
     maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
     maven { url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/' }
 
-    // Polymesh 使用的 Modrinth 仓库
     maven {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
@@ -51,10 +63,8 @@ repositories {
 dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.3.29'
     implementation fg.deobf('software.bernie.geckolib:geckolib-forge-1.20.1:4.7.1.1')
-
-    // Polymesh - glTF/GLB 渲染库
     implementation fg.deobf("maven.modrinth:GmPRqxTy:jJiQUzrS")
 
-    // 👇 新增：Mixin 注解处理器
+    // Mixin 注解处理器
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
