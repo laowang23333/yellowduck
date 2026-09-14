@@ -27,7 +27,7 @@ minecraft {
     }
 }
 
-// 👇 ForgeGradle 6 标准做法：把 Mixin 配置写进 manifest 和 sourceSet
+// 👇 ForgeGradle 6 标准做法：把 Mixin 配置写进 manifest（已无 Mixin 文件，保留不影响）
 jar {
     manifest {
         attributes([
@@ -41,6 +41,11 @@ jar {
                 "MixinConfigs"            : "yellowduck.mixins.json"
         ])
     }
+}
+
+// 👇 关键修复：允许重复资源，解决 jijiji.ogg duplicate 报错
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
 }
 
 // 👇 让 IDE 和处理时能找到 refmap
