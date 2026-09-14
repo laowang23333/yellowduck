@@ -27,7 +27,7 @@ minecraft {
     }
 }
 
-// ForgeGradle 6 标准做法：把 Mixin 配置写进 manifest（已无 Mixin 文件，保留不影响）
+// 已移除 Mixin，jar manifest 不再声明 MixinConfigs
 jar {
     manifest {
         attributes([
@@ -37,8 +37,7 @@ jar {
                 "Implementation-Title"    : project.name,
                 "Implementation-Version"  : project.jar.archiveVersion,
                 "Implementation-Vendor"   : "yourname",
-                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
-                "MixinConfigs"            : "yellowduck.mixins.json"
+                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
         ])
     }
 }
@@ -62,6 +61,6 @@ dependencies {
     implementation fg.deobf('software.bernie.geckolib:geckolib-forge-1.20.1:4.7.1.1')
     implementation fg.deobf("maven.modrinth:GmPRqxTy:jJiQUzrS")
 
-    // Mixin 注解处理器
+    // Mixin 注解处理器（保留无害，不生成 Mixin 就不生效）
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
