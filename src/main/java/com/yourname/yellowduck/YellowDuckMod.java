@@ -3,6 +3,7 @@ package com.yourname.yellowduck;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
+import com.yourname.yellowduck.registry.ModEffects;
 import com.yourname.yellowduck.registry.ModEntities;
 import com.yourname.yellowduck.registry.ModSounds;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
@@ -25,6 +26,9 @@ public class YellowDuckMod {
 
         // 注册音效
         ModSounds.SOUND_EVENTS.register(bus);
+
+        // 注册自定义 MobEffect
+        ModEffects.EFFECTS.register(bus);
 
         bus.addListener(this::registerAttributes);
     }
