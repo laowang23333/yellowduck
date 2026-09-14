@@ -27,7 +27,7 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
                 .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
                 .preferGpuAnimatedMeshes(false)
                 .preferGpuStaticMeshes(false)
-                .loopAnimation(true)   // 【新增】让动画默认循环
+                .loopAnimation(true)
                 .build());
     }
 
@@ -37,16 +37,17 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
         try {
             AnimationController ctrl = this.getAnimationController(entity);
             if (ctrl != null) {
-                double speedSqr = entity.getDeltaMovement().horizontalDistanceSqr();
+                // 【改】从同步数据读 walking 状态，而不是本地 getDeltaMovement()
+                boolean walking = entity.getEntityData().get(MountEntity.IS_WALKING);
+
                 String wantAnim;
-                if (speedSqr > 0.001D) {
+                if (walking) {
                     wantAnim = "Anim-1_walk";
                 } else {
                     wantAnim = "Anim-1_stand";
                 }
                 String current = ctrl.getAnimationName();
                 if (current == null || !current.equals(wantAnim)) {
-                    // 【改】play 加上第二个参数 true 表示循环
                     ctrl.play(wantAnim, true);
                 }
             }
