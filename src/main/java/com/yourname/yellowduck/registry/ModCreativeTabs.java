@@ -15,11 +15,12 @@ public class ModCreativeTabs {
     public static final RegistryObject<CreativeModeTab> MAIN = CREATIVE_TABS.register("main",
             () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup.yellowduck.main"))
-                    // 这里改成了鲸元卷作为图标
                     .icon(() -> new ItemStack(ModBlocks.JINYUANQUAN.get()))
                     .displayItems((params, output) -> {
                         output.accept(ModBlocks.BIG_CHEST_ITEM.get());
                         output.accept(ModBlocks.JINYUANQUAN.get());
+                        // 👇 新增：副本柱子
+                        output.accept(ModBlocks.MEET_STONE_ITEM.get());
                     })
                     .build());
 }
