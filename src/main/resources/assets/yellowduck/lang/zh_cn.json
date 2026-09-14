@@ -1,4 +1,5 @@
 {
   "block.yellowduck.big_chest": "海盗箱",
-  "itemGroup.yellowduck": "netcraft扩展"
+  "itemGroup.yellowduck.main": "netcraft扩展",
+  "item.yellowduck.jinyuanquan": "鲸元卷"
 }
