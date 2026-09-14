@@ -1,6 +1,7 @@
 package com.yourname.yellowduck;
 
 import com.yourname.yellowduck.entity.MountEntity;
+import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
 import com.yourname.yellowduck.registry.ModEntities;
 import com.yourname.yellowduck.registry.ModSounds;
@@ -21,15 +22,16 @@ public class YellowDuckMod {
         com.yourname.yellowduck.registry.ModMenuTypes.MENUS.register(bus);
         com.yourname.yellowduck.registry.ModCreativeTabs.CREATIVE_TABS.register(bus);
         ModEntities.ENTITIES.register(bus);
-        
-        // 👇 新增：注册音效
+
+        // 注册音效
         ModSounds.SOUND_EVENTS.register(bus);
-        
+
         bus.addListener(this::registerAttributes);
     }
 
     private void registerAttributes(EntityAttributeCreationEvent event) {
         event.put(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossEntity.createAttributes().build());
         event.put(ModEntities.MOUNT.get(), MountEntity.createAttributes().build());
+        event.put(ModEntities.SAKURA_WITCH.get(), SakurawitchEntity.createAttributes().build());
     }
 }
