@@ -15,7 +15,8 @@ public class ModCreativeTabs {
     public static final RegistryObject<CreativeModeTab> MAIN = CREATIVE_TABS.register("main",
             () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup.yellowduck.main"))
-                    .icon(() -> new ItemStack(ModBlocks.BIG_CHEST_ITEM.get()))
+                    // 这里改成了鲸元卷作为图标
+                    .icon(() -> new ItemStack(ModBlocks.JINYUANQUAN.get()))
                     .displayItems((params, output) -> {
                         output.accept(ModBlocks.BIG_CHEST_ITEM.get());
                         output.accept(ModBlocks.JINYUANQUAN.get());
