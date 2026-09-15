@@ -286,6 +286,7 @@ public class ToyBearEntity extends PathfinderMob {
                 .add(Attributes.MAX_HEALTH, 200000.0D)
                 .add(Attributes.ARMOR, 8.0D)
                 .add(Attributes.ATTACK_DAMAGE, NORMAL_ATTACK_DAMAGE)
+                .add(Attributes.ATTACK_KNOCKBACK, 0.0D)
                 .add(Attributes.ATTACK_SPEED, NORMAL_ATTACK_SPEED)
                 .add(Attributes.MOVEMENT_SPEED, 0.32D)
                 .add(Attributes.FOLLOW_RANGE, 35.0D)
