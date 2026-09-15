@@ -43,8 +43,17 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
                     wantAnim = "Anim-1_death";
                 } else {
                     int idx = entity.getEntityData().get(SakurawitchEntity.ATTACK_INDEX);
+
+                    /*
+                     * 小樱动画对应：
+                     * 1~4  = 普通攻击动作
+                     * 5    = 火焰喷射（8.25 秒蓄力/施法动作，最适合这个技能）
+                     * 4    = 火焰喷发/地火技能动作
+                     *
+                     * SakurawitchEntity 会在技能开始时同步 ATTACK_INDEX，
+                     * 所以这里不再把所有技能强制成 attack_01。
+                     */
                     if (idx > 0) {
-                        // 攻击动画，名字用两位数字补 0
                         wantAnim = "Anim-1_attack_" + String.format("%02d", idx);
                     } else if (entity.getEntityData().get(SakurawitchEntity.IS_WALKING)) {
                         wantAnim = "Anim-1_walk";
