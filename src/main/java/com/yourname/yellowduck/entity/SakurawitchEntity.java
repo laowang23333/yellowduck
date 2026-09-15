@@ -2418,6 +2418,11 @@ public class SakurawitchEntity extends PathfinderMob {
                 )
 
                 .add(
+                        Attributes.ATTACK_KNOCKBACK,
+                        0.0D
+                )
+
+                .add(
                         Attributes.MOVEMENT_SPEED,
                         0.3D
                 )
