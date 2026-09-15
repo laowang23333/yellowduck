@@ -2,6 +2,7 @@ package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.block.BigChestBlock;
+import com.yourname.yellowduck.block.IndStatueBlock;
 import com.yourname.yellowduck.block.MeetStoneBlock;
 import com.yourname.yellowduck.block.ProfessorSilkBlock;
 import net.minecraft.world.item.BlockItem;
@@ -59,4 +60,26 @@ public class ModBlocks {
 
     public static final RegistryObject<Item> PROFESSOR_SILK_ITEM = ITEMS.register("professor_silk",
             () -> new BlockItem(PROFESSOR_SILK.get(), new Item.Properties()));
+
+    // ==========================================
+    // 印神像
+    // ==========================================
+    public static final RegistryObject<Block> YIN_SHEN_XIANG = BLOCKS.register("yin_shen_xiang",
+            () -> new IndStatueBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.STONE)
+                    .strength(2.5F)));
+
+    public static final RegistryObject<Item> YIN_SHEN_XIANG_ITEM = ITEMS.register("yin_shen_xiang",
+            () -> new BlockItem(YIN_SHEN_XIANG.get(), new Item.Properties()));
+
+    // ==========================================
+    // 小黄鸭方块
+    // ==========================================
+    public static final RegistryObject<Block> XIAOHUANGYA = BLOCKS.register("xiaohuangya",
+            () -> new Block(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.WOOL)
+                    .strength(1.5F)));
+
+    public static final RegistryObject<Item> XIAOHUANGYA_ITEM = ITEMS.register("xiaohuangya",
+            () -> new BlockItem(XIAOHUANGYA.get(), new Item.Properties()));
 }

@@ -10,30 +10,20 @@ import net.minecraftforge.registries.RegistryObject;
 public class ModSounds {
 
     public static final DeferredRegister<SoundEvent> SOUND_EVENTS =
-            DeferredRegister.create(
-                    ForgeRegistries.SOUND_EVENTS,
-                    YellowDuckMod.MOD_ID
-            );
+            DeferredRegister.create(ForgeRegistries.SOUND_EVENTS, YellowDuckMod.MOD_ID);
 
     // 鸡哥音效
-    public static final RegistryObject<SoundEvent> JIJIJI =
-            register("jijiji");
-
-    public static final RegistryObject<SoundEvent> NIGANMA =
-            register("niganma");
-
-    public static final RegistryObject<SoundEvent> ROUDAN =
-            register("roudan");
+    public static final RegistryObject<SoundEvent> JIJIJI = register("jijiji");
+    public static final RegistryObject<SoundEvent> NIGANMA = register("niganma");
+    public static final RegistryObject<SoundEvent> ROUDAN = register("roudan");
 
     // 小樱音效
-    public static final RegistryObject<SoundEvent> SAKURA_ATT =
-            register("sakura_att");
+    public static final RegistryObject<SoundEvent> SAKURA_ATT = register("sakura_att");
+    public static final RegistryObject<SoundEvent> SAKURA_END = register("sakura_end");
+    public static final RegistryObject<SoundEvent> SAKURA_XIONG = register("sakura_xiong");
 
-    public static final RegistryObject<SoundEvent> SAKURA_END =
-            register("sakura_end");
-
-    public static final RegistryObject<SoundEvent> SAKURA_XIONG =
-            register("sakura_xiong");
+    // 印神像放置音效
+    public static final RegistryObject<SoundEvent> XJY = register("xjy");
 
     private static RegistryObject<SoundEvent> register(String name) {
         return SOUND_EVENTS.register(
