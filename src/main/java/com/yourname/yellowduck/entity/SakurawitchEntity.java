@@ -38,6 +38,7 @@ import java.util.List;
 
 /**
  * 魔女小樱
+ */
 public class SakurawitchEntity extends PathfinderMob {
 
     public static final EntityDataAccessor<Boolean> IS_WALKING =
@@ -148,7 +149,7 @@ public class SakurawitchEntity extends PathfinderMob {
     public void tick() {
         super.tick();
         if (level().isClientSide) { clientParticles(); return; }
-        if (entityData.get(IS_DYING)) { tickDeath(); return; }
+        if (entityData.get(IS_DYING)) { tickSakuraDeath(); return; }
         updateTarget();
         updatePhase();
         updateBossBar();
