@@ -21,6 +21,8 @@ public class ModSounds {
     public static final RegistryObject<SoundEvent> SAKURA_ATT = register("sakura_att");
     public static final RegistryObject<SoundEvent> SAKURA_END = register("sakura_end");
     public static final RegistryObject<SoundEvent> SAKURA_XIONG = register("sakura_xiong");
+    public static final RegistryObject<SoundEvent> XIAOQI_DISC = register("xiaoqi_disc");
+    public static final RegistryObject<SoundEvent> YIDIYIDI_DISC = register("yidiyidi_disc");
 
     // 印神像放置音效
     public static final RegistryObject<SoundEvent> XJY = register("xjy");

@@ -7,6 +7,7 @@ import com.yourname.yellowduck.block.MeetStoneBlock;
 import com.yourname.yellowduck.block.ProfessorSilkBlock;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.MusicDiscItem;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
@@ -82,4 +83,16 @@ public class ModBlocks {
 
     public static final RegistryObject<Item> XIAOHUANGYA_ITEM = ITEMS.register("xiaohuangya",
             () -> new BlockItem(XIAOHUANGYA.get(), new Item.Properties()));
+
+    // ==========================================
+    // 唱片：小琪
+    // ==========================================
+    public static final RegistryObject<Item> XIAOQI_DISC = ITEMS.register("xiaoqi_disc",
+            () -> new MusicDiscItem(15, ModSounds.XIAOQI_DISC, new Item.Properties().stacksTo(1)));
+
+    // ==========================================
+    // 唱片：一滴一滴
+    // ==========================================
+    public static final RegistryObject<Item> YIDIYIDI_DISC = ITEMS.register("yidiyidi_disc",
+            () -> new MusicDiscItem(13, ModSounds.YIDIYIDI_DISC, new Item.Properties().stacksTo(1)));
 }
