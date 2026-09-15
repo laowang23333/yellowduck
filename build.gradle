@@ -27,7 +27,6 @@ minecraft {
     }
 }
 
-// 已移除 Mixin，jar manifest 不再声明 MixinConfigs
 jar {
     manifest {
         attributes([
@@ -57,10 +56,11 @@ repositories {
 }
 
 dependencies {
-    minecraft 'net.minecraftforge:forge:1.20.1-47.3.29'
+    // 目标版本：Minecraft 1.20.1 / Forge 47.4.10
+    minecraft 'net.minecraftforge:forge:1.20.1-47.4.10'
+
     implementation fg.deobf('software.bernie.geckolib:geckolib-forge-1.20.1:4.7.1.1')
     implementation fg.deobf("maven.modrinth:GmPRqxTy:jJiQUzrS")
 
-    // Mixin 注解处理器（保留无害，不生成 Mixin 就不生效）
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
