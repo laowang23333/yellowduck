@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.entity;
 
 import com.yourname.yellowduck.registry.ModEffects;
+import com.yourname.yellowduck.particle.ModParticles;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -54,6 +55,9 @@ public class SakurawitchEntity extends PathfinderMob {
             SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.INT);
     public static final EntityDataAccessor<Integer> SKILL_STATE =
             SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.INT);
+
+    public static final EntityDataAccessor<BlockPos> ERUPTION_POS =
+            SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.BLOCK_POS);
 
     private static final int IDLE = 0;
     private static final int SPRAY_CHARGE = 1;
@@ -123,6 +127,7 @@ public class SakurawitchEntity extends PathfinderMob {
         entityData.define(PHASE, 1);
         entityData.define(FIRE_MARK_STACKS, 0);
         entityData.define(SKILL_STATE, IDLE);
+        entityData.define(ERUPTION_POS, BlockPos.ZERO);
     }
 
     @Override
@@ -169,19 +174,42 @@ public class SakurawitchEntity extends PathfinderMob {
     }
 
     private void clientParticles() {
-        if (entityData.get(SKILL_STATE) == SPRAY_CAST) {
-            Vec3 look = getLookAngle();
-            Vec3 start = position().add(0, 1.5, 0);
-            for (double d = 0; d < 15; d += .5) {
-                Vec3 p = start.add(look.scale(d));
-                level().addParticle(ParticleTypes.FLAME, p.x, p.y, p.z, 0, .02, 0);
+        int state = entityData.get(SKILL_STATE);
+        if (state == SPRAY_CHARGE) {
+            for (int i = 0; i < 5; i++) {
+                double a = random.nextDouble() * Math.PI * 2;
+                double r = 0.5 + random.nextDouble() * 0.8;
+                level().addParticle(ModParticles.SAKURA_MAGIC.get(), getX()+Math.cos(a)*r, getY()+0.4+random.nextDouble()*1.5, getZ()+Math.sin(a)*r, 0, 0.015, 0);
             }
         }
-        if (entityData.get(SKILL_STATE) == ERUPTION && eruptionPos != null) {
-            for (int i = 0; i < 16; i++) {
-                double a = i * Math.PI * 2 / 16.0;
-                level().addParticle(ParticleTypes.FLAME, eruptionPos.getX()+.5+Math.cos(a)*2,
-                        eruptionPos.getY()+.1, eruptionPos.getZ()+.5+Math.sin(a)*2, 0,0,0);
+        if (state == SPRAY_CAST) {
+            Vec3 look = getLookAngle().normalize();
+            Vec3 start = position().add(0, 1.3, 0);
+            for (double d = 0; d < 15; d += 0.55) {
+                Vec3 p = start.add(look.scale(d));
+                level().addParticle(ModParticles.SAKURA_FLAME.get(), p.x,p.y,p.z, look.x*0.02,0.02,look.z*0.02);
+            }
+        }
+        if (state == ERUPTION) {
+            BlockPos pos = entityData.get(ERUPTION_POS);
+            if (!pos.equals(BlockPos.ZERO)) {
+                for (int i=0;i<18;i++) {
+                    double a=i*Math.PI*2/18.0;
+                    level().addParticle(ModParticles.SAKURA_ERUPTION.get(), pos.getX()+.5+Math.cos(a)*2, pos.getY()+.08, pos.getZ()+.5+Math.sin(a)*2, 0,.01,0);
+                }
+                for (int i=0;i<3;i++) {
+                    level().addParticle(ModParticles.SAKURA_WARNING.get(), pos.getX()+.5+(random.nextDouble()-.5)*2, pos.getY()+.1, pos.getZ()+.5+(random.nextDouble()-.5)*2, 0,.02,0);
+                }
+            }
+        }
+        if (entityData.get(PHASE) >= 2 && state == IDLE) {
+            int stacks=entityData.get(FIRE_MARK_STACKS);
+            if (stacks>0) {
+                double r=1.15+stacks*.08;
+                for(int i=0;i<Math.min(10,2+stacks);i++){
+                    double a=(tickCount+i*17)*.15;
+                    level().addParticle(ModParticles.SAKURA_MAGIC.get(),getX()+Math.cos(a)*r,getY()+.12,getZ()+Math.sin(a)*r,0,.015,0);
+                }
             }
         }
     }
@@ -227,7 +255,7 @@ public class SakurawitchEntity extends PathfinderMob {
                 SoundSource.HOSTILE, 2F, next == 2 ? .6F : 1.2F);
         announce("§"+(next == 2 ? "6" : "c")+"⚠ 小樱进入第"+next+"阶段！");
         if (level() instanceof ServerLevel sl)
-            sl.sendParticles(ParticleTypes.FLAME, getX(), getY()+1, getZ(), 60, 2,1,2,.06);
+            sl.sendParticles(ModParticles.SAKURA_MAGIC.get(), getX(), getY()+1, getZ(), 60, 2,1,2,.06);
     }
 
     // ================= 火焰喷射 =================
@@ -252,9 +280,9 @@ public class SakurawitchEntity extends PathfinderMob {
         if (level() instanceof ServerLevel sl) {
             for (int i=0;i<8;i++) {
                 double a=random.nextDouble()*Math.PI*2, r=.5+random.nextDouble();
-                sl.sendParticles(ParticleTypes.FLAME, getX()+Math.cos(a)*r,getY()+.15,getZ()+Math.sin(a)*r,1,0,.02,0,0);
+                sl.sendParticles(ModParticles.SAKURA_MAGIC.get(), getX()+Math.cos(a)*r,getY()+.15,getZ()+Math.sin(a)*r,1,0,.02,0,0);
             }
-            if (valid(sprayTarget)) sl.sendParticles(ParticleTypes.FLAME,sprayTarget.getX(),sprayTarget.getY()+.1,sprayTarget.getZ(),4,.3,.05,.3,0);
+            if (valid(sprayTarget)) sl.sendParticles(ModParticles.SAKURA_WARNING.get(),sprayTarget.getX(),sprayTarget.getY()+.1,sprayTarget.getZ(),4,.3,.05,.3,0);
         }
         if (sprayTimer >= SPRAY_CHARGE_TICKS) { entityData.set(SKILL_STATE, SPRAY_CAST); sprayTimer=0; castSpray(); }
     }
@@ -276,7 +304,7 @@ public class SakurawitchEntity extends PathfinderMob {
             float damage=hit.size()>=2 ? SPRAY_DAMAGE*.5F : SPRAY_DAMAGE;
             for (Player p:hit) magicDamage(p,damage);
             if (valid(sprayTarget) && !hit.contains(sprayTarget)) tell(sprayTarget,"§a✔ 你躲开了火焰喷射！");
-            sl.sendParticles(ParticleTypes.FLAME,start.x,start.y,start.z,80,look.x*3,1,look.z*3,.2);
+            sl.sendParticles(ModParticles.SAKURA_FLAME.get(),start.x,start.y,start.z,80,look.x*3,1,look.z*3,.2);
         }
         level().playSound(null,blockPosition(),SoundEvents.BLAZE_SHOOT,SoundSource.HOSTILE,2.5F,.75F);
     }
@@ -288,7 +316,7 @@ public class SakurawitchEntity extends PathfinderMob {
         if (fireChargeTimer % 10 == 0 && level() instanceof ServerLevel sl) {
             int s=entityData.get(FIRE_MARK_STACKS);
             double r=1.2+s*.08;
-            for(int i=0;i<12;i++){double a=i*Math.PI*2/12.;sl.sendParticles(ParticleTypes.FLAME,getX()+Math.cos(a)*r,getY()+.12,getZ()+Math.sin(a)*r,1,0,0,0,0);}
+            for(int i=0;i<12;i++){double a=i*Math.PI*2/12.;sl.sendParticles(ModParticles.SAKURA_MAGIC.get(),getX()+Math.cos(a)*r,getY()+.12,getZ()+Math.sin(a)*r,1,0,0,0,0);}
         }
         if (fireChargeTimer>=FIRE_CHARGE_INTERVAL) {
             fireChargeTimer=0;
@@ -303,7 +331,7 @@ public class SakurawitchEntity extends PathfinderMob {
         if (!(level() instanceof ServerLevel sl)) return;
         announce("§4☠ 火焰爆炸！10层火焰元素已释放！");
         level().playSound(null,blockPosition(),SoundEvents.GENERIC_EXPLODE,SoundSource.HOSTILE,3,.65F);
-        sl.sendParticles(ParticleTypes.EXPLOSION_EMITTER,getX(),getY()+1,getZ(),3,2,1,2,.1);
+        sl.sendParticles(ModParticles.SAKURA_EXPLOSION.get(),getX(),getY()+1,getZ(),20,2,1,2,.1);
         List<Player> ps=players(30);
         for(Player p:ps){
             magicDamage(p,FIRE_EXPLOSION_DAMAGE);
@@ -322,6 +350,7 @@ public class SakurawitchEntity extends PathfinderMob {
         if(ps.isEmpty()){eruptionCD=40;return;}
         eruptionTarget=ps.get(random.nextInt(ps.size()));
         eruptionPos=eruptionTarget.blockPosition();
+        entityData.set(ERUPTION_POS, eruptionPos);
         eruptionTimer=ERUPTION_DELAY;
         entityData.set(SKILL_STATE,ERUPTION);
         entityData.set(ATTACK_INDEX,4);
@@ -335,17 +364,17 @@ public class SakurawitchEntity extends PathfinderMob {
         getNavigation().stop();setDeltaMovement(Vec3.ZERO);
         if(eruptionPos==null){cancelSkill();return;}
         if(level() instanceof ServerLevel sl){
-            for(int i=0;i<16;i++){double a=i*Math.PI*2/16.;sl.sendParticles(ParticleTypes.FLAME,eruptionPos.getX()+.5+Math.cos(a)*2,eruptionPos.getY()+.1,eruptionPos.getZ()+.5+Math.sin(a)*2,1,0,0,0,0);}
-            if(eruptionTimer<=40) sl.sendParticles(ParticleTypes.FLAME,eruptionPos.getX()+.5,eruptionPos.getY()+.2,eruptionPos.getZ()+.5,8,.5,.1,.5,.02);
+            for(int i=0;i<16;i++){double a=i*Math.PI*2/16.;sl.sendParticles(ModParticles.SAKURA_ERUPTION.get(),eruptionPos.getX()+.5+Math.cos(a)*2,eruptionPos.getY()+.1,eruptionPos.getZ()+.5+Math.sin(a)*2,1,0,0,0,0);}
+            if(eruptionTimer<=40) sl.sendParticles(ModParticles.SAKURA_WARNING.get(),eruptionPos.getX()+.5,eruptionPos.getY()+.2,eruptionPos.getZ()+.5,8,.5,.1,.5,.02);
         }
-        if(--eruptionTimer<=0){explodeEruption();eruptionPos=null;eruptionTarget=null;eruptionCD=ERUPTION_CD;cancelSkill();}
+        if(--eruptionTimer<=0){explodeEruption();eruptionPos=null;eruptionTarget=null;eruptionCD=ERUPTION_CD;entityData.set(ERUPTION_POS, BlockPos.ZERO);cancelSkill();}
     }
 
     private void explodeEruption() {
         if(!(level() instanceof ServerLevel sl) || eruptionPos==null)return;
         BlockPos pos=eruptionPos;
         level().playSound(null,pos,SoundEvents.GENERIC_EXPLODE,SoundSource.HOSTILE,2.2F,.9F);
-        sl.sendParticles(ParticleTypes.EXPLOSION_EMITTER,pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5,3,1.5,.5,1.5,.1);
+        sl.sendParticles(ModParticles.SAKURA_EXPLOSION.get(),pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5,24,1.5,.5,1.5,.1);
         for(Player p:sl.getEntitiesOfClass(Player.class,new AABB(pos).inflate(3))){
             if(valid(p)){double dx=p.getX()-(pos.getX()+.5),dz=p.getZ()-(pos.getZ()+.5);if(dx*dx+dz*dz<=9)magicDamage(p,ERUPTION_DAMAGE);}
         }
@@ -387,7 +416,7 @@ public class SakurawitchEntity extends PathfinderMob {
 
     private void tickDeath(){
         setInvulnerable(true);setDeltaMovement(Vec3.ZERO);getNavigation().stop();deathTimer++;
-        if(level() instanceof ServerLevel sl && deathTimer%3==0)sl.sendParticles(ParticleTypes.FLAME,getX(),getY()+1,getZ(),8,.8,.8,.8,.03);
+        if(level() instanceof ServerLevel sl && deathTimer%3==0)sl.sendParticles(ModParticles.SAKURA_PETAL.get(),getX(),getY()+1,getZ(),10,.8,.8,.8,.03);
         if(deathTimer>=35){setInvulnerable(false);super.die(damageSources().generic());}
     }
 
