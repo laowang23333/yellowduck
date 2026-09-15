@@ -210,6 +210,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         this.entityData.set(IS_PHASE_TWO, true);
         this.getAttribute(Attributes.MAX_HEALTH).setBaseValue(5000000.0D);
         this.setHealth(5000000.0F);
+        this.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(130.0D);
         this.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0.35D);
         this.bossEvent.setName(Component.literal("肌肉大鸭"));
 
@@ -312,15 +313,15 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
         }
 
         if (comboStep == 1 && comboTimer >= 8) {
-            dealDamage(comboTarget, 12.0F);
+            dealDamage(comboTarget, (float) this.getAttributeValue(Attributes.ATTACK_DAMAGE));
             comboStep = 2;
             comboTimer = 0;
         } else if (comboStep == 2 && comboTimer >= 8) {
-            dealDamage(comboTarget, 12.0F);
+            dealDamage(comboTarget, (float) this.getAttributeValue(Attributes.ATTACK_DAMAGE));
             comboStep = 3;
             comboTimer = 0;
         } else if (comboStep == 3 && comboTimer >= 11) {
-            dealDamage(comboTarget, 18.0F);
+            dealDamage(comboTarget, (float) this.getAttributeValue(Attributes.ATTACK_DAMAGE));
             comboStep = 0;
             comboTarget = null;
             comboTimer = 0;
@@ -1128,7 +1129,7 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
                 .add(Attributes.MAX_HEALTH, 100000.0D)
                 .add(Attributes.ARMOR, 12.0D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D)
-                .add(Attributes.ATTACK_DAMAGE, 12.0D)
+                .add(Attributes.ATTACK_DAMAGE, 110.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.28D)
                 .add(Attributes.FOLLOW_RANGE, 35.0D);
     }

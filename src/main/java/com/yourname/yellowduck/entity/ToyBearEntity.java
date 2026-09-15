@@ -7,6 +7,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.BossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -46,6 +49,13 @@ public class ToyBearEntity extends PathfinderMob {
     private boolean rageBurstPlayed;
     private int rageParticleTimer;
 
+    private final ServerBossEvent bossEvent =
+            new ServerBossEvent(
+                    Component.literal("布偶熊"),
+                    BossEvent.BossBarColor.RED,
+                    BossEvent.BossBarOverlay.PROGRESS
+            );
+
     public ToyBearEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
     }
@@ -53,6 +63,26 @@ public class ToyBearEntity extends PathfinderMob {
     @Override
     public Component getName() {
         return Component.literal("布偶熊");
+    }
+
+    @Override
+    public void startSeenByPlayer(ServerPlayer player) {
+        super.startSeenByPlayer(player);
+        bossEvent.addPlayer(player);
+    }
+
+    @Override
+    public void stopSeenByPlayer(ServerPlayer player) {
+        super.stopSeenByPlayer(player);
+        bossEvent.removePlayer(player);
+    }
+
+    private void updateBossBar() {
+        float hp = Math.max(0.0F, Math.min(1.0F, getHealth() / getMaxHealth()));
+        bossEvent.setProgress(hp);
+        bossEvent.setColor(entityData.get(RAGING)
+                ? BossEvent.BossBarColor.RED
+                : BossEvent.BossBarColor.PINK);
     }
 
     @Override
@@ -86,6 +116,7 @@ public class ToyBearEntity extends PathfinderMob {
         }
 
         updateRageState();
+        updateBossBar();
         tickRageParticles();
     }
 
@@ -225,6 +256,12 @@ public class ToyBearEntity extends PathfinderMob {
     }
 
     @Override
+    public void die(net.minecraft.world.damagesource.DamageSource source) {
+        bossEvent.removeAllPlayers();
+        super.die(source);
+    }
+
+    @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         if (ownerSakura != null) {
@@ -246,7 +283,7 @@ public class ToyBearEntity extends PathfinderMob {
 
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 2000.0D)
+                .add(Attributes.MAX_HEALTH, 200000.0D)
                 .add(Attributes.ARMOR, 8.0D)
                 .add(Attributes.ATTACK_DAMAGE, NORMAL_ATTACK_DAMAGE)
                 .add(Attributes.ATTACK_SPEED, NORMAL_ATTACK_SPEED)

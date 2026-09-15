@@ -178,7 +178,7 @@ public class SakurawitchEntity extends PathfinderMob {
     // 技能伤害
     // =========================================================
 
-    private static final float NORMAL_MAGIC_DAMAGE = 12.0F;
+    private static final float NORMAL_MAGIC_DAMAGE = 110.0F;
 
     private static final float SPRAY_DAMAGE = 30.0F;
 
@@ -2404,7 +2404,7 @@ public class SakurawitchEntity extends PathfinderMob {
 
                 .add(
                         Attributes.MAX_HEALTH,
-                        50000.0D
+                        200000.0D
                 )
 
                 .add(
@@ -2414,7 +2414,7 @@ public class SakurawitchEntity extends PathfinderMob {
 
                 .add(
                         Attributes.ATTACK_DAMAGE,
-                        15.0D
+                        110.0D
                 )
 
                 .add(
