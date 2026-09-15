@@ -1,8 +1,5 @@
 package com.yourname.yellowduck.particle;
 
-import net.minecraft.client.particle.ParticleProvider;
-import net.minecraft.client.particle.ParticleEngine;
-import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterParticleProvidersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
