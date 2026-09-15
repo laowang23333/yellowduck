@@ -30,11 +30,14 @@ import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 魔女小樱
 public class SakurawitchEntity extends PathfinderMob {
 
     public static final EntityDataAccessor<Boolean> IS_WALKING =
@@ -52,439 +55,362 @@ public class SakurawitchEntity extends PathfinderMob {
     public static final EntityDataAccessor<Integer> SKILL_STATE =
             SynchedEntityData.defineId(SakurawitchEntity.class, EntityDataSerializers.INT);
 
-    private static final int STATE_IDLE = 0;
-    private static final int STATE_CHARGE_SPRAY = 1;
-    private static final int STATE_CAST_SPRAY = 2;
+    private static final int IDLE = 0;
+    private static final int SPRAY_CHARGE = 1;
+    private static final int SPRAY_CAST = 2;
+    private static final int ERUPTION = 3;
 
-    // 普攻动画总时长（tick），期间禁止新的攻击
-    private static final int ATTACK_ANIM_LENGTH = 27;
+    private static final int ATTACK_LENGTH = 27;
+    private static final int SPRAY_CD = 600;
+    private static final int SPRAY_CHARGE_TICKS = 160;
+    private static final int SPRAY_CAST_TICKS = 20;
+    private static final int FIRE_CHARGE_INTERVAL = 40;
+    private static final int ERUPTION_CD = 160;
+    private static final int ERUPTION_DELAY = 100;
 
-    private int skillCooldown = 0;
-    private int deathTimer = 0;
-    private int stateTimer = 0;
+    private static final float SPRAY_DAMAGE = 30.0F;
+    private static final float FIRE_EXPLOSION_DAMAGE = 40.0F;
+    private static final float EMBER_DAMAGE = 40.0F;
+    private static final float ERUPTION_DAMAGE = 60.0F;
 
-    private int fireSprayCD = 200;
-    private Player sprayTarget = null;
-
-    private int fireMarkTimer = 0;
-
-    private int fireEruptionCD = 160;
-    private final List<Eruption> eruptions = new ArrayList<>();
-
-    private static class Eruption {
-        BlockPos pos;
-        int ticksLeft;
-        Eruption(BlockPos p, int t) { pos = p; ticksLeft = t; }
-    }
+    private int sprayCD = 200;
+    private int sprayTimer;
+    private Player sprayTarget;
+    private int fireChargeTimer;
+    private int eruptionCD = ERUPTION_CD;
+    private int eruptionTimer;
+    private BlockPos eruptionPos;
+    private Player eruptionTarget;
+    private int deathTimer;
 
     private final ServerBossEvent bossEvent = new ServerBossEvent(
-            Component.literal("小樱"),
-            BossEvent.BossBarColor.PINK,
-            BossEvent.BossBarOverlay.PROGRESS
-    );
+            Component.literal("小樱"), BossEvent.BossBarColor.PINK, BossEvent.BossBarOverlay.PROGRESS);
 
     public SakurawitchEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
     }
 
-    @Override
-    public Component getName() { return Component.literal("小樱"); }
+    @Override public Component getName() { return Component.literal("小樱"); }
 
     @Override
-    public void startSeenByPlayer(ServerPlayer player) { super.startSeenByPlayer(player); bossEvent.addPlayer(player); }
+    public void startSeenByPlayer(ServerPlayer player) {
+        super.startSeenByPlayer(player); bossEvent.addPlayer(player);
+    }
 
     @Override
-    public void stopSeenByPlayer(ServerPlayer player) { super.stopSeenByPlayer(player); bossEvent.removePlayer(player); }
+    public void stopSeenByPlayer(ServerPlayer player) {
+        super.stopSeenByPlayer(player); bossEvent.removePlayer(player);
+    }
 
     @Override
     protected void registerGoals() {
-        this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0D, true));
-        this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.8D));
-        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 16.0F));
-        this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
-        this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, false));
+        goalSelector.addGoal(0, new FloatGoal(this));
+        goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0D, true));
+        goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.8D));
+        goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 16.0F));
+        goalSelector.addGoal(7, new RandomLookAroundGoal(this));
+        targetSelector.addGoal(1, new HurtByTargetGoal(this));
+        targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, false));
     }
 
     @Override
     protected void defineSynchedData() {
         super.defineSynchedData();
-        this.entityData.define(IS_WALKING, false);
-        this.entityData.define(ATTACK_INDEX, 0);
-        this.entityData.define(ATTACK_TIMER, 0);
-        this.entityData.define(IS_DYING, false);
-        this.entityData.define(PHASE, 1);
-        this.entityData.define(FIRE_MARK_STACKS, 0);
-        this.entityData.define(SKILL_STATE, STATE_IDLE);
+        entityData.define(IS_WALKING, false);
+        entityData.define(ATTACK_INDEX, 0);
+        entityData.define(ATTACK_TIMER, 0);
+        entityData.define(IS_DYING, false);
+        entityData.define(PHASE, 1);
+        entityData.define(FIRE_MARK_STACKS, 0);
+        entityData.define(SKILL_STATE, IDLE);
     }
 
-    // ================= 攻击 =================
     @Override
     public boolean doHurtTarget(Entity target) {
-        // 1) 技能播放中：不允许普攻
-        if (this.entityData.get(SKILL_STATE) != STATE_IDLE) return false;
-
-        // 2) 攻击动画播放中：不允许再次攻击（关键！）
-        //    这样每次攻击动画只造成一次伤害
-        if (this.entityData.get(ATTACK_TIMER) > 0) return false;
-
+        if (entityData.get(IS_DYING) || entityData.get(SKILL_STATE) != IDLE || entityData.get(ATTACK_TIMER) > 0)
+            return false;
         boolean hit = super.doHurtTarget(target);
-        if (hit && !this.level().isClientSide && target instanceof Player p) {
-            // 叠魔法易伤
-            MobEffectInstance cur = p.getEffect(ModEffects.MAGIC_VULNERABILITY.get());
-            int lvl = (cur == null ? 0 : cur.getAmplifier() + 1);
-            if (lvl > 10) lvl = 10;
-            p.addEffect(new MobEffectInstance(ModEffects.MAGIC_VULNERABILITY.get(),
-                    200, Math.min(9, lvl), false, true));
+        if (!hit) return false;
+        entityData.set(ATTACK_INDEX, 1);
+        entityData.set(ATTACK_TIMER, ATTACK_LENGTH);
+        if (!level().isClientSide && target instanceof Player p) addMagicVulnerability(p);
+        level().playSound(null, blockPosition(), SoundEvents.PLAYER_ATTACK_SWEEP, SoundSource.HOSTILE, 1.2F, 0.8F);
+        return true;
+    }
 
-            // 起动画 & 锁攻击
-            this.entityData.set(ATTACK_INDEX, 1);
-            this.entityData.set(ATTACK_TIMER, ATTACK_ANIM_LENGTH);
-            this.level().playSound(null, this.blockPosition(), SoundEvents.PLAYER_ATTACK_SWEEP,
-                    SoundSource.HOSTILE, 1.2F, 0.8F);
-        }
-        return hit;
+    private void addMagicVulnerability(Player p) {
+        MobEffectInstance old = p.getEffect(ModEffects.MAGIC_VULNERABILITY.get());
+        int amp = old == null ? 0 : Math.min(9, old.getAmplifier() + 1);
+        p.addEffect(new MobEffectInstance(ModEffects.MAGIC_VULNERABILITY.get(), 200, amp, false, true, true));
     }
 
     @Override
     public void tick() {
         super.tick();
-
-        if (this.level().isClientSide) {
-            if (this.entityData.get(SKILL_STATE) == STATE_CAST_SPRAY) {
-                Vec3 look = this.getLookAngle();
-                Vec3 start = this.position().add(0, 1.5, 0);
-                for (double d = 0; d < 12; d += 0.4) {
-                    Vec3 p = start.add(look.scale(d));
-                    this.level().addParticle(ParticleTypes.FLAME, p.x, p.y, p.z, 0, 0, 0);
-                }
-            }
-            return;
-        }
-
-        if (this.entityData.get(IS_DYING)) {
-            this.setDeltaMovement(Vec3.ZERO);
-            this.getNavigation().stop();
-            this.deathTimer++;
-            if (this.deathTimer >= 30) {
-                this.entityData.set(IS_DYING, false);
-                super.die(this.damageSources().generic());
-            }
-            return;
-        }
-
-        // ===== 强制锁定：每 20 tick 检查 =====
-        if (this.tickCount % 20 == 0) {
-            Entity current = this.getTarget();
-            boolean needNew = current == null || !current.isAlive()
-                    || this.distanceTo(current) > 40.0;
-            if (needNew) {
-                Player nearest = this.level().getNearestPlayer(this, 35.0);
-                if (nearest != null && !nearest.isCreative() && !nearest.isSpectator() && nearest.isAlive()) {
-                    this.setTarget(nearest);
-                }
-            }
-        }
-        // =====================================
-
-        if (skillCooldown > 0) skillCooldown--;
-        attackTimerDecay();
-        updateWalkingState();
+        if (level().isClientSide) { clientParticles(); return; }
+        if (entityData.get(IS_DYING)) { tickDeath(); return; }
+        updateTarget();
         updatePhase();
         updateBossBar();
-
-        if (this.isDeadOrDying()) return;
-
-        updateFireSpray();
-        updateFireMark();
-        updateFireEruption();
-    }
-
-    private void attackTimerDecay() {
-        int at = this.entityData.get(ATTACK_TIMER);
-        if (at > 0) {
-            this.entityData.set(ATTACK_TIMER, at - 1);
-            if (at - 1 == 0) this.entityData.set(ATTACK_INDEX, 0);
+        tickAttackTimer();
+        updateWalking();
+        int state = entityData.get(SKILL_STATE);
+        if (state == IDLE) {
+            tickSpray();
+            tickFireCharge();
+            tickEruption();
+        } else if (state == SPRAY_CHARGE) {
+            tickSprayCharge();
+        } else if (state == SPRAY_CAST) {
+            tickSprayCast();
+        } else if (state == ERUPTION) {
+            tickEruptionCharge();
         }
     }
 
-    private void updateWalkingState() {
-        double dx = this.getX() - this.xo;
-        double dz = this.getZ() - this.zo;
-        this.entityData.set(IS_WALKING, (dx * dx + dz * dz) > 1.0E-5);
+    private void clientParticles() {
+        if (entityData.get(SKILL_STATE) == SPRAY_CAST) {
+            Vec3 look = getLookAngle();
+            Vec3 start = position().add(0, 1.5, 0);
+            for (double d = 0; d < 15; d += .5) {
+                Vec3 p = start.add(look.scale(d));
+                level().addParticle(ParticleTypes.FLAME, p.x, p.y, p.z, 0, .02, 0);
+            }
+        }
+        if (entityData.get(SKILL_STATE) == ERUPTION && eruptionPos != null) {
+            for (int i = 0; i < 16; i++) {
+                double a = i * Math.PI * 2 / 16.0;
+                level().addParticle(ParticleTypes.FLAME, eruptionPos.getX()+.5+Math.cos(a)*2,
+                        eruptionPos.getY()+.1, eruptionPos.getZ()+.5+Math.sin(a)*2, 0,0,0);
+            }
+        }
+    }
+
+    private void updateTarget() {
+        if (tickCount % 20 != 0) return;
+        Entity t = getTarget();
+        if (t != null && t.isAlive() && distanceToSqr(t) <= 1600) return;
+        Player p = level().getNearestPlayer(this, 35);
+        if (valid(p)) setTarget(p);
+    }
+
+    private void updateWalking() {
+        double dx = getX()-xo, dz = getZ()-zo;
+        boolean moving = dx*dx+dz*dz > 1.0E-5 && entityData.get(SKILL_STATE) == IDLE;
+        entityData.set(IS_WALKING, moving);
+    }
+
+    private void tickAttackTimer() {
+        int t = entityData.get(ATTACK_TIMER);
+        if (t > 0) {
+            t--;
+            entityData.set(ATTACK_TIMER, t);
+            if (t == 0) entityData.set(ATTACK_INDEX, 0);
+        }
     }
 
     private void updateBossBar() {
-        this.bossEvent.setProgress(this.getHealth() / this.getMaxHealth());
+        float hp = Math.max(0, Math.min(1, getHealth()/getMaxHealth()));
+        bossEvent.setProgress(hp);
+        int p = entityData.get(PHASE);
+        bossEvent.setColor(p == 1 ? BossEvent.BossBarColor.GREEN : p == 2 ? BossEvent.BossBarColor.YELLOW : BossEvent.BossBarColor.RED);
     }
 
     private void updatePhase() {
-        float ratio = this.getHealth() / this.getMaxHealth();
-        int newPhase = ratio > 0.8F ? 1 : (ratio > 0.5F ? 2 : 3);
-        if (newPhase != this.entityData.get(PHASE)) {
-            this.entityData.set(PHASE, newPhase);
-            if (newPhase == 2) {
-                this.level().playSound(null, this.blockPosition(), SoundEvents.BLAZE_SHOOT,
-                        SoundSource.HOSTILE, 2.0F, 0.6F);
-            } else if (newPhase == 3) {
-                this.level().playSound(null, this.blockPosition(), SoundEvents.WITHER_SPAWN,
-                        SoundSource.HOSTILE, 1.5F, 1.2F);
+        float r = getHealth()/getMaxHealth();
+        int next = r > .8F ? 1 : r > .5F ? 2 : 3;
+        int old = entityData.get(PHASE);
+        if (next == old) return;
+        entityData.set(PHASE, next);
+        cancelSkill();
+        level().playSound(null, blockPosition(), next == 2 ? SoundEvents.BLAZE_SHOOT : SoundEvents.WITHER_SPAWN,
+                SoundSource.HOSTILE, 2F, next == 2 ? .6F : 1.2F);
+        announce("§"+(next == 2 ? "6" : "c")+"⚠ 小樱进入第"+next+"阶段！");
+        if (level() instanceof ServerLevel sl)
+            sl.sendParticles(ParticleTypes.FLAME, getX(), getY()+1, getZ(), 60, 2,1,2,.06);
+    }
+
+    // ================= 火焰喷射 =================
+    private void tickSpray() {
+        if (sprayCD > 0) sprayCD--;
+        if (sprayCD > 0) return;
+        List<Player> ps = players(30);
+        if (ps.isEmpty()) { sprayCD = 40; return; }
+        sprayTarget = ps.get(random.nextInt(ps.size()));
+        entityData.set(SKILL_STATE, SPRAY_CHARGE);
+        entityData.set(ATTACK_INDEX, 2);
+        entityData.set(ATTACK_TIMER, SPRAY_CHARGE_TICKS+SPRAY_CAST_TICKS);
+        sprayTimer = 0;
+        getNavigation().stop(); setDeltaMovement(Vec3.ZERO);
+        tell(sprayTarget, "§c⚠ 你被小樱点名！火焰喷射即将到来！");
+        level().playSound(null, blockPosition(), SoundEvents.BLAZE_SHOOT, SoundSource.HOSTILE, 2, .55F);
+    }
+
+    private void tickSprayCharge() {
+        sprayTimer++; getNavigation().stop(); setDeltaMovement(Vec3.ZERO);
+        if (valid(sprayTarget)) lookAt(sprayTarget.position().add(0,1,0));
+        if (level() instanceof ServerLevel sl) {
+            for (int i=0;i<8;i++) {
+                double a=random.nextDouble()*Math.PI*2, r=.5+random.nextDouble();
+                sl.sendParticles(ParticleTypes.FLAME, getX()+Math.cos(a)*r,getY()+.15,getZ()+Math.sin(a)*r,1,0,.02,0,0);
             }
+            if (valid(sprayTarget)) sl.sendParticles(ParticleTypes.FLAME,sprayTarget.getX(),sprayTarget.getY()+.1,sprayTarget.getZ(),4,.3,.05,.3,0);
+        }
+        if (sprayTimer >= SPRAY_CHARGE_TICKS) { entityData.set(SKILL_STATE, SPRAY_CAST); sprayTimer=0; castSpray(); }
+    }
+
+    private void tickSprayCast() {
+        sprayTimer++; getNavigation().stop(); setDeltaMovement(Vec3.ZERO);
+        if (sprayTimer >= SPRAY_CAST_TICKS) { cancelSkill(); sprayTarget=null; sprayCD=SPRAY_CD; }
+    }
+
+    private void castSpray() {
+        Vec3 look=getLookAngle().normalize(), start=position().add(0,1.3,0);
+        List<Player> hit=new ArrayList<>();
+        if (level() instanceof ServerLevel sl) {
+            for (Player p: sl.getEntitiesOfClass(Player.class,getBoundingBox().inflate(15))) {
+                if (!valid(p)) continue;
+                Vec3 d=p.position().add(0,1,0).subtract(start);
+                if (d.lengthSqr() < .01 || d.normalize().dot(look) >= .5) hit.add(p);
+            }
+            float damage=hit.size()>=2 ? SPRAY_DAMAGE*.5F : SPRAY_DAMAGE;
+            for (Player p:hit) magicDamage(p,damage);
+            if (valid(sprayTarget) && !hit.contains(sprayTarget)) tell(sprayTarget,"§a✔ 你躲开了火焰喷射！");
+            sl.sendParticles(ParticleTypes.FLAME,start.x,start.y,start.z,80,look.x*3,1,look.z*3,.2);
+        }
+        level().playSound(null,blockPosition(),SoundEvents.BLAZE_SHOOT,SoundSource.HOSTILE,2.5F,.75F);
+    }
+
+    // ================= 火焰蓄能/爆炸 =================
+    private void tickFireCharge() {
+        if (entityData.get(PHASE)<2) return;
+        fireChargeTimer++;
+        if (fireChargeTimer % 10 == 0 && level() instanceof ServerLevel sl) {
+            int s=entityData.get(FIRE_MARK_STACKS);
+            double r=1.2+s*.08;
+            for(int i=0;i<12;i++){double a=i*Math.PI*2/12.;sl.sendParticles(ParticleTypes.FLAME,getX()+Math.cos(a)*r,getY()+.12,getZ()+Math.sin(a)*r,1,0,0,0,0);}
+        }
+        if (fireChargeTimer>=FIRE_CHARGE_INTERVAL) {
+            fireChargeTimer=0;
+            int s=entityData.get(FIRE_MARK_STACKS)+1;
+            entityData.set(FIRE_MARK_STACKS,s);
+            level().playSound(null,blockPosition(),SoundEvents.FIRECHARGE_USE,SoundSource.HOSTILE,.8F,1F+s*.03F);
+            if(s>=10){entityData.set(FIRE_MARK_STACKS,0); explodeFireCharge();}
         }
     }
 
-    private void updateFireSpray() {
-        int state = this.entityData.get(SKILL_STATE);
-
-        if (state == STATE_IDLE) {
-            if (fireSprayCD > 0) fireSprayCD--;
-            if (fireSprayCD <= 0 && this.getTarget() != null) {
-                List<Player> ps = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(30));
-                ps.removeIf(p -> p.isCreative() || p.isSpectator() || !p.isAlive());
-                if (!ps.isEmpty()) {
-                    this.sprayTarget = ps.get(this.random.nextInt(ps.size()));
-                    this.entityData.set(SKILL_STATE, STATE_CHARGE_SPRAY);
-                    this.stateTimer = 0;
-                    this.getNavigation().stop();
-                    this.setDeltaMovement(Vec3.ZERO);
-                    if (this.sprayTarget instanceof ServerPlayer sp) {
-                        sp.displayClientMessage(Component.literal("§c⚠ 你被小樱点名，火焰喷射即将到来！"), true);
-                    }
-                    this.level().playSound(null, this.blockPosition(), SoundEvents.BLAZE_SHOOT,
-                            SoundSource.HOSTILE, 2.0F, 0.5F);
-                } else {
-                    fireSprayCD = 100;
-                }
-            }
-        } else if (state == STATE_CHARGE_SPRAY) {
-            this.stateTimer++;
-            this.getNavigation().stop();
-            this.setDeltaMovement(Vec3.ZERO);
-
-            if (this.sprayTarget != null && this.sprayTarget.isAlive()) {
-                Vec3 dir = this.sprayTarget.position().subtract(this.position());
-                float yaw = (float) Math.toDegrees(Math.atan2(-dir.x, dir.z));
-                this.setYRot(yaw);
-                this.yHeadRot = yaw;
-                this.yBodyRot = yaw;
-
-                if (this.level() instanceof ServerLevel sl) {
-                    Vec3 tp = this.sprayTarget.position();
-                    for (int i = 0; i < 6; i++) {
-                        double ang = this.random.nextDouble() * Math.PI * 2;
-                        double r = this.random.nextDouble() * 0.8;
-                        sl.sendParticles(ParticleTypes.FLAME,
-                                tp.x + Math.cos(ang) * r, tp.y + 0.1, tp.z + Math.sin(ang) * r,
-                                1, 0, 0, 0, 0);
-                    }
-                }
-            }
-
-            if (this.stateTimer >= 160) {
-                this.entityData.set(SKILL_STATE, STATE_CAST_SPRAY);
-                this.stateTimer = 0;
-                castFireSpray();
-            }
-        } else if (state == STATE_CAST_SPRAY) {
-            this.stateTimer++;
-            if (this.stateTimer >= 20) {
-                this.entityData.set(SKILL_STATE, STATE_IDLE);
-                this.stateTimer = 0;
-                this.sprayTarget = null;
-                this.fireSprayCD = 600;
-            }
+    private void explodeFireCharge() {
+        if (!(level() instanceof ServerLevel sl)) return;
+        announce("§4☠ 火焰爆炸！10层火焰元素已释放！");
+        level().playSound(null,blockPosition(),SoundEvents.GENERIC_EXPLODE,SoundSource.HOSTILE,3,.65F);
+        sl.sendParticles(ParticleTypes.EXPLOSION_EMITTER,getX(),getY()+1,getZ(),3,2,1,2,.1);
+        List<Player> ps=players(30);
+        for(Player p:ps){
+            magicDamage(p,FIRE_EXPLOSION_DAMAGE);
+            int nearby=0;
+            for(Player o:ps) if(o!=p && o.distanceToSqr(p)<=25) nearby++;
+            if(nearby>0){magicDamage(p,EMBER_DAMAGE*nearby);tell(p,"§c⚠ 你与队友距离过近，受到额外余烬伤害！");}
         }
     }
 
-    private void castFireSpray() {
-        if (!(this.level() instanceof ServerLevel sl)) return;
-        Vec3 look = this.getLookAngle();
-        Vec3 start = this.position().add(0, 1.5, 0);
-
-        List<Player> hit = new ArrayList<>();
-        for (Player p : sl.getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(15))) {
-            if (p.isCreative() || p.isSpectator() || !p.isAlive()) continue;
-            Vec3 toP = p.position().add(0, 1, 0).subtract(start).normalize();
-            double dot = toP.dot(look);
-            if (dot > 0.5) hit.add(p);
-        }
-
-        float baseDmg = 30.0F;
-        float dmg = hit.size() >= 2 ? baseDmg * 0.5F : baseDmg;
-
-        for (Player p : hit) {
-            applyMagicDamage(p, dmg);
-        }
-
-        if (sprayTarget instanceof ServerPlayer sp && !hit.contains(sp)) {
-            sp.displayClientMessage(Component.literal("§a✔ 你躲开了火焰喷射"), true);
-        }
-
-        this.level().playSound(null, this.blockPosition(), SoundEvents.BLAZE_SHOOT,
-                SoundSource.HOSTILE, 2.0F, 0.8F);
+    // ================= 火焰喷发 =================
+    private void tickEruption() {
+        if(entityData.get(PHASE)<3) return;
+        if(eruptionCD>0) eruptionCD--;
+        if(eruptionCD>0) return;
+        List<Player> ps=players(30);
+        if(ps.isEmpty()){eruptionCD=40;return;}
+        eruptionTarget=ps.get(random.nextInt(ps.size()));
+        eruptionPos=eruptionTarget.blockPosition();
+        eruptionTimer=ERUPTION_DELAY;
+        entityData.set(SKILL_STATE,ERUPTION);
+        entityData.set(ATTACK_INDEX,4);
+        entityData.set(ATTACK_TIMER,ERUPTION_DELAY+27);
+        getNavigation().stop();setDeltaMovement(Vec3.ZERO);
+        tell(eruptionTarget,"§c⚠ 你脚下出现火焰！5秒后爆发，快离开！");
+        level().playSound(null,eruptionPos,SoundEvents.FIRECHARGE_USE,SoundSource.HOSTILE,1.5F,.8F);
     }
 
-    private void updateFireMark() {
-        int phase = this.entityData.get(PHASE);
-        if (phase < 2) return;
+    private void tickEruptionCharge() {
+        getNavigation().stop();setDeltaMovement(Vec3.ZERO);
+        if(eruptionPos==null){cancelSkill();return;}
+        if(level() instanceof ServerLevel sl){
+            for(int i=0;i<16;i++){double a=i*Math.PI*2/16.;sl.sendParticles(ParticleTypes.FLAME,eruptionPos.getX()+.5+Math.cos(a)*2,eruptionPos.getY()+.1,eruptionPos.getZ()+.5+Math.sin(a)*2,1,0,0,0,0);}
+            if(eruptionTimer<=40) sl.sendParticles(ParticleTypes.FLAME,eruptionPos.getX()+.5,eruptionPos.getY()+.2,eruptionPos.getZ()+.5,8,.5,.1,.5,.02);
+        }
+        if(--eruptionTimer<=0){explodeEruption();eruptionPos=null;eruptionTarget=null;eruptionCD=ERUPTION_CD;cancelSkill();}
+    }
 
-        fireMarkTimer++;
-        if (fireMarkTimer >= 40) {
-            fireMarkTimer = 0;
-            int stacks = this.entityData.get(FIRE_MARK_STACKS) + 1;
-            this.entityData.set(FIRE_MARK_STACKS, stacks);
-            if (this.level() instanceof ServerLevel sl) {
-                for (int i = 0; i < 20; i++) {
-                    double ang = i * Math.PI * 2 / 20;
-                    double r = 1.5;
-                    sl.sendParticles(ParticleTypes.FLAME,
-                            this.getX() + Math.cos(ang) * r, this.getY() + 0.2, this.getZ() + Math.sin(ang) * r,
-                            1, 0, 0, 0, 0);
-                }
-            }
-            this.level().playSound(null, this.blockPosition(), SoundEvents.FIRECHARGE_USE,
-                    SoundSource.HOSTILE, 1.0F, 1.2F);
-
-            if (stacks >= 10) {
-                this.entityData.set(FIRE_MARK_STACKS, 0);
-                explodeFireMark();
-            }
+    private void explodeEruption() {
+        if(!(level() instanceof ServerLevel sl) || eruptionPos==null)return;
+        BlockPos pos=eruptionPos;
+        level().playSound(null,pos,SoundEvents.GENERIC_EXPLODE,SoundSource.HOSTILE,2.2F,.9F);
+        sl.sendParticles(ParticleTypes.EXPLOSION_EMITTER,pos.getX()+.5,pos.getY()+.5,pos.getZ()+.5,3,1.5,.5,1.5,.1);
+        for(Player p:sl.getEntitiesOfClass(Player.class,new AABB(pos).inflate(3))){
+            if(valid(p)){double dx=p.getX()-(pos.getX()+.5),dz=p.getZ()-(pos.getZ()+.5);if(dx*dx+dz*dz<=9)magicDamage(p,ERUPTION_DAMAGE);}
         }
     }
 
-    private void explodeFireMark() {
-        if (!(this.level() instanceof ServerLevel sl)) return;
+    private void cancelSkill(){entityData.set(SKILL_STATE,IDLE);entityData.set(ATTACK_INDEX,0);entityData.set(ATTACK_TIMER,0);sprayTimer=0;}
 
-        for (ServerPlayer sp : sl.getEntitiesOfClass(ServerPlayer.class, this.getBoundingBox().inflate(30))) {
-            sp.displayClientMessage(Component.literal("§4☠ 火焰爆炸！"), true);
-        }
-        this.level().playSound(null, this.blockPosition(), SoundEvents.GENERIC_EXPLODE,
-                SoundSource.HOSTILE, 3.0F, 0.6F);
-
-        List<Player> all = sl.getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(30));
-        for (Player p : all) {
-            if (p.isCreative() || p.isSpectator() || !p.isAlive()) continue;
-
-            long nearby = all.stream()
-                    .filter(o -> o != p && o.isAlive()
-                            && !o.isCreative() && !o.isSpectator()
-                            && o.distanceToSqr(p) < 25.0)
-                    .count();
-
-            float dmg = 40.0F * (1.0F + nearby);
-            applyMagicDamage(p, dmg);
-        }
+    private void magicDamage(Player p,float base){
+        if(!valid(p))return;
+        MobEffectInstance e=p.getEffect(ModEffects.MAGIC_VULNERABILITY.get());
+        int stacks=e==null?0:Math.min(10,e.getAmplifier()+1);
+        float damage=base*(1F+.05F*stacks);
+        p.hurt(damageSources().indirectMagic(this,this),damage);
     }
 
-    private void updateFireEruption() {
-        int phase = this.entityData.get(PHASE);
-        if (phase < 3) return;
-
-        fireEruptionCD--;
-        if (fireEruptionCD <= 0) {
-            fireEruptionCD = 160;
-            List<Player> ps = this.level().getEntitiesOfClass(Player.class, this.getBoundingBox().inflate(30));
-            ps.removeIf(p -> p.isCreative() || p.isSpectator() || !p.isAlive());
-            if (!ps.isEmpty()) {
-                Player t = ps.get(this.random.nextInt(ps.size()));
-                BlockPos bp = t.blockPosition();
-                this.eruptions.add(new Eruption(bp, 100));
-                if (t instanceof ServerPlayer sp) {
-                    sp.displayClientMessage(Component.literal("§c⚠ 你脚下出现火焰，快离开！"), true);
-                }
-                this.level().playSound(null, bp, SoundEvents.FIRECHARGE_USE,
-                        SoundSource.HOSTILE, 1.5F, 0.8F);
-            }
-        }
-
-        if (!(this.level() instanceof ServerLevel sl)) return;
-        for (int i = eruptions.size() - 1; i >= 0; i--) {
-            Eruption e = eruptions.get(i);
-
-            for (int j = 0; j < 10; j++) {
-                double ang = j * Math.PI * 2 / 10;
-                double r = 2.0;
-                sl.sendParticles(ParticleTypes.FLAME,
-                        e.pos.getX() + 0.5 + Math.cos(ang) * r,
-                        e.pos.getY() + 0.1,
-                        e.pos.getZ() + 0.5 + Math.sin(ang) * r,
-                        1, 0, 0, 0, 0);
-            }
-
-            e.ticksLeft--;
-            if (e.ticksLeft <= 0) {
-                this.level().playSound(null, e.pos, SoundEvents.GENERIC_EXPLODE,
-                        SoundSource.HOSTILE, 2.0F, 1.0F);
-                sl.sendParticles(ParticleTypes.EXPLOSION_EMITTER,
-                        e.pos.getX() + 0.5, e.pos.getY() + 0.5, e.pos.getZ() + 0.5,
-                        3, 1.5, 0.5, 1.5, 0.1);
-
-                for (Player p : sl.getEntitiesOfClass(Player.class,
-                        new net.minecraft.world.phys.AABB(e.pos).inflate(3.0))) {
-                    if (p.isCreative() || p.isSpectator()) continue;
-                    if (p.position().distanceToSqr(e.pos.getX() + 0.5, p.getY(), e.pos.getZ() + 0.5) < 9.0) {
-                        applyMagicDamage(p, 60.0F);
-                    }
-                }
-                eruptions.remove(i);
-            }
-        }
+    private List<Player> players(double radius){
+        List<Player> ps=level().getEntitiesOfClass(Player.class,getBoundingBox().inflate(radius));
+        ps.removeIf(p->!valid(p));return ps;
     }
 
-    private void applyMagicDamage(Player p, float baseDmg) {
-        MobEffectInstance eff = p.getEffect(ModEffects.MAGIC_VULNERABILITY.get());
-        int stacks = eff == null ? 0 : eff.getAmplifier() + 1;
-        float mult = 1.0F + 0.05F * stacks;
-        float finalDmg = baseDmg * mult;
+    private boolean valid(Player p){return p!=null&&p.isAlive()&&!p.isRemoved()&&!p.isCreative()&&!p.isSpectator();}
 
-        p.hurt(this.damageSources().indirectMagic(this, this), finalDmg);
-        this.level().playSound(null, p.blockPosition(), SoundEvents.FIRECHARGE_USE,
-                SoundSource.HOSTILE, 0.8F, 1.0F);
-    }
+    private void tell(Player p,String s){if(p instanceof ServerPlayer sp)sp.displayClientMessage(Component.literal(s),true);}
+
+    private void announce(String s){if(!(level() instanceof ServerLevel sl))return;for(ServerPlayer p:sl.getEntitiesOfClass(ServerPlayer.class,getBoundingBox().inflate(35)))if(p.isAlive()&&!p.isSpectator())p.displayClientMessage(Component.literal(s),true);}
+
+    private void lookAt(Vec3 pos){Vec3 d=pos.subtract(position().add(0,getEyeHeight(),0));double h=Math.sqrt(d.x*d.x+d.z*d.z);float yaw=(float)Math.toDegrees(Math.atan2(-d.x,d.z));float pitch=(float)-Math.toDegrees(Math.atan2(d.y,h));setYRot(yaw);setXRot(pitch);yHeadRot=yaw;yBodyRot=yaw;}
+
+    @Override public boolean hurt(DamageSource source,float amount){return entityData.get(IS_DYING)?false:super.hurt(source,amount);}
 
     @Override
-    public boolean hurt(DamageSource source, float amount) {
-        if (this.entityData.get(IS_DYING)) return false;
-        return super.hurt(source, amount);
+    public void die(DamageSource source){
+        if(level().isClientSide){super.die(source);return;}
+        if(entityData.get(IS_DYING))return;
+        entityData.set(IS_DYING,true);entityData.set(SKILL_STATE,IDLE);entityData.set(ATTACK_INDEX,0);entityData.set(ATTACK_TIMER,0);
+        setInvulnerable(true);setHealth(0);getNavigation().stop();setDeltaMovement(Vec3.ZERO);deathTimer=0;bossEvent.removeAllPlayers();
+        level().playSound(null,blockPosition(),SoundEvents.WITHER_DEATH,SoundSource.HOSTILE,2,1);
     }
 
-    @Override
-    public void die(DamageSource source) {
-        if (!this.level().isClientSide && !this.entityData.get(IS_DYING)) {
-            this.entityData.set(IS_DYING, true);
-            this.deathTimer = 0;
-            this.setHealth(0.0F);
-            this.setInvulnerable(true);
-            return;
-        }
-        super.die(source);
+    private void tickDeath(){
+        setInvulnerable(true);setDeltaMovement(Vec3.ZERO);getNavigation().stop();deathTimer++;
+        if(level() instanceof ServerLevel sl && deathTimer%3==0)sl.sendParticles(ParticleTypes.FLAME,getX(),getY()+1,getZ(),8,.8,.8,.8,.03);
+        if(deathTimer>=35){setInvulnerable(false);super.die(damageSources().generic());}
     }
 
-    @Override
-    public boolean removeWhenFarAway(double distance) { return false; }
+    @Override public boolean removeWhenFarAway(double distance){return false;}
 
     @Override
-    public void addAdditionalSaveData(CompoundTag tag) {
+    public void addAdditionalSaveData(CompoundTag tag){
         super.addAdditionalSaveData(tag);
-        tag.putInt("SkillCooldown", skillCooldown);
-        tag.putInt("FireSprayCD", fireSprayCD);
+        tag.putInt("FireSprayCD",sprayCD);tag.putInt("FireChargeTimer",fireChargeTimer);tag.putInt("FireEruptionCD",eruptionCD);tag.putInt("FireMarkStacks",entityData.get(FIRE_MARK_STACKS));tag.putInt("Phase",entityData.get(PHASE));
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag tag) {
-        super.readAdditionalSaveData(tag);
-        this.skillCooldown = tag.getInt("SkillCooldown");
-        this.fireSprayCD = tag.getInt("FireSprayCD");
+    public void readAdditionalSaveData(CompoundTag tag){
+        super.readAdditionalSaveData(tag);sprayCD=tag.getInt("FireSprayCD");fireChargeTimer=tag.getInt("FireChargeTimer");eruptionCD=tag.getInt("FireEruptionCD");entityData.set(FIRE_MARK_STACKS,Math.max(0,Math.min(10,tag.getInt("FireMarkStacks"))));entityData.set(PHASE,Math.max(1,Math.min(3,tag.getInt("Phase"))));
     }
 
-    public static AttributeSupplier.Builder createAttributes() {
+    public static AttributeSupplier.Builder createAttributes(){
         return PathfinderMob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 50000.0D)
-                .add(Attributes.ARMOR, 10.0D)
-                .add(Attributes.ATTACK_DAMAGE, 15.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.3D)
-                .add(Attributes.FOLLOW_RANGE, 35.0D)
-                .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D);
+                .add(Attributes.MAX_HEALTH,50000.0D)
+                .add(Attributes.ARMOR,10.0D)
+                .add(Attributes.ATTACK_DAMAGE,15.0D)
+                .add(Attributes.MOVEMENT_SPEED,0.3D)
+                .add(Attributes.FOLLOW_RANGE,35.0D)
+                .add(Attributes.KNOCKBACK_RESISTANCE,1.0D);
     }
 }
