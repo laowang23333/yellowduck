@@ -33,29 +33,35 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 /**
  * 魔女小樱
  *
- * 精英小樱本体技能：
+ * 精英暮色钟楼·魔女小樱机制：
  *
- * P1 100% ~ 80%
- * 1. 普通魔法攻击：攻击最近玩家，并降低魔抗
- * 2. 火焰喷射：30秒一次，随机目标，蓄力8秒，扇形AOE
+ * 第一阶段 100% ~ 80%
+ * 1. 普通魔法攻击：攻击最近玩家，并叠加魔法易伤。
+ * 2. 火焰喷射：约每 30 秒一次，随机点名玩家，
+ *    蓄力 8 秒后朝目标进行扇形火焰攻击。
+ *    被攻击玩家可以通过抱团降低喷射伤害。
  *
- * P2 80% ~ 50%
- * 继承P1
- * 3. 火焰蓄能：每2秒获得1层火焰元素
- * 4. 火焰爆炸：10层后全团魔法伤害，5格内队友产生余烬伤害
+ * 第二阶段 80% ~ 50%
+ * 继承第一阶段全部技能。
+ * 3. 火焰蓄能：每 2 秒增加 1 层火焰元素。
+ * 4. 10 层后释放火焰爆炸。
+ *    玩家需要分散，避免 5 格内队友带来的额外余烬伤害。
  *
- * P3 50% ~ 0%
- * 继承P1/P2
- * 5. 火焰喷发：随机点名玩家，每8秒生成一次脚下火焰，
- *    火焰存在5秒后爆发
+ * 第三阶段 50% ~ 0%
+ * 继承前两个阶段。
+ * 5. 火焰喷发：每 8 秒随机点名一名玩家，
+ *    在玩家脚下生成火焰区域，5 秒后爆炸。
  */
 public class SakurawitchEntity extends PathfinderMob {
+
+    // =========================================================
+    // 同步数据
+    // =========================================================
 
     public static final EntityDataAccessor<Boolean> IS_WALKING =
             SynchedEntityData.defineId(
@@ -99,71 +105,156 @@ public class SakurawitchEntity extends PathfinderMob {
                     EntityDataSerializers.INT
             );
 
+    // =========================================================
+    // 技能状态
+    // =========================================================
+
     private static final int IDLE = 0;
+
     private static final int SPRAY_CHARGE = 1;
 
-    /*
-     * 时间：
+    private static final int SPRAY_CAST = 2;
+
+    private static final int ERUPTION = 3;
+
+    // =========================================================
+    // 时间参数
+    // =========================================================
+
+    /**
+     * 普通攻击动画持续时间
+     */
+    private static final int ATTACK_LENGTH = 27;
+
+    /**
+     * 普通魔法攻击间隔
+     */
+    private static final int NORMAL_ATTACK_INTERVAL = 40;
+
+    /**
+     * 火焰喷射间隔
      *
-     * 20 tick = 1秒
+     * 600 tick = 30 秒
      */
-    private static final int NORMAL_ATTACK_INTERVAL = 27;
+    private static final int SPRAY_CD = 600;
 
-    private static final int SPRAY_CD = 600;              // 30秒
-    private static final int SPRAY_CHARGE_TICKS = 160;    // 8秒
-    private static final int SPRAY_CAST_TICKS = 20;       // 1秒
-
-    private static final int FIRE_CHARGE_INTERVAL = 40;  // 2秒
-
-    private static final int ERUPTION_INTERVAL = 160;    // 8秒
-    private static final int ERUPTION_DELAY = 100;       // 5秒
-
-    /*
-     * 伤害数值先保持在当前版本附近。
-     * 后面实际进游戏测试时再单独平衡。
+    /**
+     * 火焰喷射蓄力
+     *
+     * 160 tick = 8 秒
      */
-    private static final float NORMAL_MAGIC_DAMAGE = 15.0F;
+    private static final int SPRAY_CHARGE_TICKS = 160;
+
+    /**
+     * 火焰喷射释放阶段
+     */
+    private static final int SPRAY_CAST_TICKS = 20;
+
+    /**
+     * 二阶段火焰元素增加间隔
+     *
+     * 40 tick = 2 秒
+     */
+    private static final int FIRE_CHARGE_INTERVAL = 40;
+
+    /**
+     * 三阶段点名间隔
+     *
+     * 160 tick = 8 秒
+     */
+    private static final int ERUPTION_INTERVAL = 160;
+
+    /**
+     * 火焰喷发倒计时
+     *
+     * 100 tick = 5 秒
+     */
+    private static final int ERUPTION_DELAY = 100;
+
+    // =========================================================
+    // 技能伤害
+    // =========================================================
+
+    private static final float NORMAL_MAGIC_DAMAGE = 12.0F;
+
     private static final float SPRAY_DAMAGE = 30.0F;
+
     private static final float FIRE_EXPLOSION_DAMAGE = 40.0F;
+
     private static final float EMBER_DAMAGE = 40.0F;
+
     private static final float ERUPTION_DAMAGE = 60.0F;
 
-    /*
-     * 普攻计时
-     */
-    private int normalAttackTimer;
+    // =========================================================
+    // 技能运行变量
+    // =========================================================
 
-    /*
-     * 火焰喷射
+    /**
+     * 火焰喷射 CD
      */
-    private int sprayCD = SPRAY_CD;
-    private int sprayTimer;
+    private int sprayCD = 200;
+
+    /**
+     * 火焰喷射当前蓄力时间
+     */
+    private int sprayTimer = 0;
+
+    /**
+     * 火焰喷射目标
+     */
     private Player sprayTarget;
 
-    /*
-     * 火焰蓄能
+    /**
+     * 普通魔法攻击 CD
      */
-    private int fireChargeTimer;
+    private int normalAttackTimer = 20;
 
-    /*
-     * 火焰喷发
+    /**
+     * 火焰蓄能计时
+     */
+    private int fireChargeTimer = 0;
+
+    /**
+     * 三阶段火焰喷发 CD
      *
-     * 这里不再使用单独一个 eruptionPos。
-     * 每一个火焰都是独立对象，所以8秒一个火焰，
-     * 前一个5秒倒计时还没结束也不会影响下一个。
+     * 从进入第三阶段开始计算。
      */
-    private final List<EruptionMarker> eruptionMarkers = new ArrayList<>();
+    private int eruptionCD = ERUPTION_INTERVAL;
 
-    /*
-     * 死亡
+    /**
+     * 当前火焰喷发倒计时
      */
-    private int deathTimer;
+    private int eruptionTimer = 0;
 
-    private final ServerBossEvent bossEvent = new ServerBossEvent(
-            Component.literal("小樱"),
-            BossEvent.BossBarColor.PINK,
-            BossEvent.BossBarOverlay.PROGRESS
-    );
+    /**
+     * 火焰喷发位置
+     */
+    private BlockPos eruptionPos;
+
+    /**
+     * 火焰喷发目标
+     */
+    private Player eruptionTarget;
+
+    /**
+     * 死亡动画计时
+     */
+    private int deathTimer = 0;
+
+    // =========================================================
+    // Boss 血条
+    // =========================================================
+
+    private final ServerBossEvent bossEvent =
+            new ServerBossEvent(
+                    Component.literal("小樱"),
+                    BossEvent.BossBarColor.PINK,
+                    BossEvent.BossBarOverlay.PROGRESS
+            );
+
+    // =========================================================
+    // 构造
+    // =========================================================
 
     public SakurawitchEntity(
             EntityType<? extends PathfinderMob> type,
@@ -176,6 +267,10 @@ public class SakurawitchEntity extends PathfinderMob {
     public Component getName() {
         return Component.literal("小樱");
     }
+
+    // =========================================================
+    // Boss 玩家显示
+    // =========================================================
 
     @Override
     public void startSeenByPlayer(ServerPlayer player) {
@@ -195,22 +290,32 @@ public class SakurawitchEntity extends PathfinderMob {
 
     @Override
     protected void registerGoals() {
-        goalSelector.addGoal(0, new FloatGoal(this));
+        goalSelector.addGoal(
+                0,
+                new FloatGoal(this)
+        );
 
         /*
-         * 小樱不再使用 MeleeAttackGoal。
+         * 小樱是魔法 Boss。
          *
-         * 奶块的小樱普通攻击是魔法攻击，
-         * 所以这里让她自己在tick里控制远程魔法攻击。
+         * 不使用 MeleeAttackGoal，
+         * 避免她像普通僵尸一样贴脸砍人。
          */
         goalSelector.addGoal(
                 5,
-                new WaterAvoidingRandomStrollGoal(this, 0.8D)
+                new WaterAvoidingRandomStrollGoal(
+                        this,
+                        0.8D
+                )
         );
 
         goalSelector.addGoal(
                 6,
-                new LookAtPlayerGoal(this, Player.class, 24.0F)
+                new LookAtPlayerGoal(
+                        this,
+                        Player.class,
+                        20.0F
+                )
         );
 
         goalSelector.addGoal(
@@ -233,19 +338,48 @@ public class SakurawitchEntity extends PathfinderMob {
         );
     }
 
+    // =========================================================
+    // 同步数据定义
+    // =========================================================
+
     @Override
     protected void defineSynchedData() {
         super.defineSynchedData();
 
-        entityData.define(IS_WALKING, false);
-        entityData.define(ATTACK_INDEX, 0);
-        entityData.define(ATTACK_TIMER, 0);
-        entityData.define(IS_DYING, false);
+        entityData.define(
+                IS_WALKING,
+                false
+        );
 
-        entityData.define(PHASE, 1);
-        entityData.define(FIRE_MARK_STACKS, 0);
+        entityData.define(
+                ATTACK_INDEX,
+                0
+        );
 
-        entityData.define(SKILL_STATE, IDLE);
+        entityData.define(
+                ATTACK_TIMER,
+                0
+        );
+
+        entityData.define(
+                IS_DYING,
+                false
+        );
+
+        entityData.define(
+                PHASE,
+                1
+        );
+
+        entityData.define(
+                FIRE_MARK_STACKS,
+                0
+        );
+
+        entityData.define(
+                SKILL_STATE,
+                IDLE
+        );
     }
 
     // =========================================================
@@ -257,1157 +391,176 @@ public class SakurawitchEntity extends PathfinderMob {
         super.tick();
 
         /*
-         * 客户端只负责模型/基础视觉。
-         * 技能逻辑全部服务器执行。
+         * 客户端：
+         * 技能粒子由服务器 sendParticles() 统一发送，
+         * 因此这里不再自己重复生成。
          */
         if (level().isClientSide) {
             return;
         }
 
+        /*
+         * 死亡动画阶段
+         */
         if (entityData.get(IS_DYING)) {
             tickSakuraDeath();
             return;
         }
 
         updateTarget();
+
         updatePhase();
+
         updateBossBar();
 
         tickAttackTimer();
+
         updateWalking();
 
         /*
-         * 普通魔法攻击。
+         * 普通魔法攻击始终存在。
          */
-        tickNormalMagicAttack();
+        if (entityData.get(SKILL_STATE) == IDLE) {
+            tickNormalMagicAttack();
+        }
 
         /*
          * 火焰喷射。
          */
-        tickSpray();
+        tickSpraySkill();
 
         /*
-         * P2开始火焰蓄能。
+         * 第二阶段以后：
+         * 火焰元素蓄能不会因为其他技能暂时停止。
          */
         tickFireCharge();
 
         /*
-         * P3开始火焰喷发。
+         * 第三阶段火焰喷发。
          */
-        tickEruption();
-
-        /*
-         * 处理已经生成的火焰。
-         */
-        tickEruptionMarkers();
+        tickEruptionSkill();
     }
 
     // =========================================================
-    // 普通魔法攻击
+    // 目标
     // =========================================================
 
-    private void tickNormalMagicAttack() {
-        if (entityData.get(SKILL_STATE) != IDLE) {
+    private void updateTarget() {
+        if (tickCount % 10 != 0) {
             return;
         }
 
-        if (entityData.get(ATTACK_TIMER) > 0) {
+        Entity current = getTarget();
+
+        if (current != null
+                && current.isAlive()
+                && !current.isRemoved()
+                && distanceToSqr(current) <= 35.0D * 35.0D) {
             return;
         }
 
-        Entity target = getTarget();
-
-        if (!(target instanceof Player player)) {
-            return;
-        }
-
-        if (!valid(player)) {
-            return;
-        }
-
-        if (distanceToSqr(player) > 35.0D * 35.0D) {
-            return;
-        }
-
-        /*
-         * 确保小樱面对目标。
-         */
-        lookAt(
-                player.position().add(
-                        0,
-                        player.getBbHeight() * 0.5D,
-                        0
-                )
-        );
-
-        normalMagicAttack(player);
-    }
-
-    private void normalMagicAttack(Player player) {
-        if (!valid(player)) {
-            return;
-        }
-
-        /*
-         * 普通魔法攻击。
-         */
-        magicDamage(player, NORMAL_MAGIC_DAMAGE);
-
-        /*
-         * 每次普通魔法攻击降低一次魔抗。
-         * 最多10层。
-         */
-        addMagicVulnerability(player);
-
-        /*
-         * 动画：
-         * attack_01
-         */
-        entityData.set(ATTACK_INDEX, 1);
-        entityData.set(ATTACK_TIMER, NORMAL_ATTACK_INTERVAL);
-
-        /*
-         * 普攻计时重新开始。
-         */
-        normalAttackTimer = NORMAL_ATTACK_INTERVAL;
-
-        /*
-         * 视觉效果。
-         */
-        if (level() instanceof ServerLevel sl) {
-
-            Vec3 start = position().add(
-                    0,
-                    getEyeHeight() * 0.8D,
-                    0
-            );
-
-            Vec3 target = player.position().add(
-                    0,
-                    player.getBbHeight() * 0.55D,
-                    0
-            );
-
-            Vec3 direction = target.subtract(start);
-
-            if (direction.lengthSqr() > 0.001D) {
-                direction = direction.normalize();
-
-                for (int i = 0; i < 10; i++) {
-                    double d = i * 0.8D;
-
-                    sl.sendParticles(
-                            ModParticles.SAKURA_MAGIC.get(),
-                            start.x + direction.x * d,
-                            start.y + direction.y * d,
-                            start.z + direction.z * d,
-                            1,
-                            0,
-                            0,
-                            0,
-                            0
-                    );
-                }
-            }
-
-            sl.sendParticles(
-                    ModParticles.SAKURA_MAGIC.get(),
-                    player.getX(),
-                    player.getY() + 1.0D,
-                    player.getZ(),
-                    6,
-                    0.25D,
-                    0.5D,
-                    0.25D,
-                    0
-            );
-        }
-
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.EVOKER_CAST_SPELL,
-                SoundSource.HOSTILE,
-                1.2F,
-                1.15F
-        );
-    }
-
-    private void addMagicVulnerability(Player player) {
-        MobEffectInstance old =
-                player.getEffect(ModEffects.MAGIC_VULNERABILITY.get());
-
-        int amplifier;
-
-        if (old == null) {
-            amplifier = 0;
-        } else {
-            amplifier = Math.min(
-                    9,
-                    old.getAmplifier() + 1
-            );
-        }
-
-        /*
-         * 200 tick = 10秒。
-         * 小樱持续攻击时会不断刷新。
-         */
-        player.addEffect(
-                new MobEffectInstance(
-                        ModEffects.MAGIC_VULNERABILITY.get(),
-                        200,
-                        amplifier,
-                        false,
-                        true,
-                        true
-                )
-        );
-    }
-
-    // =========================================================
-    // 火焰喷射
-    // =========================================================
-
-    private void tickSpray() {
-
-        /*
-         * 喷射技能进行中。
-         */
-        if (entityData.get(SKILL_STATE) == SPRAY_CHARGE) {
-            tickSprayCharge();
-            return;
-        }
-
-        if (sprayCD > 0) {
-            sprayCD--;
-            return;
-        }
-
-        List<Player> players = players(30);
-
-        if (players.isEmpty()) {
-            sprayCD = 40;
-            return;
-        }
-
-        /*
-         * 随机点名一个玩家。
-         */
-        sprayTarget =
-                players.get(
-                        random.nextInt(players.size())
+        Player nearest =
+                level().getNearestPlayer(
+                        this,
+                        35.0D
                 );
 
-        sprayTimer = 0;
+        if (valid(nearest)) {
+            setTarget(nearest);
+        }
+    }
+
+    // =========================================================
+    // 行走动画
+    // =========================================================
+
+    private void updateWalking() {
+        double dx = getX() - xo;
+
+        double dz = getZ() - zo;
+
+        boolean moving =
+                dx * dx + dz * dz > 1.0E-5
+                        && entityData.get(SKILL_STATE) == IDLE
+                        && entityData.get(ATTACK_TIMER) <= 0;
 
         entityData.set(
-                SKILL_STATE,
-                SPRAY_CHARGE
+                IS_WALKING,
+                moving
         );
+    }
 
-        /*
-         * attack_05 是目前GLB里最长的技能动作，
-         * 正好接近8秒火焰喷射蓄力。
-         */
-        entityData.set(
-                ATTACK_INDEX,
-                5
-        );
+    // =========================================================
+    // 攻击动画计时
+    // =========================================================
+
+    private void tickAttackTimer() {
+        int timer =
+                entityData.get(ATTACK_TIMER);
+
+        if (timer <= 0) {
+            return;
+        }
+
+        timer--;
 
         entityData.set(
                 ATTACK_TIMER,
-                SPRAY_CHARGE_TICKS + SPRAY_CAST_TICKS
+                timer
         );
 
-        getNavigation().stop();
-        setDeltaMovement(Vec3.ZERO);
-
-        tell(
-                sprayTarget,
-                "§c⚠ 小樱正在锁定你！8秒后释放火焰喷射！"
-        );
-
-        announce(
-                "§6🔥 小樱开始蓄力火焰喷射！"
-        );
-
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.BLAZE_AMBIENT,
-                SoundSource.HOSTILE,
-                2.0F,
-                0.65F
-        );
-    }
-
-    private void tickSprayCharge() {
-
-        sprayTimer++;
-
-        getNavigation().stop();
-        setDeltaMovement(Vec3.ZERO);
-
-        if (valid(sprayTarget)) {
-            lookAt(
-                    sprayTarget.position().add(
-                            0,
-                            sprayTarget.getBbHeight() * 0.5D,
-                            0
-                    )
-            );
-        }
-
-        if (!(level() instanceof ServerLevel sl)) {
-            return;
-        }
-
-        /*
-         * 小樱身边聚集魔法火焰。
-         */
-        for (int i = 0; i < 8; i++) {
-
-            double angle =
-                    random.nextDouble() *
-                    Math.PI *
-                    2.0D;
-
-            double radius =
-                    0.7D +
-                    random.nextDouble() *
-                    1.3D;
-
-            sl.sendParticles(
-                    ModParticles.SAKURA_FLAME.get(),
-                    getX() + Math.cos(angle) * radius,
-                    getY() + 0.2D +
-                            random.nextDouble() * 1.2D,
-                    getZ() + Math.sin(angle) * radius,
-                    1,
-                    0,
-                    0.02D,
-                    0,
-                    0
-            );
-        }
-
-        /*
-         * 被点名玩家脚下出现警告。
-         */
-        if (valid(sprayTarget)) {
-
-            sl.sendParticles(
-                    ModParticles.SAKURA_WARNING.get(),
-                    sprayTarget.getX(),
-                    sprayTarget.getY() + 0.05D,
-                    sprayTarget.getZ(),
-                    4,
-                    0.35D,
-                    0.05D,
-                    0.35D,
-                    0
-            );
-        }
-
-        /*
-         * 8秒蓄力结束。
-         */
-        if (sprayTimer >= SPRAY_CHARGE_TICKS) {
-
-            castSpray();
-
-            entityData.set(
-                    SKILL_STATE,
-                    IDLE
-            );
-
+        if (timer <= 0) {
             entityData.set(
                     ATTACK_INDEX,
                     0
             );
-
-            entityData.set(
-                    ATTACK_TIMER,
-                    0
-            );
-
-            sprayTimer = 0;
-            sprayTarget = null;
-
-            /*
-             * 下一次火焰喷射30秒后。
-             */
-            sprayCD = SPRAY_CD;
         }
     }
 
-    private void castSpray() {
+    // =========================================================
+    // Boss 血条
+    // =========================================================
 
-        if (!(level() instanceof ServerLevel sl)) {
-            return;
-        }
+    private void updateBossBar() {
+        float hp =
+                getHealth() / getMaxHealth();
 
-        Vec3 start =
-                position().add(
-                        0,
-                        getEyeHeight() * 0.75D,
-                        0
+        hp =
+                Math.max(
+                        0.0F,
+                        Math.min(
+                                1.0F,
+                                hp
+                        )
                 );
 
-        Vec3 look =
-                getLookAngle().normalize();
+        bossEvent.setProgress(hp);
 
-        /*
-         * 扇形角度。
-         *
-         * dot >= 0.55
-         * 大约对应一个较明显的扇形。
-         */
-        final double CONE_DOT = 0.55D;
-        final double RANGE = 15.0D;
+        int phase =
+                entityData.get(PHASE);
 
-        List<Player> hit =
-                new ArrayList<>();
-
-        for (Player player :
-                sl.getEntitiesOfClass(
-                        Player.class,
-                        getBoundingBox().inflate(RANGE)
-                )) {
-
-            if (!valid(player)) {
-                continue;
-            }
-
-            Vec3 target =
-                    player.position().add(
-                            0,
-                            player.getBbHeight() * 0.5D,
-                            0
-                    );
-
-            Vec3 direction =
-                    target.subtract(start);
-
-            double distance =
-                    direction.length();
-
-            if (distance <= 0.1D ||
-                    distance > RANGE) {
-                continue;
-            }
-
-            direction =
-                    direction.normalize();
-
-            /*
-             * 扇形判定。
-             */
-            if (direction.dot(look) >= CONE_DOT) {
-                hit.add(player);
-            }
-        }
-
-        /*
-         * 画出火焰喷射的扇形。
-         */
-        spawnSprayParticles(
-                sl,
-                start,
-                look
-        );
-
-        /*
-         * 原版机制：
-         * 集中站位可以降低魔法伤害。
-         *
-         * 这里采用：
-         * 如果扇形内有2名及以上玩家，
-         * 则本次喷射伤害降低50%。
-         */
-        float damage =
-                hit.size() >= 2
-                        ? SPRAY_DAMAGE * 0.5F
-                        : SPRAY_DAMAGE;
-
-        for (Player player : hit) {
-
-            magicDamage(
-                    player,
-                    damage
+        if (phase == 1) {
+            bossEvent.setColor(
+                    BossEvent.BossBarColor.GREEN
             );
-
-            /*
-             * 被命中时再给一个火焰视觉。
-             */
-            sl.sendParticles(
-                    ModParticles.SAKURA_FLAME.get(),
-                    player.getX(),
-                    player.getY() + 1.0D,
-                    player.getZ(),
-                    12,
-                    0.35D,
-                    0.5D,
-                    0.35D,
-                    0.02D
+        } else if (phase == 2) {
+            bossEvent.setColor(
+                    BossEvent.BossBarColor.YELLOW
             );
-        }
-
-        if (valid(sprayTarget) &&
-                !hit.contains(sprayTarget)) {
-
-            tell(
-                    sprayTarget,
-                    "§a✔ 你成功躲开了火焰喷射！"
-            );
-        }
-
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.BLAZE_SHOOT,
-                SoundSource.HOSTILE,
-                2.8F,
-                0.65F
-        );
-
-        announce(
-                "§c🔥 小樱释放了火焰喷射！"
-        );
-    }
-
-    private void spawnSprayParticles(
-            ServerLevel sl,
-            Vec3 start,
-            Vec3 look
-    ) {
-
-        /*
-         * 扇形粒子。
-         *
-         * 这里不是简单的一条直线，
-         * 而是把左右两侧逐渐展开。
-         */
-        Vec3 forward =
-                new Vec3(
-                        look.x,
-                        0,
-                        look.z
-                );
-
-        if (forward.lengthSqr() < 0.001D) {
-            forward = new Vec3(0, 0, 1);
         } else {
-            forward = forward.normalize();
-        }
-
-        Vec3 right =
-                new Vec3(
-                        -forward.z,
-                        0,
-                        forward.x
-                );
-
-        for (int distance = 1;
-             distance <= 15;
-             distance++) {
-
-            double width =
-                    distance * 0.48D;
-
-            for (int side = -3;
-                 side <= 3;
-                 side++) {
-
-                double offset =
-                        width * side / 3.0D;
-
-                Vec3 pos =
-                        start
-                                .add(forward.scale(distance))
-                                .add(right.scale(offset));
-
-                sl.sendParticles(
-                        ModParticles.SAKURA_FLAME.get(),
-                        pos.x,
-                        pos.y,
-                        pos.z,
-                        2,
-                        0.08D,
-                        0.08D,
-                        0.08D,
-                        0
-                );
-            }
-        }
-
-        /*
-         * 中心魔法闪光。
-         */
-        sl.sendParticles(
-                ModParticles.SAKURA_MAGIC.get(),
-                start.x,
-                start.y,
-                start.z,
-                18,
-                0.3D,
-                0.3D,
-                0.3D,
-                0.01D
-        );
-    }
-
-    // =========================================================
-    // 火焰蓄能
-    // =========================================================
-
-    private void tickFireCharge() {
-
-        /*
-         * P2之前没有火焰蓄能。
-         */
-        if (entityData.get(PHASE) < 2) {
-            return;
-        }
-
-        fireChargeTimer++;
-
-        /*
-         * 每2秒获得1层。
-         */
-        if (fireChargeTimer >= FIRE_CHARGE_INTERVAL) {
-
-            fireChargeTimer = 0;
-
-            int stacks =
-                    entityData.get(FIRE_MARK_STACKS);
-
-            stacks =
-                    Math.min(
-                            10,
-                            stacks + 1
-                    );
-
-            entityData.set(
-                    FIRE_MARK_STACKS,
-                    stacks
-            );
-
-            showFireChargeStack(stacks);
-
-            /*
-             * 10层：
-             * 立即释放全部火焰元素。
-             */
-            if (stacks >= 10) {
-
-                entityData.set(
-                        FIRE_MARK_STACKS,
-                        0
-                );
-
-                explodeFireCharge();
-            }
-        }
-
-        /*
-         * 火焰元素越多，小樱身边火焰越明显。
-         */
-        if (level() instanceof ServerLevel sl) {
-
-            int stacks =
-                    entityData.get(FIRE_MARK_STACKS);
-
-            if (stacks > 0 &&
-                    tickCount % 5 == 0) {
-
-                double radius =
-                        1.1D +
-                        stacks * 0.10D;
-
-                for (int i = 0;
-                     i < stacks + 4;
-                     i++) {
-
-                    double angle =
-                            random.nextDouble() *
-                            Math.PI *
-                            2.0D;
-
-                    sl.sendParticles(
-                            ModParticles.SAKURA_FLAME.get(),
-                            getX() +
-                                    Math.cos(angle) * radius,
-                            getY() + 0.15D +
-                                    random.nextDouble() * 1.2D,
-                            getZ() +
-                                    Math.sin(angle) * radius,
-                            1,
-                            0,
-                            0.01D,
-                            0,
-                            0
-                    );
-                }
-            }
-        }
-    }
-
-    private void showFireChargeStack(int stacks) {
-
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.FIRECHARGE_USE,
-                SoundSource.HOSTILE,
-                0.8F,
-                0.85F + stacks * 0.03F
-        );
-
-        announce(
-                "§6🔥 小樱火焰元素：§e"
-                        + stacks
-                        + "§6/10"
-        );
-
-        if (level() instanceof ServerLevel sl) {
-
-            sl.sendParticles(
-                    ModParticles.SAKURA_MAGIC.get(),
-                    getX(),
-                    getY() + 1.0D,
-                    getZ(),
-                    4 + stacks,
-                    0.5D,
-                    0.7D,
-                    0.5D,
-                    0.01D
+            bossEvent.setColor(
+                    BossEvent.BossBarColor.RED
             );
         }
     }
 
     // =========================================================
-    // 火焰爆炸
-    // =========================================================
-
-    private void explodeFireCharge() {
-
-        if (!(level() instanceof ServerLevel sl)) {
-            return;
-        }
-
-        /*
-         * attack_03：
-         * 这里作为短时间的火焰爆炸动作。
-         */
-        entityData.set(
-                ATTACK_INDEX,
-                3
-        );
-
-        entityData.set(
-                ATTACK_TIMER,
-                27
-        );
-
-        announce(
-                "§4☠ 小樱释放了火焰爆炸！"
-        );
-
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.GENERIC_EXPLODE,
-                SoundSource.HOSTILE,
-                3.0F,
-                0.65F
-        );
-
-        /*
-         * 爆炸中心。
-         */
-        sl.sendParticles(
-                ModParticles.SAKURA_EXPLOSION.get(),
-                getX(),
-                getY() + 1.0D,
-                getZ(),
-                1,
-                1.0D,
-                0.5D,
-                1.0D,
-                0
-        );
-
-        /*
-         * 第二圈魔法火花。
-         */
-        sl.sendParticles(
-                ModParticles.SAKURA_MAGIC.get(),
-                getX(),
-                getY() + 1.0D,
-                getZ(),
-                40,
-                2.0D,
-                1.0D,
-                2.0D,
-                0.04D
-        );
-
-        List<Player> players =
-                players(30);
-
-        for (Player player : players) {
-
-            /*
-             * 全团基础魔法伤害。
-             */
-            magicDamage(
-                    player,
-                    FIRE_EXPLOSION_DAMAGE
-            );
-
-            /*
-             * 5格内队友判定。
-             */
-            int nearby =
-                    0;
-
-            for (Player other : players) {
-
-                if (other == player) {
-                    continue;
-                }
-
-                if (player.distanceToSqr(other) <= 25.0D) {
-                    nearby++;
-                }
-            }
-
-            /*
-             * 每一个5格内队友都会增加余烬伤害。
-             */
-            if (nearby > 0) {
-
-                magicDamage(
-                        player,
-                        EMBER_DAMAGE * nearby
-                );
-
-                tell(
-                        player,
-                        "§c⚠ 你与队友距离过近，受到额外余烬伤害！"
-                );
-
-                sl.sendParticles(
-                        ModParticles.SAKURA_WARNING.get(),
-                        player.getX(),
-                        player.getY() + 0.1D,
-                        player.getZ(),
-                        12,
-                        0.5D,
-                        0.1D,
-                        0.5D,
-                        0
-                );
-            }
-        }
-    }
-
-    // =========================================================
-    // 火焰喷发：每8秒点名
-    // =========================================================
-
-    private void tickEruption() {
-
-        if (entityData.get(PHASE) < 3) {
-            return;
-        }
-
-        /*
-         * 每160tick = 8秒生成一个新的火焰。
-         *
-         * 这个计时器直接使用tickCount，
-         * 避免因为上一个火焰还在倒计时而卡住。
-         */
-        if (tickCount % ERUPTION_INTERVAL != 0) {
-            return;
-        }
-
-        List<Player> players =
-                players(30);
-
-        if (players.isEmpty()) {
-            return;
-        }
-
-        /*
-         * 随机点名。
-         */
-        Player target =
-                players.get(
-                        random.nextInt(players.size())
-                );
-
-        BlockPos pos =
-                BlockPos.containing(
-                        target.getX(),
-                        target.getY(),
-                        target.getZ()
-                );
-
-        EruptionMarker marker =
-                new EruptionMarker(
-                        pos,
-                        ERUPTION_DELAY
-                );
-
-        eruptionMarkers.add(marker);
-
-        /*
-         * 使用 attack_06 作为火焰喷发视觉动作。
-         */
-        entityData.set(
-                ATTACK_INDEX,
-                6
-        );
-
-        entityData.set(
-                ATTACK_TIMER,
-                24
-        );
-
-        tell(
-                target,
-                "§c⚠ 烈焰标记锁定了你！§e5秒后§c爆发，快离开脚下！"
-        );
-
-        announce(
-                "§c🔥 小樱释放火焰喷发！"
-        );
-
-        level().playSound(
-                null,
-                pos,
-                SoundEvents.FIRECHARGE_USE,
-                SoundSource.HOSTILE,
-                1.5F,
-                0.75F
-        );
-    }
-
-    // =========================================================
-    // 火焰喷发倒计时
-    // =========================================================
-
-    private void tickEruptionMarkers() {
-
-        if (eruptionMarkers.isEmpty()) {
-            return;
-        }
-
-        Iterator<EruptionMarker> iterator =
-                eruptionMarkers.iterator();
-
-        while (iterator.hasNext()) {
-
-            EruptionMarker marker =
-                    iterator.next();
-
-            /*
-             * 倒计时。
-             */
-            marker.ticksRemaining--;
-
-            spawnEruptionWarning(marker);
-
-            /*
-             * 0：
-             * 爆炸。
-             */
-            if (marker.ticksRemaining <= 0) {
-
-                explodeEruption(marker);
-
-                iterator.remove();
-            }
-        }
-    }
-
-    private void spawnEruptionWarning(
-            EruptionMarker marker
-    ) {
-
-        if (!(level() instanceof ServerLevel sl)) {
-            return;
-        }
-
-        BlockPos pos =
-                marker.pos;
-
-        /*
-         * 外圈火焰。
-         */
-        for (int i = 0;
-             i < 10;
-             i++) {
-
-            double angle =
-                    random.nextDouble() *
-                    Math.PI *
-                    2.0D;
-
-            double radius =
-                    0.7D +
-                    random.nextDouble() * 1.4D;
-
-            sl.sendParticles(
-                    ModParticles.SAKURA_WARNING.get(),
-                    pos.getX() + 0.5D +
-                            Math.cos(angle) * radius,
-                    pos.getY() + 0.08D,
-                    pos.getZ() + 0.5D +
-                            Math.sin(angle) * radius,
-                    1,
-                    0,
-                    0,
-                    0,
-                    0
-            );
-        }
-
-        /*
-         * 中心火焰。
-         */
-        int intensity =
-                marker.ticksRemaining <= 40
-                        ? 8
-                        : 3;
-
-        sl.sendParticles(
-                ModParticles.SAKURA_FLAME.get(),
-                pos.getX() + 0.5D,
-                pos.getY() + 0.15D,
-                pos.getZ() + 0.5D,
-                intensity,
-                0.35D,
-                0.08D,
-                0.35D,
-                0.01D
-        );
-
-        /*
-         * 最后2秒加警告。
-         */
-        if (marker.ticksRemaining <= 40 &&
-                tickCount % 5 == 0) {
-
-            sl.sendParticles(
-                    ModParticles.SAKURA_MAGIC.get(),
-                    pos.getX() + 0.5D,
-                    pos.getY() + 0.4D,
-                    pos.getZ() + 0.5D,
-                    6,
-                    0.45D,
-                    0.4D,
-                    0.45D,
-                    0.02D
-            );
-        }
-    }
-
-    private void explodeEruption(
-            EruptionMarker marker
-    ) {
-
-        if (!(level() instanceof ServerLevel sl)) {
-            return;
-        }
-
-        BlockPos pos =
-                marker.pos;
-
-        level().playSound(
-                null,
-                pos,
-                SoundEvents.GENERIC_EXPLODE,
-                SoundSource.HOSTILE,
-                2.2F,
-                0.9F
-        );
-
-        /*
-         * 爆炸贴图。
-         */
-        sl.sendParticles(
-                ModParticles.SAKURA_ERUPTION.get(),
-                pos.getX() + 0.5D,
-                pos.getY() + 0.4D,
-                pos.getZ() + 0.5D,
-                1,
-                0,
-                0,
-                0,
-                0
-        );
-
-        /*
-         * 魔法爆炸光。
-         */
-        sl.sendParticles(
-                ModParticles.SAKURA_EXPLOSION.get(),
-                pos.getX() + 0.5D,
-                pos.getY() + 0.5D,
-                pos.getZ() + 0.5D,
-                1,
-                0.5D,
-                0.3D,
-                0.5D,
-                0
-        );
-
-        /*
-         * 3格范围。
-         */
-        AABB area =
-                new AABB(pos).inflate(3.0D);
-
-        for (Player player :
-                sl.getEntitiesOfClass(
-                        Player.class,
-                        area
-                )) {
-
-            if (!valid(player)) {
-                continue;
-            }
-
-            double dx =
-                    player.getX() -
-                    (pos.getX() + 0.5D);
-
-            double dz =
-                    player.getZ() -
-                    (pos.getZ() + 0.5D);
-
-            if (dx * dx + dz * dz <= 9.0D) {
-
-                magicDamage(
-                        player,
-                        ERUPTION_DAMAGE
-                );
-            }
-        }
-    }
-
-    // =========================================================
-    // 阶段
+    // 阶段切换
     // =========================================================
 
     private void updatePhase() {
-
         float ratio =
-                getHealth() /
-                getMaxHealth();
+                getHealth() / getMaxHealth();
 
         int nextPhase;
 
@@ -1432,30 +585,10 @@ public class SakurawitchEntity extends PathfinderMob {
         );
 
         /*
-         * 阶段切换时清掉当前技能状态，
-         * 防止切阶段卡技能。
+         * 阶段切换时取消当前施法动作，
+         * 但不清除二阶段火焰元素。
          */
-        cancelSkill();
-
-        /*
-         * 进入P2时重新从0开始蓄能。
-         */
-        if (nextPhase == 2) {
-            fireChargeTimer = 0;
-
-            entityData.set(
-                    FIRE_MARK_STACKS,
-                    0
-            );
-        }
-
-        /*
-         * P3开始时不清掉已有火焰，
-         * 但重新让喷发按8秒节奏开始。
-         */
-        if (nextPhase == 3) {
-            eruptionMarkers.clear();
-        }
+        cancelCurrentSkill();
 
         level().playSound(
                 null,
@@ -1466,7 +599,7 @@ public class SakurawitchEntity extends PathfinderMob {
                 SoundSource.HOSTILE,
                 2.0F,
                 nextPhase == 2
-                        ? 0.6F
+                        ? 0.65F
                         : 1.1F
         );
 
@@ -1476,149 +609,1213 @@ public class SakurawitchEntity extends PathfinderMob {
                         + "阶段！"
         );
 
-        if (level() instanceof ServerLevel sl) {
-
-            sl.sendParticles(
+        if (level() instanceof ServerLevel serverLevel) {
+            serverLevel.sendParticles(
                     ModParticles.SAKURA_MAGIC.get(),
                     getX(),
                     getY() + 1.0D,
                     getZ(),
-                    30,
+                    35,
                     1.5D,
                     1.0D,
                     1.5D,
-                    0.03D
+                    0.08D
             );
 
-            sl.sendParticles(
-                    ModParticles.SAKURA_FLAME.get(),
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_PETAL.get(),
                     getX(),
-                    getY() + 1.0D,
+                    getY() + 1.2D,
                     getZ(),
-                    30,
-                    1.5D,
-                    1.0D,
-                    1.5D,
+                    25,
+                    1.8D,
+                    1.2D,
+                    1.8D,
                     0.03D
             );
         }
-    }
-
-    // =========================================================
-    // Boss血条
-    // =========================================================
-
-    private void updateBossBar() {
-
-        float hp =
-                Math.max(
-                        0.0F,
-                        Math.min(
-                                1.0F,
-                                getHealth() /
-                                        getMaxHealth()
-                        )
-                );
-
-        bossEvent.setProgress(hp);
-
-        int phase =
-                entityData.get(PHASE);
-
-        bossEvent.setColor(
-                phase == 1
-                        ? BossEvent.BossBarColor.GREEN
-                        : phase == 2
-                        ? BossEvent.BossBarColor.YELLOW
-                        : BossEvent.BossBarColor.RED
-        );
-    }
-
-    // =========================================================
-    // 目标
-    // =========================================================
-
-    private void updateTarget() {
-
-        if (tickCount % 20 != 0) {
-            return;
-        }
-
-        Entity current =
-                getTarget();
-
-        if (current instanceof Player player &&
-                valid(player) &&
-                distanceToSqr(player) <= 35.0D * 35.0D) {
-            return;
-        }
-
-        Player nearest =
-                level().getNearestPlayer(
-                        this,
-                        35
-                );
-
-        if (valid(nearest)) {
-            setTarget(nearest);
-        }
-    }
-
-    // =========================================================
-    // 动画状态
-    // =========================================================
-
-    private void updateWalking() {
-
-        double dx =
-                getX() - xo;
-
-        double dz =
-                getZ() - zo;
-
-        boolean moving =
-                dx * dx + dz * dz > 1.0E-5D;
 
         /*
-         * 技能期间不播放走路。
+         * 进入第三阶段时，
+         * 从新的 8 秒周期开始计算火焰喷发。
          */
+        if (nextPhase == 3) {
+            eruptionCD = ERUPTION_INTERVAL;
+        }
+    }
+
+    // =========================================================
+    // 普通魔法攻击
+    // =========================================================
+
+    private void tickNormalMagicAttack() {
         if (entityData.get(SKILL_STATE) != IDLE) {
-            moving = false;
+            return;
         }
 
         if (entityData.get(ATTACK_TIMER) > 0) {
-            moving = false;
-        }
-
-        entityData.set(
-                IS_WALKING,
-                moving
-        );
-    }
-
-    private void tickAttackTimer() {
-
-        int timer =
-                entityData.get(ATTACK_TIMER);
-
-        if (timer <= 0) {
             return;
         }
 
-        timer--;
+        if (normalAttackTimer > 0) {
+            normalAttackTimer--;
+            return;
+        }
+
+        Player target = getNearestCombatPlayer();
+
+        if (!valid(target)) {
+            normalAttackTimer = 20;
+            return;
+        }
+
+        /*
+         * 小樱普通攻击不是近战砍人，
+         * 而是魔法攻击。
+         */
+        lookAt(
+                target.position().add(
+                        0.0D,
+                        1.0D,
+                        0.0D
+                )
+        );
+
+        entityData.set(
+                ATTACK_INDEX,
+                1
+        );
 
         entityData.set(
                 ATTACK_TIMER,
-                timer
+                ATTACK_LENGTH
         );
 
-        if (timer == 0) {
+        getNavigation().stop();
 
-            entityData.set(
-                    ATTACK_INDEX,
-                    0
+        setDeltaMovement(
+                Vec3.ZERO
+        );
+
+        magicDamage(
+                target,
+                NORMAL_MAGIC_DAMAGE
+        );
+
+        addMagicVulnerability(target);
+
+        /*
+         * 普通魔法攻击视觉。
+         */
+        if (level() instanceof ServerLevel serverLevel) {
+            Vec3 start =
+                    position().add(
+                            0.0D,
+                            1.45D,
+                            0.0D
+                    );
+
+            Vec3 direction =
+                    target.position()
+                            .add(
+                                    0.0D,
+                                    1.0D,
+                                    0.0D
+                            )
+                            .subtract(start)
+                            .normalize();
+
+            for (int i = 1; i <= 8; i++) {
+                Vec3 pos =
+                        start.add(
+                                direction.scale(
+                                        i * 0.65D
+                                )
+                        );
+
+                serverLevel.sendParticles(
+                        ModParticles.SAKURA_MAGIC.get(),
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        1,
+                        0.03D,
+                        0.03D,
+                        0.03D,
+                        0.0D
+                );
+            }
+
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_MAGIC.get(),
+                    target.getX(),
+                    target.getY() + 1.0D,
+                    target.getZ(),
+                    10,
+                    0.35D,
+                    0.45D,
+                    0.35D,
+                    0.03D
             );
         }
+
+        level().playSound(
+                null,
+                blockPosition(),
+                SoundEvents.ENCHANTMENT_TABLE_USE,
+                SoundSource.HOSTILE,
+                1.2F,
+                0.8F
+        );
+
+        normalAttackTimer =
+                NORMAL_ATTACK_INTERVAL;
+    }
+
+    // =========================================================
+    // 魔法易伤
+    // =========================================================
+
+    private void addMagicVulnerability(Player player) {
+        if (!valid(player)) {
+            return;
+        }
+
+        MobEffectInstance old =
+                player.getEffect(
+                        ModEffects.MAGIC_VULNERABILITY.get()
+                );
+
+        int amplifier;
+
+        if (old == null) {
+            amplifier = 0;
+        } else {
+            amplifier =
+                    Math.min(
+                            9,
+                            old.getAmplifier() + 1
+                    );
+        }
+
+        /*
+         * 10 层上限。
+         */
+        player.addEffect(
+                new MobEffectInstance(
+                        ModEffects.MAGIC_VULNERABILITY.get(),
+                        200,
+                        amplifier,
+                        false,
+                        true,
+                        true
+                )
+        );
+    }
+
+    // =========================================================
+    // 火焰喷射
+    // =========================================================
+
+    private void tickSpraySkill() {
+        int state =
+                entityData.get(SKILL_STATE);
+
+        /*
+         * 蓄力阶段
+         */
+        if (state == SPRAY_CHARGE) {
+            tickSprayCharge();
+            return;
+        }
+
+        /*
+         * 释放阶段
+         */
+        if (state == SPRAY_CAST) {
+            tickSprayCast();
+            return;
+        }
+
+        /*
+         * 只有空闲状态才能开始新的火焰喷射。
+         */
+        if (state != IDLE) {
+            return;
+        }
+
+        if (sprayCD > 0) {
+            sprayCD--;
+            return;
+        }
+
+        List<Player> players =
+                players(30.0D);
+
+        if (players.isEmpty()) {
+            sprayCD = 40;
+            return;
+        }
+
+        /*
+         * 随机点名。
+         */
+        sprayTarget =
+                players.get(
+                        random.nextInt(
+                                players.size()
+                        )
+                );
+
+        entityData.set(
+                SKILL_STATE,
+                SPRAY_CHARGE
+        );
+
+        /*
+         * attack_02 = 火焰喷射蓄力动作
+         */
+        entityData.set(
+                ATTACK_INDEX,
+                2
+        );
+
+        entityData.set(
+                ATTACK_TIMER,
+                SPRAY_CHARGE_TICKS
+                        + SPRAY_CAST_TICKS
+                        + 10
+        );
+
+        sprayTimer = 0;
+
+        getNavigation().stop();
+
+        setDeltaMovement(
+                Vec3.ZERO
+        );
+
+        if (valid(sprayTarget)) {
+            tell(
+                    sprayTarget,
+                    "§c⚠ 小樱正在锁定你！"
+                            + " 火焰喷射即将释放！"
+            );
+        }
+
+        announce(
+                "§d✦ 小樱开始蓄力火焰喷射！"
+        );
+
+        level().playSound(
+                null,
+                blockPosition(),
+                SoundEvents.BLAZE_SHOOT,
+                SoundSource.HOSTILE,
+                2.0F,
+                0.55F
+        );
+    }
+
+    private void tickSprayCharge() {
+        sprayTimer++;
+
+        getNavigation().stop();
+
+        setDeltaMovement(
+                Vec3.ZERO
+        );
+
+        if (valid(sprayTarget)) {
+            lookAt(
+                    sprayTarget.position().add(
+                            0.0D,
+                            1.0D,
+                            0.0D
+                    )
+            );
+        }
+
+        if (!(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        /*
+         * 小樱自身蓄力魔法粒子。
+         */
+        for (int i = 0; i < 10; i++) {
+            double angle =
+                    random.nextDouble()
+                            * Math.PI * 2.0D;
+
+            double radius =
+                    0.45D
+                            + random.nextDouble()
+                            * 0.9D;
+
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_MAGIC.get(),
+                    getX()
+                            + Math.cos(angle)
+                            * radius,
+                    getY()
+                            + 0.15D
+                            + random.nextDouble()
+                            * 1.2D,
+                    getZ()
+                            + Math.sin(angle)
+                            * radius,
+                    1,
+                    0.0D,
+                    0.025D,
+                    0.0D,
+                    0.0D
+            );
+        }
+
+        /*
+         * 被点名玩家脚下持续出现警告粒子。
+         */
+        if (valid(sprayTarget)) {
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_WARNING.get(),
+                    sprayTarget.getX(),
+                    sprayTarget.getY() + 0.05D,
+                    sprayTarget.getZ(),
+                    4,
+                    0.35D,
+                    0.03D,
+                    0.35D,
+                    0.01D
+            );
+        }
+
+        /*
+         * 蓄力完成。
+         */
+        if (sprayTimer >= SPRAY_CHARGE_TICKS) {
+            entityData.set(
+                    SKILL_STATE,
+                    SPRAY_CAST
+            );
+
+            sprayTimer = 0;
+
+            castSpray();
+        }
+    }
+
+    private void tickSprayCast() {
+        sprayTimer++;
+
+        getNavigation().stop();
+
+        setDeltaMovement(
+                Vec3.ZERO
+        );
+
+        /*
+         * 释放期间继续朝向目标。
+         */
+        if (valid(sprayTarget)) {
+            lookAt(
+                    sprayTarget.position().add(
+                            0.0D,
+                            1.0D,
+                            0.0D
+                    )
+            );
+        }
+
+        /*
+         * 释放阶段的持续火焰粒子。
+         */
+        if (level() instanceof ServerLevel serverLevel) {
+            Vec3 direction =
+                    getLookAngle().normalize();
+
+            Vec3 start =
+                    position().add(
+                            0.0D,
+                            1.35D,
+                            0.0D
+                    );
+
+            for (int i = 0; i < 8; i++) {
+                double distance =
+                        1.0D + i * 1.5D;
+
+                Vec3 pos =
+                        start.add(
+                                direction.scale(
+                                        distance
+                                )
+                        );
+
+                serverLevel.sendParticles(
+                        ModParticles.SAKURA_FLAME.get(),
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        4,
+                        0.35D,
+                        0.35D,
+                        0.35D,
+                        0.02D
+                );
+            }
+        }
+
+        if (sprayTimer >= SPRAY_CAST_TICKS) {
+            cancelCurrentSkill();
+
+            sprayTarget = null;
+
+            /*
+             * 从一次喷射结束后开始重新计算 30 秒。
+             */
+            sprayCD = SPRAY_CD;
+        }
+    }
+
+    // =========================================================
+    // 火焰喷射实际伤害
+    // =========================================================
+
+    private void castSpray() {
+        if (!(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        Vec3 start =
+                position().add(
+                        0.0D,
+                        1.35D,
+                        0.0D
+                );
+
+        Vec3 direction;
+
+        if (valid(sprayTarget)) {
+            direction =
+                    sprayTarget.position()
+                            .add(
+                                    0.0D,
+                                    1.0D,
+                                    0.0D
+                            )
+                            .subtract(start)
+                            .normalize();
+        } else {
+            direction =
+                    getLookAngle()
+                            .normalize();
+        }
+
+        List<Player> hit =
+                new ArrayList<>();
+
+        /*
+         * 15 格射程。
+         *
+         * dot >= cos(60°)
+         * 即前方约 120° 扇形。
+         */
+        for (Player player :
+                serverLevel.getEntitiesOfClass(
+                        Player.class,
+                        getBoundingBox()
+                                .inflate(15.0D)
+                )) {
+
+            if (!valid(player)) {
+                continue;
+            }
+
+            Vec3 targetPoint =
+                    player.position()
+                            .add(
+                                    0.0D,
+                                    1.0D,
+                                    0.0D
+                            );
+
+            Vec3 delta =
+                    targetPoint.subtract(start);
+
+            double distance =
+                    delta.length();
+
+            if (distance <= 0.01D
+                    || distance > 15.0D) {
+                continue;
+            }
+
+            Vec3 normalized =
+                    delta.normalize();
+
+            if (normalized.dot(direction) >= 0.5D) {
+                hit.add(player);
+            }
+        }
+
+        /*
+         * 火焰喷射的核心机制：
+         *
+         * 多名玩家抱团时，
+         * 火焰喷射伤害降低 50%。
+         *
+         * 这就是奶块攻略里常见的
+         * “抱团吃喷火减伤”机制。
+         */
+        boolean grouped =
+                hit.size() >= 2;
+
+        float damage =
+                grouped
+                        ? SPRAY_DAMAGE * 0.5F
+                        : SPRAY_DAMAGE;
+
+        for (Player player : hit) {
+            magicDamage(
+                    player,
+                    damage
+            );
+        }
+
+        if (grouped) {
+            announce(
+                    "§a✔ 多名玩家靠近，火焰喷射伤害降低！"
+            );
+        }
+
+        if (valid(sprayTarget)
+                && !hit.contains(sprayTarget)) {
+
+            tell(
+                    sprayTarget,
+                    "§a✔ 你成功躲开了火焰喷射！"
+            );
+        }
+
+        /*
+         * 扇形火焰视觉。
+         */
+        for (int ring = 1; ring <= 6; ring++) {
+            double distance =
+                    ring * 2.0D;
+
+            double halfAngle =
+                    Math.toRadians(60.0D);
+
+            int count =
+                    9 + ring * 2;
+
+            for (int i = 0; i < count; i++) {
+                double ratio =
+                        count <= 1
+                                ? 0.0D
+                                : (double) i
+                                / (count - 1);
+
+                double angle =
+                        -halfAngle
+                                + ratio
+                                * halfAngle
+                                * 2.0D;
+
+                Vec3 forward =
+                        rotateHorizontal(
+                                direction,
+                                angle
+                        );
+
+                Vec3 pos =
+                        start.add(
+                                forward.scale(
+                                        distance
+                                )
+                        );
+
+                serverLevel.sendParticles(
+                        ModParticles.SAKURA_FLAME.get(),
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        1,
+                        0.15D,
+                        0.25D,
+                        0.15D,
+                        0.01D
+                );
+            }
+        }
+
+        serverLevel.sendParticles(
+                ModParticles.SAKURA_EXPLOSION.get(),
+                start.x,
+                start.y,
+                start.z,
+                18,
+                0.8D,
+                0.6D,
+                0.8D,
+                0.04D
+        );
+
+        level().playSound(
+                null,
+                blockPosition(),
+                SoundEvents.BLAZE_SHOOT,
+                SoundSource.HOSTILE,
+                2.5F,
+                0.7F
+        );
+    }
+
+    // =========================================================
+    // 火焰蓄能
+    // =========================================================
+
+    private void tickFireCharge() {
+        if (entityData.get(PHASE) < 2) {
+            return;
+        }
+
+        fireChargeTimer++;
+
+        /*
+         * 环绕小樱的火焰元素视觉。
+         */
+        if (fireChargeTimer % 5 == 0
+                && level() instanceof ServerLevel serverLevel) {
+
+            int stacks =
+                    entityData.get(
+                            FIRE_MARK_STACKS
+                    );
+
+            double radius =
+                    1.1D
+                            + stacks * 0.08D;
+
+            for (int i = 0; i < 6; i++) {
+                double angle =
+                        random.nextDouble()
+                                * Math.PI * 2.0D;
+
+                serverLevel.sendParticles(
+                        ModParticles.SAKURA_FLAME.get(),
+                        getX()
+                                + Math.cos(angle)
+                                * radius,
+                        getY()
+                                + 0.15D
+                                + random.nextDouble()
+                                * 1.5D,
+                        getZ()
+                                + Math.sin(angle)
+                                * radius,
+                        1,
+                        0.0D,
+                        0.02D,
+                        0.0D,
+                        0.0D
+                );
+            }
+        }
+
+        /*
+         * 每 2 秒增加一层。
+         */
+        if (fireChargeTimer < FIRE_CHARGE_INTERVAL) {
+            return;
+        }
+
+        fireChargeTimer = 0;
+
+        int stacks =
+                entityData.get(
+                        FIRE_MARK_STACKS
+                );
+
+        stacks =
+                Math.min(
+                        10,
+                        stacks + 1
+                );
+
+        entityData.set(
+                FIRE_MARK_STACKS,
+                stacks
+        );
+
+        level().playSound(
+                null,
+                blockPosition(),
+                SoundEvents.FIRECHARGE_USE,
+                SoundSource.HOSTILE,
+                0.8F,
+                0.9F + stacks * 0.03F
+        );
+
+        if (level() instanceof ServerLevel serverLevel) {
+
+            /*
+             * 每增加一层明显闪一下。
+             */
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_MAGIC.get(),
+                    getX(),
+                    getY() + 1.0D,
+                    getZ(),
+                    8,
+                    0.5D,
+                    0.6D,
+                    0.5D,
+                    0.02D
+            );
+        }
+
+        /*
+         * 10 层爆炸。
+         */
+        if (stacks >= 10) {
+            entityData.set(
+                    FIRE_MARK_STACKS,
+                    0
+            );
+
+            explodeFireCharge();
+        }
+    }
+
+    // =========================================================
+    // 火焰爆炸
+    // =========================================================
+
+    private void explodeFireCharge() {
+        if (!(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        announce(
+                "§4☠ 小樱释放了火焰爆炸！"
+        );
+
+        level().playSound(
+                null,
+                blockPosition(),
+                SoundEvents.GENERIC_EXPLODE,
+                SoundSource.HOSTILE,
+                3.0F,
+                0.65F
+        );
+
+        serverLevel.sendParticles(
+                ModParticles.SAKURA_EXPLOSION.get(),
+                getX(),
+                getY() + 1.0D,
+                getZ(),
+                35,
+                2.0D,
+                1.2D,
+                2.0D,
+                0.08D
+        );
+
+        List<Player> players =
+                players(30.0D);
+
+        /*
+         * 全队基础魔法伤害。
+         */
+        for (Player player : players) {
+
+            if (!valid(player)) {
+                continue;
+            }
+
+            magicDamage(
+                    player,
+                    FIRE_EXPLOSION_DAMAGE
+            );
+        }
+
+        /*
+         * 5 格内队友产生额外余烬伤害。
+         *
+         * 所以玩家应该分散。
+         */
+        for (Player player : players) {
+
+            if (!valid(player)) {
+                continue;
+            }
+
+            int nearby =
+                    0;
+
+            for (Player other : players) {
+
+                if (other == player) {
+                    continue;
+                }
+
+                if (other.distanceToSqr(player) <= 25.0D) {
+                    nearby++;
+                }
+            }
+
+            if (nearby <= 0) {
+                continue;
+            }
+
+            /*
+             * 每个过近队友增加一次余烬伤害。
+             */
+            magicDamage(
+                    player,
+                    EMBER_DAMAGE * nearby
+            );
+
+            tell(
+                    player,
+                    "§c⚠ 你与队友距离过近！"
+                            + " 受到额外余烬伤害！"
+            );
+        }
+    }
+
+    // =========================================================
+    // 火焰喷发
+    // =========================================================
+
+    private void tickEruptionSkill() {
+
+        if (entityData.get(PHASE) < 3) {
+            return;
+        }
+
+        /*
+         * 当前已经在进行一次火焰喷发。
+         */
+        if (entityData.get(SKILL_STATE) == ERUPTION) {
+            tickEruptionCharge();
+            return;
+        }
+
+        if (eruptionCD > 0) {
+            eruptionCD--;
+            return;
+        }
+
+        /*
+         * 如果小樱正在火焰喷射蓄力，
+         * 不强行打断当前技能。
+         */
+        if (entityData.get(SKILL_STATE) != IDLE) {
+            return;
+        }
+
+        List<Player> players =
+                players(30.0D);
+
+        if (players.isEmpty()) {
+            eruptionCD = 40;
+            return;
+        }
+
+        /*
+         * 随机点名。
+         */
+        eruptionTarget =
+                players.get(
+                        random.nextInt(
+                                players.size()
+                        )
+                );
+
+        eruptionPos =
+                eruptionTarget.blockPosition();
+
+        eruptionTimer =
+                ERUPTION_DELAY;
+
+        entityData.set(
+                SKILL_STATE,
+                ERUPTION
+        );
+
+        /*
+         * attack_04 用作火焰喷发动画。
+         */
+        entityData.set(
+                ATTACK_INDEX,
+                4
+        );
+
+        entityData.set(
+                ATTACK_TIMER,
+                ERUPTION_DELAY + ATTACK_LENGTH
+        );
+
+        getNavigation().stop();
+
+        setDeltaMovement(
+                Vec3.ZERO
+        );
+
+        /*
+         * 注意：
+         *
+         * CD 在“开始点名”时就重新设置。
+         * 所以点名间隔是严格 8 秒，
+         * 而不是爆炸以后再等 8 秒。
+         */
+        eruptionCD =
+                ERUPTION_INTERVAL;
+
+        tell(
+                eruptionTarget,
+                "§c⚠ 你脚下出现了火焰！"
+                        + " 5 秒后爆发，快离开！"
+        );
+
+        announce(
+                "§d✦ 小樱释放火焰喷发！"
+        );
+
+        level().playSound(
+                null,
+                eruptionPos,
+                SoundEvents.FIRECHARGE_USE,
+                SoundSource.HOSTILE,
+                1.5F,
+                0.8F
+        );
+    }
+
+    private void tickEruptionCharge() {
+
+        getNavigation().stop();
+
+        setDeltaMovement(
+                Vec3.ZERO
+        );
+
+        if (eruptionPos == null) {
+            cancelCurrentSkill();
+            return;
+        }
+
+        if (!(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        double centerX =
+                eruptionPos.getX() + 0.5D;
+
+        double centerY =
+                eruptionPos.getY() + 0.05D;
+
+        double centerZ =
+                eruptionPos.getZ() + 0.5D;
+
+        /*
+         * 圆形火焰警告区域。
+         */
+        int ringParticles =
+                20;
+
+        for (int i = 0; i < ringParticles; i++) {
+
+            double angle =
+                    i
+                            * Math.PI
+                            * 2.0D
+                            / ringParticles;
+
+            double radius =
+                    1.6D;
+
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_WARNING.get(),
+                    centerX
+                            + Math.cos(angle)
+                            * radius,
+                    centerY,
+                    centerZ
+                            + Math.sin(angle)
+                            * radius,
+                    1,
+                    0.0D,
+                    0.0D,
+                    0.0D,
+                    0.0D
+            );
+        }
+
+        /*
+         * 倒计时最后 2 秒，
+         * 中心火焰明显增强。
+         */
+        if (eruptionTimer <= 40) {
+
+            double scale =
+                    0.5D
+                            + (40 - eruptionTimer)
+                            * 0.025D;
+
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_FLAME.get(),
+                    centerX,
+                    centerY + 0.15D,
+                    centerZ,
+                    10,
+                    scale,
+                    0.15D,
+                    scale,
+                    0.03D
+            );
+        }
+
+        eruptionTimer--;
+
+        /*
+         * 5 秒结束，爆炸。
+         */
+        if (eruptionTimer <= 0) {
+
+            explodeEruption();
+
+            eruptionPos = null;
+
+            eruptionTarget = null;
+
+            cancelCurrentSkill();
+        }
+    }
+
+    // =========================================================
+    // 火焰喷发爆炸
+    // =========================================================
+
+    private void explodeEruption() {
+
+        if (!(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        if (eruptionPos == null) {
+            return;
+        }
+
+        BlockPos pos =
+                eruptionPos;
+
+        double centerX =
+                pos.getX() + 0.5D;
+
+        double centerY =
+                pos.getY() + 0.5D;
+
+        double centerZ =
+                pos.getZ() + 0.5D;
+
+        level().playSound(
+                null,
+                pos,
+                SoundEvents.GENERIC_EXPLODE,
+                SoundSource.HOSTILE,
+                2.2F,
+                0.9F
+        );
+
+        serverLevel.sendParticles(
+                ModParticles.SAKURA_ERUPTION.get(),
+                centerX,
+                centerY,
+                centerZ,
+                35,
+                1.5D,
+                0.7D,
+                1.5D,
+                0.08D
+        );
+
+        serverLevel.sendParticles(
+                ModParticles.SAKURA_EXPLOSION.get(),
+                centerX,
+                centerY,
+                centerZ,
+                20,
+                1.0D,
+                0.6D,
+                1.0D,
+                0.05D
+        );
+
+        /*
+         * 3 格爆炸范围。
+         */
+        AABB box =
+                new AABB(pos)
+                        .inflate(3.0D);
+
+        for (Player player :
+                serverLevel.getEntitiesOfClass(
+                        Player.class,
+                        box
+                )) {
+
+            if (!valid(player)) {
+                continue;
+            }
+
+            double dx =
+                    player.getX()
+                            - centerX;
+
+            double dz =
+                    player.getZ()
+                            - centerZ;
+
+            /*
+             * 只判断水平距离。
+             */
+            if (dx * dx + dz * dz <= 9.0D) {
+
+                magicDamage(
+                        player,
+                        ERUPTION_DAMAGE
+                );
+            }
+        }
+    }
+
+    // =========================================================
+    // 取消当前技能
+    // =========================================================
+
+    private void cancelCurrentSkill() {
+
+        entityData.set(
+                SKILL_STATE,
+                IDLE
+        );
+
+        entityData.set(
+                ATTACK_INDEX,
+                0
+        );
+
+        entityData.set(
+                ATTACK_TIMER,
+                0
+        );
+
+        sprayTimer = 0;
     }
 
     // =========================================================
@@ -1639,6 +1836,12 @@ public class SakurawitchEntity extends PathfinderMob {
                         ModEffects.MAGIC_VULNERABILITY.get()
                 );
 
+        /*
+         * 魔法易伤每层让受到的小樱魔法伤害
+         * 增加 5%。
+         *
+         * 最高 10 层。
+         */
         int stacks =
                 effect == null
                         ? 0
@@ -1647,13 +1850,13 @@ public class SakurawitchEntity extends PathfinderMob {
                                 effect.getAmplifier() + 1
                         );
 
-        /*
-         * 魔抗削弱越高，
-         * 小樱的魔法伤害越危险。
-         */
         float damage =
-                baseDamage *
-                (1.0F + 0.05F * stacks);
+                baseDamage
+                        * (
+                        1.0F
+                                + 0.05F
+                                * stacks
+                );
 
         player.hurt(
                 damageSources().indirectMagic(
@@ -1665,27 +1868,49 @@ public class SakurawitchEntity extends PathfinderMob {
     }
 
     // =========================================================
-    // 工具
+    // 玩家列表
     // =========================================================
 
     private List<Player> players(
             double radius
     ) {
 
-        List<Player> players =
-                level().getEntitiesOfClass(
-                        Player.class,
-                        getBoundingBox().inflate(radius)
+        List<Player> result =
+                new ArrayList<>(
+                        level().getEntitiesOfClass(
+                                Player.class,
+                                getBoundingBox()
+                                        .inflate(radius)
+                        )
                 );
 
-        players.removeIf(
+        result.removeIf(
                 player -> !valid(player)
         );
 
-        return players;
+        return result;
     }
 
-    private boolean valid(Player player) {
+    private Player getNearestCombatPlayer() {
+
+        Player nearest =
+                level().getNearestPlayer(
+                        this,
+                        35.0D
+                );
+
+        return valid(nearest)
+                ? nearest
+                : null;
+    }
+
+    // =========================================================
+    // 玩家有效性
+    // =========================================================
+
+    private boolean valid(
+            Player player
+    ) {
 
         return player != null
                 && player.isAlive()
@@ -1694,106 +1919,130 @@ public class SakurawitchEntity extends PathfinderMob {
                 && !player.isSpectator();
     }
 
+    // =========================================================
+    // 玩家提示
+    // =========================================================
+
     private void tell(
             Player player,
-            String message
+            String text
     ) {
 
         if (player instanceof ServerPlayer serverPlayer) {
 
             serverPlayer.displayClientMessage(
-                    Component.literal(message),
+                    Component.literal(text),
                     true
             );
         }
     }
 
     private void announce(
-            String message
+            String text
     ) {
 
-        if (!(level() instanceof ServerLevel sl)) {
+        if (!(level() instanceof ServerLevel serverLevel)) {
             return;
         }
 
         for (ServerPlayer player :
-                sl.getEntitiesOfClass(
+                serverLevel.getEntitiesOfClass(
                         ServerPlayer.class,
-                        getBoundingBox().inflate(35)
+                        getBoundingBox().inflate(35.0D)
                 )) {
 
-            if (player.isAlive() &&
-                    !player.isSpectator()) {
-
-                player.displayClientMessage(
-                        Component.literal(message),
-                        true
-                );
+            if (!player.isAlive()
+                    || player.isSpectator()) {
+                continue;
             }
+
+            player.displayClientMessage(
+                    Component.literal(text),
+                    true
+            );
         }
     }
 
-    private void lookAt(Vec3 position) {
+    // =========================================================
+    // 朝向目标
+    // =========================================================
 
-        Vec3 direction =
-                position.subtract(
-                        getX(),
-                        getY() + getEyeHeight(),
-                        getZ()
+    private void lookAt(
+            Vec3 target
+    ) {
+
+        Vec3 delta =
+                target.subtract(
+                        position().add(
+                                0.0D,
+                                getEyeHeight(),
+                                0.0D
+                        )
                 );
 
         double horizontal =
                 Math.sqrt(
-                        direction.x * direction.x +
-                        direction.z * direction.z
+                        delta.x * delta.x
+                                + delta.z * delta.z
                 );
 
         float yaw =
                 (float) Math.toDegrees(
                         Math.atan2(
-                                -direction.x,
-                                direction.z
+                                -delta.x,
+                                delta.z
                         )
                 );
 
         float pitch =
                 (float) -Math.toDegrees(
                         Math.atan2(
-                                direction.y,
+                                delta.y,
                                 horizontal
                         )
                 );
 
         setYRot(yaw);
+
         setXRot(pitch);
 
         yHeadRot = yaw;
+
         yBodyRot = yaw;
     }
 
-    private void cancelSkill() {
+    // =========================================================
+    // 水平向量旋转
+    // =========================================================
 
-        entityData.set(
-                SKILL_STATE,
-                IDLE
-        );
+    private Vec3 rotateHorizontal(
+            Vec3 vector,
+            double angle
+    ) {
 
-        entityData.set(
-                ATTACK_INDEX,
-                0
-        );
+        double cos =
+                Math.cos(angle);
 
-        entityData.set(
-                ATTACK_TIMER,
-                0
-        );
+        double sin =
+                Math.sin(angle);
 
-        sprayTimer = 0;
-        sprayTarget = null;
+        double x =
+                vector.x * cos
+                        - vector.z * sin;
+
+        double z =
+                vector.x * sin
+                        + vector.z * cos;
+
+        return new Vec3(
+                x,
+                vector.y,
+                z
+        ).normalize();
     }
 
     // =========================================================
-    // 受伤 / 死亡
+    // 受到伤害
     // =========================================================
 
     @Override
@@ -1811,6 +2060,10 @@ public class SakurawitchEntity extends PathfinderMob {
                 amount
         );
     }
+
+    // =========================================================
+    // 死亡
+    // =========================================================
 
     @Override
     public void die(
@@ -1846,13 +2099,15 @@ public class SakurawitchEntity extends PathfinderMob {
                 0
         );
 
-        eruptionMarkers.clear();
-
         setInvulnerable(true);
+
         setHealth(0.0F);
 
         getNavigation().stop();
-        setDeltaMovement(Vec3.ZERO);
+
+        setDeltaMovement(
+                Vec3.ZERO
+        );
 
         deathTimer = 0;
 
@@ -1868,44 +2123,53 @@ public class SakurawitchEntity extends PathfinderMob {
         );
     }
 
+    // =========================================================
+    // 小樱死亡动画
+    // =========================================================
+
     private void tickSakuraDeath() {
 
         setInvulnerable(true);
 
-        setDeltaMovement(Vec3.ZERO);
+        setDeltaMovement(
+                Vec3.ZERO
+        );
 
         getNavigation().stop();
 
         deathTimer++;
 
-        if (level() instanceof ServerLevel sl &&
-                deathTimer % 3 == 0) {
+        if (level() instanceof ServerLevel serverLevel
+                && deathTimer % 3 == 0) {
 
-            sl.sendParticles(
+            serverLevel.sendParticles(
                     ModParticles.SAKURA_FLAME.get(),
                     getX(),
                     getY() + 1.0D,
                     getZ(),
-                    8,
+                    10,
                     0.8D,
                     0.8D,
                     0.8D,
                     0.03D
             );
 
-            sl.sendParticles(
+            serverLevel.sendParticles(
                     ModParticles.SAKURA_PETAL.get(),
                     getX(),
                     getY() + 1.0D,
                     getZ(),
                     5,
-                    0.7D,
                     0.8D,
-                    0.7D,
+                    0.8D,
+                    0.8D,
                     0.02D
             );
         }
 
+        /*
+         * 给 death 动画留出时间。
+         */
         if (deathTimer >= 35) {
 
             setInvulnerable(false);
@@ -1916,15 +2180,20 @@ public class SakurawitchEntity extends PathfinderMob {
         }
     }
 
+    // =========================================================
+    // 不远距离消失
+    // =========================================================
+
     @Override
     public boolean removeWhenFarAway(
             double distance
     ) {
+
         return false;
     }
 
     // =========================================================
-    // 存档
+    // NBT 保存
     // =========================================================
 
     @Override
@@ -1945,20 +2214,33 @@ public class SakurawitchEntity extends PathfinderMob {
         );
 
         tag.putInt(
+                "FireEruptionCD",
+                eruptionCD
+        );
+
+        tag.putInt(
                 "NormalAttackTimer",
                 normalAttackTimer
         );
 
         tag.putInt(
                 "FireMarkStacks",
-                entityData.get(FIRE_MARK_STACKS)
+                entityData.get(
+                        FIRE_MARK_STACKS
+                )
         );
 
         tag.putInt(
                 "Phase",
-                entityData.get(PHASE)
+                entityData.get(
+                        PHASE
+                )
         );
     }
+
+    // =========================================================
+    // NBT 读取
+    // =========================================================
 
     @Override
     public void readAdditionalSaveData(
@@ -1975,6 +2257,11 @@ public class SakurawitchEntity extends PathfinderMob {
         fireChargeTimer =
                 tag.getInt(
                         "FireChargeTimer"
+                );
+
+        eruptionCD =
+                tag.getInt(
+                        "FireEruptionCD"
                 );
 
         normalAttackTimer =
@@ -2005,6 +2292,7 @@ public class SakurawitchEntity extends PathfinderMob {
                                         "Phase"
                                 )
                         )
+                )
         );
     }
 
@@ -2015,47 +2303,35 @@ public class SakurawitchEntity extends PathfinderMob {
     public static AttributeSupplier.Builder createAttributes() {
 
         return PathfinderMob.createMobAttributes()
+
                 .add(
                         Attributes.MAX_HEALTH,
                         50000.0D
                 )
+
                 .add(
                         Attributes.ARMOR,
                         10.0D
                 )
+
                 .add(
                         Attributes.ATTACK_DAMAGE,
                         15.0D
                 )
+
                 .add(
                         Attributes.MOVEMENT_SPEED,
                         0.3D
                 )
+
                 .add(
                         Attributes.FOLLOW_RANGE,
                         35.0D
                 )
+
                 .add(
                         Attributes.KNOCKBACK_RESISTANCE,
                         1.0D
                 );
-    }
-
-    // =========================================================
-    // 火焰喷发数据
-    // =========================================================
-
-    private static class EruptionMarker {
-
-        private final BlockPos pos;
-        private int ticksRemaining;
-
-        private EruptionMarker(
-                BlockPos pos,
-                int ticksRemaining
-        ) {
-            this.pos = pos;
-            this.ticksRemaining = ticksRemaining;
-        }
     }
 }
