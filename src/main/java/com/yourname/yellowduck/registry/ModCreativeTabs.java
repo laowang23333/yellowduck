@@ -14,13 +14,21 @@ public class ModCreativeTabs {
 
     public static final RegistryObject<CreativeModeTab> MAIN = CREATIVE_TABS.register("main",
             () -> CreativeModeTab.builder()
-                    .title(Component.translatable("itemGroup.yellowduck.main"))
+                    .title(Component.literal("小菜蛋"))
                     .icon(() -> new ItemStack(ModBlocks.JINYUANQUAN.get()))
                     .displayItems((params, output) -> {
+                        // 原有物品
                         output.accept(ModBlocks.BIG_CHEST_ITEM.get());
                         output.accept(ModBlocks.JINYUANQUAN.get());
-                        // 👇 新增：副本柱子
                         output.accept(ModBlocks.MEET_STONE_ITEM.get());
+
+                        // 新增：两个方块
+                        output.accept(ModBlocks.YIN_SHEN_XIANG_ITEM.get());
+                        output.accept(ModBlocks.XIAOHUANGYA_ITEM.get());
+
+                        // 新增：两个唱片
+                        output.accept(ModBlocks.XIAOQI_DISC.get());
+                        output.accept(ModBlocks.YIDIYIDI_DISC.get());
                     })
                     .build());
 }
