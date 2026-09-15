@@ -63,7 +63,7 @@ dependencies {
     // Polymesh 1.0.0
     // 文件位置：
     // libs/polymesh-1.0.0-forge.jar
-    implementation files("libs/polymesh-1.0.0-forge.jar")
+    implementation fg.deobf(files("libs/polymesh-1.0.0-forge.jar"))
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
