@@ -1,42 +1,25 @@
 package com.yourname.yellowduck.particle;
 
-import com.yourname.yellowduck.YellowDuckMod;
-import net.minecraft.core.particles.ParticleType;
-import net.minecraft.core.particles.SimpleParticleType;
-import net.minecraftforge.registries.DeferredRegister;
-import net.minecraftforge.registries.ForgeRegistries;
-import net.minecraftforge.registries.RegistryObject;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RegisterParticleProvidersEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 
-public final class ModParticles {
-    private ModParticles() {}
+@Mod.EventBusSubscriber(
+        modid = "yellowduck",
+        bus = Mod.EventBusSubscriber.Bus.MOD,
+        value = Dist.CLIENT
+)
+public final class ModParticleClient {
+    private ModParticleClient() {}
 
-    public static final DeferredRegister<ParticleType<?>> PARTICLES =
-            DeferredRegister.create(
-                    ForgeRegistries.PARTICLE_TYPES,
-                    YellowDuckMod.MOD_ID
-            );
-
-    public static final RegistryObject<SimpleParticleType> SAKURA_FLAME =
-            PARTICLES.register("sakura_flame",
-                    () -> new SimpleParticleType(true));
-
-    public static final RegistryObject<SimpleParticleType> SAKURA_PETAL =
-            PARTICLES.register("sakura_petal",
-                    () -> new SimpleParticleType(true));
-
-    public static final RegistryObject<SimpleParticleType> SAKURA_MAGIC =
-            PARTICLES.register("sakura_magic",
-                    () -> new SimpleParticleType(true));
-
-    public static final RegistryObject<SimpleParticleType> SAKURA_WARNING =
-            PARTICLES.register("sakura_warning",
-                    () -> new SimpleParticleType(true));
-
-    public static final RegistryObject<SimpleParticleType> SAKURA_EXPLOSION =
-            PARTICLES.register("sakura_explosion",
-                    () -> new SimpleParticleType(true));
-
-    public static final RegistryObject<SimpleParticleType> SAKURA_ERUPTION =
-            PARTICLES.register("sakura_eruption",
-                    () -> new SimpleParticleType(true));
+    @SubscribeEvent
+    public static void register(RegisterParticleProvidersEvent event) {
+        event.registerSpriteSet(ModParticles.SAKURA_FLAME.get(), SakuraParticle.Provider::new);
+        event.registerSpriteSet(ModParticles.SAKURA_PETAL.get(), SakuraParticle.Provider::new);
+        event.registerSpriteSet(ModParticles.SAKURA_MAGIC.get(), SakuraParticle.Provider::new);
+        event.registerSpriteSet(ModParticles.SAKURA_WARNING.get(), SakuraParticle.Provider::new);
+        event.registerSpriteSet(ModParticles.SAKURA_EXPLOSION.get(), SakuraParticle.Provider::new);
+        event.registerSpriteSet(ModParticles.SAKURA_ERUPTION.get(), SakuraParticle.Provider::new);
+    }
 }
