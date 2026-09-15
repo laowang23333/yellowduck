@@ -33,5 +33,15 @@
     "sounds": [
       "yellowduck:xjy"
     ]
+  },
+  "xiaoqi_disc": {
+    "sounds": [
+      "yellowduck:xiaoqi"
+    ]
+  },
+  "yidiyidi_disc": {
+    "sounds": [
+      "yellowduck:yidiyidi"
+    ]
   }
 }
