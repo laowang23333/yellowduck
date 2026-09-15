@@ -10,7 +10,7 @@ public final class ModParticles {
     private ModParticles() {}
 
     public static final DeferredRegister<SimpleParticleType> PARTICLES =
-            DeferredRegister.create(ForgeRegistries.PARTICLE_TYPES, YellowDuckMod.MODID);
+            DeferredRegister.create(ForgeRegistries.PARTICLE_TYPES, YellowDuckMod.MOD_ID);
 
     public static final RegistryObject<SimpleParticleType> SAKURA_FLAME =
             PARTICLES.register("sakura_flame", () -> new SimpleParticleType(true));
