@@ -4,34 +4,34 @@
       "yellowduck:jijiji"
     ]
   },
-
   "niganma": {
     "sounds": [
       "yellowduck:niganma"
     ]
   },
-
   "roudan": {
     "sounds": [
       "yellowduck:roudan"
     ]
   },
-
   "sakura_att": {
     "sounds": [
       "yellowduck:sakura_att"
     ]
   },
-
   "sakura_end": {
     "sounds": [
       "yellowduck:sakura_end"
     ]
   },
-
   "sakura_xiong": {
     "sounds": [
       "yellowduck:sakura_xiong"
+    ]
+  },
+  "xjy": {
+    "sounds": [
+      "yellowduck:xjy"
     ]
   }
 }
