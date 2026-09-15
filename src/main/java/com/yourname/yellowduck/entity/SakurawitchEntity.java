@@ -2,6 +2,7 @@ package com.yourname.yellowduck.entity;
 
 import com.yourname.yellowduck.particle.ModParticles;
 import com.yourname.yellowduck.registry.ModEffects;
+import com.yourname.yellowduck.registry.ModSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -240,6 +241,10 @@ public class SakurawitchEntity extends PathfinderMob {
      * 死亡动画计时
      */
     private int deathTimer = 0;
+
+    // 小樱专属音效只触发一次
+    private boolean playedPhaseTwoSound = false;
+    private boolean playedDeathSound = false;
 
     // =========================================================
     // Boss 血条
@@ -639,6 +644,18 @@ public class SakurawitchEntity extends PathfinderMob {
          * 进入第三阶段时，
          * 从新的 8 秒周期开始计算火焰喷发。
          */
+        if (nextPhase == 2 && !playedPhaseTwoSound) {
+            playedPhaseTwoSound = true;
+            level().playSound(
+                    null,
+                    blockPosition(),
+                    ModSounds.SAKURA_XIONG.get(),
+                    SoundSource.HOSTILE,
+                    2.0F,
+                    1.0F
+            );
+        }
+
         if (nextPhase == 3) {
             eruptionCD = ERUPTION_INTERVAL;
         }
@@ -762,10 +779,10 @@ public class SakurawitchEntity extends PathfinderMob {
         level().playSound(
                 null,
                 blockPosition(),
-                SoundEvents.ENCHANTMENT_TABLE_USE,
+                ModSounds.SAKURA_ATT.get(),
                 SoundSource.HOSTILE,
                 1.2F,
-                0.8F
+                1.0F
         );
 
         normalAttackTimer =
@@ -2113,14 +2130,17 @@ public class SakurawitchEntity extends PathfinderMob {
 
         bossEvent.removeAllPlayers();
 
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.WITHER_DEATH,
-                SoundSource.HOSTILE,
-                2.0F,
-                1.0F
-        );
+        if (!playedDeathSound) {
+            playedDeathSound = true;
+            level().playSound(
+                    null,
+                    blockPosition(),
+                    ModSounds.SAKURA_END.get(),
+                    SoundSource.HOSTILE,
+                    2.0F,
+                    1.0F
+            );
+        }
     }
 
     // =========================================================
@@ -2236,6 +2256,9 @@ public class SakurawitchEntity extends PathfinderMob {
                         PHASE
                 )
         );
+
+        tag.putBoolean("PlayedPhaseTwoSound", playedPhaseTwoSound);
+        tag.putBoolean("PlayedDeathSound", playedDeathSound);
     }
 
     // =========================================================
@@ -2294,6 +2317,9 @@ public class SakurawitchEntity extends PathfinderMob {
                         )
                 )
         );
+
+        playedPhaseTwoSound = tag.getBoolean("PlayedPhaseTwoSound");
+        playedDeathSound = tag.getBoolean("PlayedDeathSound");
     }
 
     // =========================================================
