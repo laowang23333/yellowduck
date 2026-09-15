@@ -97,7 +97,7 @@ public class ModBlocks {
 
     // =========================
     // 唱片：小琪
-    // 时长：30 秒 = 600 ticks
+    // 30 秒 = 600 ticks
     // =========================
 
     public static final RegistryObject<Item> XIAOQI_DISC = ITEMS.register("xiaoqi_disc",
@@ -110,7 +110,7 @@ public class ModBlocks {
 
     // =========================
     // 唱片：一滴一滴
-    // 时长：30 秒 = 600 ticks
+    // 30 秒 = 600 ticks
     // =========================
 
     public static final RegistryObject<Item> YIDIYIDI_DISC = ITEMS.register("yidiyidi_disc",
