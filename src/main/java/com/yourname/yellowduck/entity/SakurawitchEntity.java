@@ -2,6 +2,7 @@ package com.yourname.yellowduck.entity;
 
 import com.yourname.yellowduck.particle.ModParticles;
 import com.yourname.yellowduck.registry.ModEffects;
+import com.yourname.yellowduck.registry.ModEntities;
 import com.yourname.yellowduck.registry.ModSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -35,6 +36,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 魔女小樱
@@ -245,6 +247,10 @@ public class SakurawitchEntity extends PathfinderMob {
     // 小樱专属音效只触发一次
     private boolean playedPhaseTwoSound = false;
     private boolean playedDeathSound = false;
+
+    // 布偶熊：第二阶段召唤一次，之后独立战斗。
+    private boolean toyBearSummoned = false;
+    private UUID toyBearUUID;
 
     // =========================================================
     // Boss 血条
@@ -656,9 +662,67 @@ public class SakurawitchEntity extends PathfinderMob {
             );
         }
 
+        if (nextPhase == 2) {
+            summonToyBear();
+        }
+
         if (nextPhase == 3) {
             eruptionCD = ERUPTION_INTERVAL;
         }
+    }
+
+    // =========================================================
+    // 布偶熊召唤
+    // =========================================================
+
+    private void summonToyBear() {
+        if (toyBearSummoned || !(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        ToyBearEntity bear = ModEntities.TOY_BEAR.get().create(serverLevel);
+        if (bear == null) {
+            return;
+        }
+
+        double angle = random.nextDouble() * Math.PI * 2.0D;
+        double radius = 1.8D;
+
+        bear.moveTo(
+                getX() + Math.cos(angle) * radius,
+                getY(),
+                getZ() + Math.sin(angle) * radius,
+                getYRot() + 180.0F,
+                0.0F
+        );
+        bear.setOwnerSakura(this);
+        serverLevel.addFreshEntity(bear);
+        toyBearUUID = bear.getUUID();
+        toyBearSummoned = true;
+
+        serverLevel.sendParticles(
+                ModParticles.SAKURA_BEAR_RAGE_BURST.get(),
+                bear.getX(),
+                bear.getY() + 0.8D,
+                bear.getZ(),
+                18,
+                0.7D,
+                0.6D,
+                0.7D,
+                0.06D
+        );
+    }
+
+    private void removeToyBear() {
+        if (toyBearUUID == null || !(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        Entity entity = serverLevel.getEntity(toyBearUUID);
+        if (entity instanceof ToyBearEntity bear && !bear.isRemoved()) {
+            bear.discard();
+        }
+        toyBearUUID = null;
     }
 
     // =========================================================
@@ -2128,6 +2192,8 @@ public class SakurawitchEntity extends PathfinderMob {
 
         deathTimer = 0;
 
+        removeToyBear();
+
         bossEvent.removeAllPlayers();
 
         if (!playedDeathSound) {
@@ -2259,6 +2325,10 @@ public class SakurawitchEntity extends PathfinderMob {
 
         tag.putBoolean("PlayedPhaseTwoSound", playedPhaseTwoSound);
         tag.putBoolean("PlayedDeathSound", playedDeathSound);
+        tag.putBoolean("ToyBearSummoned", toyBearSummoned);
+        if (toyBearUUID != null) {
+            tag.putUUID("ToyBearUUID", toyBearUUID);
+        }
     }
 
     // =========================================================
@@ -2320,6 +2390,8 @@ public class SakurawitchEntity extends PathfinderMob {
 
         playedPhaseTwoSound = tag.getBoolean("PlayedPhaseTwoSound");
         playedDeathSound = tag.getBoolean("PlayedDeathSound");
+        toyBearSummoned = tag.getBoolean("ToyBearSummoned");
+        toyBearUUID = tag.hasUUID("ToyBearUUID") ? tag.getUUID("ToyBearUUID") : null;
     }
 
     // =========================================================
