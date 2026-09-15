@@ -3,6 +3,7 @@ package com.yourname.yellowduck.registry;
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
+import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
@@ -35,4 +36,14 @@ public class ModEntities {
                             .sized(1.3F, 2.8F)
                             .clientTrackingRange(10)
                             .build("sakurawitch"));
+    // ==========================================
+    // 小樱布偶熊
+    // ==========================================
+    public static final RegistryObject<EntityType<ToyBearEntity>> TOY_BEAR =
+            ENTITIES.register("toy_bear", () ->
+                    EntityType.Builder.<ToyBearEntity>of(ToyBearEntity::new, MobCategory.MONSTER)
+                            .sized(1.15F, 1.75F)
+                            .clientTrackingRange(10)
+                            .build("toy_bear"));
 }
+
