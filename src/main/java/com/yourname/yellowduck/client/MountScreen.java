@@ -52,6 +52,7 @@ public class MountScreen extends Screen {
         try {
             previewEntity = ModEntities.MOUNT.get().create(mc.level);
             if (previewEntity != null) {
+                previewEntity.setGuiPreview(true);
                 previewEntity.setNoGravity(true);
                 previewEntity.setYRot(180.0F);
                 previewEntity.yRotO = 180.0F;

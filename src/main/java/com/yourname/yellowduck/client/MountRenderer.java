@@ -57,6 +57,14 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
         double forwardZ = Math.cos(yaw);
         poseStack.pushPose();
         poseStack.translate(-2.30D * forwardX, 0.0D, -2.30D * forwardZ);
+
+        // GUI 预览共用真实 MountRenderer，但 GLB 的原始包围盒远大于实体碰撞箱，
+        // 不缩小的话 InventoryScreen 的镜头会被模型高度/尾巴撑爆，默认只剩脚。
+        if (entity.isGuiPreview()) {
+            poseStack.scale(0.50F, 0.50F, 0.50F);
+            poseStack.translate(0.0D, 0.18D, 0.0D);
+        }
+
         try {
             super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
         } finally {
