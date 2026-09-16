@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.EntityRenderersEvent;
@@ -36,6 +37,11 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
             AnimationController controller = this.getAnimationController(entity);
             if (controller != null) {
                 boolean walking = entity.getEntityData().get(MountEntity.IS_WALKING);
+                if (entity.getControllingPassenger() instanceof Player player) {
+                    walking = Math.abs(player.xxa) > 0.01F
+                            || Math.abs(player.zza) > 0.01F
+                            || entity.getDeltaMovement().horizontalDistanceSqr() > 0.00001D;
+                }
                 String wanted = walking ? "run" : "idle";
                 if (!wanted.equals(controller.getAnimationName())) {
                     controller.play(wanted, true);
@@ -44,7 +50,18 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
         } catch (Throwable ignored) {
             // 动画异常不影响模型主体渲染。
         }
-        super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
+        // Polymesh 会按整个 GLB 的包围盒居中。这个模型的原始骨架原点偏向尾部，
+        // 所以需要把模型沿自身前进方向后移约 2.3 格，让身体/碰撞箱重合。
+        double yaw = Math.toRadians(entityYaw);
+        double forwardX = -Math.sin(yaw);
+        double forwardZ = Math.cos(yaw);
+        poseStack.pushPose();
+        poseStack.translate(-2.30D * forwardX, 0.0D, -2.30D * forwardZ);
+        try {
+            super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
+        } finally {
+            poseStack.popPose();
+        }
     }
 
     public static void register(EntityRenderersEvent.RegisterRenderers event,
