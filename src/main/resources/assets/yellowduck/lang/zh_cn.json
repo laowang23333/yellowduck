@@ -4,7 +4,6 @@
   "item.yellowduck.jinyuanquan": "鲸元卷",
   "block.yellowduck.meet_stone": "副本柱子",
   "effect.yellowduck.magic_vulnerability": "魔法易伤",
-
   "item.yellowduck.big_chest": "海盗箱",
   "item.yellowduck.meet_stone": "副本柱子",
   "block.yellowduck.professor_silk": "教授丝",
@@ -13,7 +12,9 @@
   "item.yellowduck.yin_shen_xiang": "印神像",
   "block.yellowduck.xiaohuangya": "小黄鸭",
   "item.yellowduck.xiaohuangya": "小黄鸭",
-
   "item.yellowduck.xiaoqi_disc": "小琪唱片",
-  "item.yellowduck.yidiyidi_disc": "一滴一滴唱片"
+  "item.yellowduck.yidiyidi_disc": "一滴一滴唱片",
+  "item.yellowduck.mount_egg_ghost_wolf_stars": "鬼狼星坐骑蛋",
+  "key.yellowduck.mounts": "打开坐骑界面",
+  "key.categories.yellowduck": "小菜蛋"
 }
