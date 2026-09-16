@@ -24,7 +24,7 @@ public class ModEntities {
     public static final RegistryObject<EntityType<MountEntity>> MOUNT =
             ENTITIES.register("mount", () ->
                     EntityType.Builder.<MountEntity>of(MountEntity::new, MobCategory.CREATURE)
-                            .sized(1.5F, 1.5F)
+                            .sized(2.4F, 2.2F)
                             .build("mount"));
 
     // ==========================================
@@ -36,6 +36,7 @@ public class ModEntities {
                             .sized(1.3F, 2.8F)
                             .clientTrackingRange(10)
                             .build("sakurawitch"));
+
     // ==========================================
     // 小樱布偶熊
     // ==========================================
@@ -46,4 +47,3 @@ public class ModEntities {
                             .clientTrackingRange(10)
                             .build("toy_bear"));
 }
-
