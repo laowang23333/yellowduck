@@ -17,6 +17,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Mth;
 
 import java.util.UUID;
 
@@ -34,6 +35,10 @@ public class MountEntity extends PathfinderMob {
     // GLB 的 seat01 在 Polymesh 居中后的实际坐标约为 1.03 格高、向前 1.03 格。
     private static final double RIDER_Y_OFFSET = 1.45D;
     private static final double FORWARD_OFFSET = 0.65D;
+
+    // 乘骑时的轻微上下/左右晃动，让人物不会像“焊死”在坐骑上一样。
+    private static final double RIDER_BOB_AMOUNT = 0.055D;
+    private static final double RIDER_SWAY_AMOUNT = 0.035D;
 
     private UUID ownerUUID;
 
@@ -129,16 +134,36 @@ public class MountEntity extends PathfinderMob {
             return;
         }
 
-        double yaw = Math.toRadians(this.getYRot());
-        double dx = -Math.sin(yaw) * FORWARD_OFFSET;
-        double dz = Math.cos(yaw) * FORWARD_OFFSET;
-        double x = this.getX() + dx;
-        double y = this.getY() + this.getPassengersRidingOffset() + SEAT_Y_OFFSET;
-        double z = this.getZ() + dz;
+        // 客户端用上一帧到当前帧的旋转做一点插值，避免转向时座位跟随出现“一格一格”的顿挫。
+        float renderYaw = this.level().isClientSide
+                ? Mth.rotLerp(0.72F, this.yRotO, this.getYRot())
+                : this.getYRot();
+
+        double yaw = Math.toRadians(renderYaw);
+        double sin = Math.sin(yaw);
+        double cos = Math.cos(yaw);
+        double dx = -sin * FORWARD_OFFSET;
+        double dz = cos * FORWARD_OFFSET;
+
+        double bob = 0.0D;
+        double sway = 0.0D;
+        if (passenger instanceof Player && this.isVehicle()) {
+            if (this.entityData.get(IS_WALKING)) {
+                double phase = (this.tickCount + 0.35D) * 0.95D;
+                bob = Math.abs(Math.sin(phase)) * RIDER_BOB_AMOUNT;
+                sway = Math.sin(phase * 0.5D) * RIDER_SWAY_AMOUNT;
+            }
+        }
+
+        // sway 沿坐骑横向，和前后座位偏移分离。
+        double x = this.getX() + dx + cos * sway;
+        double y = this.getY() + this.getPassengersRidingOffset() + SEAT_Y_OFFSET + bob;
+        double z = this.getZ() + dz + sin * sway;
         moveFunction.accept(passenger, x, y, z);
 
         if (passenger instanceof Player player) {
-            player.setYBodyRot(this.getYRot());
+            // 只跟随身体朝向，不锁死玩家头部/镜头。
+            player.setYBodyRot(renderYaw);
         }
     }
 
@@ -165,6 +190,8 @@ public class MountEntity extends PathfinderMob {
         if (!this.level().isClientSide) {
             Entity controller = getControllingPassenger();
             if (controller instanceof Player player) {
+                // 玩家视角驱动坐骑转向，但不要把 yRotO 强行改成当前值；
+                // 保留上一帧旋转值，Minecraft 才能进行平滑插值。
                 this.setYRot(player.getYRot());
                 this.yHeadRot = this.getYRot();
                 this.yBodyRot = this.getYRot();
@@ -193,8 +220,10 @@ public class MountEntity extends PathfinderMob {
     public void travel(Vec3 travelVector) {
         Entity controller = getControllingPassenger();
         if (controller instanceof Player player && this.isVehicle()) {
+            // 不再同步覆盖 yRotO。
+            // yRotO 必须保留上一 tick 的角度，否则客户端旋转插值会被截断，
+            // 表现就是横向转身时偶发“小卡一下”。
             this.setYRot(player.getYRot());
-            this.yRotO = this.getYRot();
             this.yBodyRot = this.getYRot();
             this.yHeadRot = this.getYRot();
 
