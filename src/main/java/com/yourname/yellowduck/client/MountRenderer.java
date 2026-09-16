@@ -15,11 +15,9 @@ import net.minecraftforge.client.event.EntityRenderersEvent;
 
 @OnlyIn(Dist.CLIENT)
 public class MountRenderer extends GltfEntityRenderer<MountEntity> {
-
     private static final ResourceLocation MODEL_ID =
-            new ResourceLocation("yellowduck", "mount");
-
-    private static final float MODEL_SCALE = 0.12F;
+            new ResourceLocation("yellowduck", "ghost_wolf_mount_final_v2");
+    private static final float MODEL_SCALE = 0.16F;
 
     public MountRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
@@ -35,30 +33,22 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
     public void render(MountEntity entity, float entityYaw, float partialTick,
                        PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
         try {
-            AnimationController ctrl = this.getAnimationController(entity);
-            if (ctrl != null) {
-                // 【改】从同步数据读 walking 状态，而不是本地 getDeltaMovement()
+            AnimationController controller = this.getAnimationController(entity);
+            if (controller != null) {
                 boolean walking = entity.getEntityData().get(MountEntity.IS_WALKING);
-
-                String wantAnim;
-                if (walking) {
-                    wantAnim = "Anim-1_walk";
-                } else {
-                    wantAnim = "Anim-1_stand";
-                }
-                String current = ctrl.getAnimationName();
-                if (current == null || !current.equals(wantAnim)) {
-                    ctrl.play(wantAnim, true);
+                String wanted = walking ? "run" : "idle";
+                if (!wanted.equals(controller.getAnimationName())) {
+                    controller.play(wanted, true);
                 }
             }
-        } catch (Throwable t) {
-            // 动画出错不影响模型渲染
+        } catch (Throwable ignored) {
+            // 动画异常不影响模型主体渲染。
         }
         super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
     }
 
     public static void register(EntityRenderersEvent.RegisterRenderers event,
-                                EntityType<? extends MountEntity> entityType) {
-        event.registerEntityRenderer(entityType, MountRenderer::new);
+                                 EntityType<? extends MountEntity> type) {
+        event.registerEntityRenderer(type, MountRenderer::new);
     }
 }
