@@ -161,7 +161,19 @@ public class MountEntity extends PathfinderMob {
                 this.setDeltaMovement(Vec3.ZERO);
             }
 
-            boolean walking = this.getDeltaMovement().horizontalDistanceSqr() > 0.0001D;
+            /*
+             * 不使用 getDeltaMovement() 判断移动状态。
+             *
+             * 独立服务器上，骑乘输入经过客户端/服务器同步后，
+             * getDeltaMovement() 在部分 tick 可能已经被清零或不能代表
+             * 实际的骑乘位移，导致服务端一直把 IS_WALKING 判成 false。
+             *
+             * 用本 tick 与上一 tick 的实际坐标差判断，服务器真正发生
+             * 位移时才同步 IS_WALKING=true，客户端渲染器即可播放 run。
+             */
+            double dx = this.getX() - this.xo;
+            double dz = this.getZ() - this.zo;
+            boolean walking = dx * dx + dz * dz > 1.0E-5D;
             this.entityData.set(IS_WALKING, walking);
         }
     }
