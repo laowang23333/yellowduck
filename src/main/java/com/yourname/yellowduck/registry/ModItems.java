@@ -16,5 +16,13 @@ public final class ModItems {
             ITEMS.register("mount_egg_ghost_wolf_stars",
                     () -> new MountSummonItem(new Item.Properties(), "ghost_wolf_stars"));
 
+    /**
+     * Jade / 坐骑收藏界面专用展示物品。
+     * 不加入创造栏、不参与坐骑绑定；仅用于给实体提供独立的高清图标。
+     */
+    public static final RegistryObject<Item> GHOST_WOLF_MOUNT_DISPLAY =
+            ITEMS.register("mount_display_ghost_wolf_stars",
+                    () -> new Item(new Item.Properties().stacksTo(1)));
+
     private ModItems() {}
 }
