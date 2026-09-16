@@ -72,7 +72,13 @@ dependencies {
 
     // Compile against the publicly published Residence API artifact.
     // Runtime remains the user's Residence 6.0.2.4.jar on Mohist.
-    compileOnly 'com.github.Zrips:Residence:6.0.0.1'
+    compileOnly('com.github.Zrips:Residence:6.0.0.1') {
+        // Only the Residence classes are needed at compile time.
+        // Do not pull Residence's optional plugin dependencies (Dynmap, WorldGuard,
+        // WorldEdit, BigDoors, etc.) into this Forge build. Mohist/Residence supplies
+        // those at runtime if installed.
+        transitive = false
+    }
 
     // Mohist supplies Bukkit at runtime.
     compileOnly 'org.spigotmc:spigot-api:1.20.1-R0.1-SNAPSHOT'
