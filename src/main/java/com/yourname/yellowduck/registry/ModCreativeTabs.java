@@ -29,6 +29,9 @@ public class ModCreativeTabs {
                         // 新增：两个唱片
                         output.accept(ModBlocks.XIAOQI_DISC.get());
                         output.accept(ModBlocks.YIDIYIDI_DISC.get());
+
+                        // 坐骑蛋：用于第一次绑定坐骑图鉴
+                        output.accept(ModItems.GHOST_WOLF_MOUNT.get());
                     })
                     .build());
 }
