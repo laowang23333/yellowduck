@@ -135,12 +135,9 @@ public class MountScreen extends Screen {
             // 这是 Minecraft 的真实实体 GUI 渲染入口；MountRenderer 内部使用 Polymesh GLB。
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     graphics,
-                    panelLeft + 268,
-                    panelTop + 72,
-                    panelLeft + 495,
-                    panelTop + 205,
+                    panelLeft + 380,
+                    panelTop + 150,
                     72,
-                    0.0F,
                     mouseX,
                     mouseY,
                     previewEntity
