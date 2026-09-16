@@ -46,14 +46,14 @@ jar {
 
 repositories {
     maven { url = 'https://maven.minecraftforge.net/' }
-
     maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
 
-    // Residence API 6.0.2.4
+    // Residence publishes its 6.0.0.1 API build through JitPack.
+    // The API used by this mod (ResidenceApi / container flag) is also present in 6.0.2.4.
     maven { url = 'https://jitpack.io' }
 
-    // Bukkit/Paper API classes used only at compile time
-    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    // Bukkit/Spigot API supplied by Mohist at runtime; compile only.
+    maven { url = 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
 
     // GeckoLib
     maven { url = 'https://www.cursemaven.com' }
@@ -65,21 +65,17 @@ repositories {
 }
 
 dependencies {
-    // Minecraft 1.20.1 / Forge 47.4.10
     minecraft 'net.minecraftforge:forge:1.20.1-47.4.10'
 
-    // GeckoLib 4.7.1.1
     implementation fg.deobf("curse.maven:geckolib-388172:6312918")
-
-    // Polymesh 1.0.0
-    // libs/polymesh-1.0.0-forge.jar
     implementation fg.deobf("libs:polymesh:1.0.0-forge")
 
-    // Residence 6.0.2.4: compile-time API only; the plugin itself stays on the Mohist server.
-    compileOnly 'com.github.Zrips:Residence:6.0.2.4'
+    // Compile against the publicly published Residence API artifact.
+    // Runtime remains the user's Residence 6.0.2.4.jar on Mohist.
+    compileOnly 'com.github.Zrips:Residence:6.0.0.1'
 
-    // Bukkit/Paper API is supplied by Mohist at runtime.
-    compileOnly 'io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT'
+    // Mohist supplies Bukkit at runtime.
+    compileOnly 'org.spigotmc:spigot-api:1.20.1-R0.1-SNAPSHOT'
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
