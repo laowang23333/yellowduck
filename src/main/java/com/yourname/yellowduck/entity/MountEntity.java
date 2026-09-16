@@ -22,7 +22,7 @@ import java.util.UUID;
 
 /**
  * 奶块式坐骑基础实体。
- * 坐骑本身不使用随机游走 AI；只有玩家骑乘时才由玩家控制移动
+ * 坐骑本身不使用随机游走 AI；只有玩家骑乘时才由玩家控制移动。
  */
 public class MountEntity extends PathfinderMob {
     public static final EntityDataAccessor<Boolean> IS_WALKING =
@@ -30,8 +30,10 @@ public class MountEntity extends PathfinderMob {
 
     private static final double RIDING_SPEED = 0.34D;
     private static final float MAX_HEALTH = 40.0F;
-    private static final double SEAT_Y_OFFSET = 0.55D;
-    private static final double FORWARD_OFFSET = 0.05D;
+    private static final double SEAT_Y_OFFSET = 0.0D;
+    // GLB 的 seat01 在 Polymesh 居中后的实际坐标约为 1.03 格高、向前 1.03 格。
+    private static final double RIDER_Y_OFFSET = 1.03D;
+    private static final double FORWARD_OFFSET = 1.03D;
 
     private UUID ownerUUID;
 
@@ -104,7 +106,7 @@ public class MountEntity extends PathfinderMob {
 
     @Override
     public double getPassengersRidingOffset() {
-        return super.getPassengersRidingOffset() + 1.1D;
+        return RIDER_Y_OFFSET;
     }
 
     @Override
