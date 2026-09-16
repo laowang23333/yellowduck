@@ -36,16 +36,6 @@ public class MountEntity extends PathfinderMob {
     private static final double FORWARD_OFFSET = 1.03D;
 
     private UUID ownerUUID;
-    private boolean guiPreview;
-
-    /** GUI 里的预览实体只用于客户端显示，不参与实际坐骑逻辑。 */
-    public void setGuiPreview(boolean guiPreview) {
-        this.guiPreview = guiPreview;
-    }
-
-    public boolean isGuiPreview() {
-        return guiPreview;
-    }
 
     public MountEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
@@ -132,19 +122,6 @@ public class MountEntity extends PathfinderMob {
         double x = this.getX() + dx;
         double y = this.getY() + this.getPassengersRidingOffset() + SEAT_Y_OFFSET;
         double z = this.getZ() + dz;
-
-        // 只在客户端做视觉上的轻微上下/前后晃动，避免改变服务器上的真实骑乘坐标。
-        if (this.level().isClientSide && passenger instanceof Player && this.entityData.get(IS_WALKING)) {
-            double phase = this.tickCount * 0.58D;
-            double bob = Math.sin(phase) * 0.055D;
-            double sway = Math.sin(phase * 0.5D) * 0.018D;
-            double rightX = Math.cos(yaw);
-            double rightZ = Math.sin(yaw);
-            x += rightX * sway;
-            y += bob;
-            z += rightZ * sway;
-        }
-
         moveFunction.accept(passenger, x, y, z);
 
         if (passenger instanceof Player player) {
@@ -247,6 +224,6 @@ public class MountEntity extends PathfinderMob {
 
     @Override
     public ItemStack getPickResult() {
-        return new ItemStack(ModItems.GHOST_WOLF_MOUNT.get());
+        return new ItemStack(ModItems.GHOST_WOLF_MOUNT_DISPLAY.get());
     }
 }
