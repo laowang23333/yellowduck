@@ -64,23 +64,27 @@ public final class MountManager {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || COUNTDOWNS.isEmpty()) return;
 
-        COUNTDOWNS.entrySet().removeIf(entry -> {
-            ServerPlayer player = findOnlinePlayer(entry.getKey());
-            if (player == null || !player.isAlive()) return true;
+        for (var iterator = COUNTDOWNS.entrySet().iterator(); iterator.hasNext();) {
+            var entry = iterator.next();
+            UUID uuid = entry.getKey();
+            ServerPlayer player = findOnlinePlayer(uuid);
+            if (player == null || !player.isAlive()) {
+                COUNTDOWNS.remove(uuid);
+                continue;
+            }
 
             int left = entry.getValue() - 1;
             if (left > 0) {
-                entry.setValue(left);
+                COUNTDOWNS.put(uuid, left);
                 if (left == 40 || left == 20) {
                     player.displayClientMessage(
                             Component.literal("§b鬼狼星召唤倒计时：§e" + (left / 20)), true);
                 }
-                return false;
+            } else {
+                summonAndRide(player);
+                COUNTDOWNS.remove(uuid);
             }
-
-            summonAndRide(player);
-            return true;
-        });
+        }
     }
 
     private static ServerPlayer findOnlinePlayer(UUID uuid) {
