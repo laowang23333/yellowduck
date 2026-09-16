@@ -32,8 +32,8 @@ public class MountEntity extends PathfinderMob {
     private static final float MAX_HEALTH = 40.0F;
     private static final double SEAT_Y_OFFSET = 0.0D;
     // GLB 的 seat01 在 Polymesh 居中后的实际坐标约为 1.03 格高、向前 1.03 格。
-    private static final double RIDER_Y_OFFSET = 1.03D;
-    private static final double FORWARD_OFFSET = 1.03D;
+    private static final double RIDER_Y_OFFSET = 1.45D;
+    private static final double FORWARD_OFFSET = 0.65D;
 
     private UUID ownerUUID;
 
@@ -98,12 +98,12 @@ public class MountEntity extends PathfinderMob {
         return ownerUUID;
     }
 
-    /** GUI 预览实体专用开关。*/
+    /** GUI 预览实体专用开关。 */
     public void setGuiPreview(boolean guiPreview) {
         this.guiPreview = guiPreview;
     }
 
-    /** 是否为 GUI 中的本地预览实体。*/
+    /** 是否为 GUI 中的本地预览实体。 */
     public boolean isGuiPreview() {
         return guiPreview;
     }
@@ -139,7 +139,6 @@ public class MountEntity extends PathfinderMob {
 
         if (passenger instanceof Player player) {
             player.setYBodyRot(this.getYRot());
-            player.setYHeadRot(this.getYRot());
         }
     }
 
@@ -167,7 +166,6 @@ public class MountEntity extends PathfinderMob {
             Entity controller = getControllingPassenger();
             if (controller instanceof Player player) {
                 this.setYRot(player.getYRot());
-                this.yRotO = this.getYRot();
                 this.yHeadRot = this.getYRot();
                 this.yBodyRot = this.getYRot();
             } else if (this.getPassengers().isEmpty() && this.tickCount % 10 == 0) {
