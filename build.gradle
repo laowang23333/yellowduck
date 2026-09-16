@@ -49,6 +49,12 @@ repositories {
 
     maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
 
+    // Residence API 6.0.2.4
+    maven { url = 'https://jitpack.io' }
+
+    // Bukkit/Paper API classes used only at compile time
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+
     // GeckoLib
     maven { url = 'https://www.cursemaven.com' }
 
@@ -68,6 +74,12 @@ dependencies {
     // Polymesh 1.0.0
     // libs/polymesh-1.0.0-forge.jar
     implementation fg.deobf("libs:polymesh:1.0.0-forge")
+
+    // Residence 6.0.2.4: compile-time API only; the plugin itself stays on the Mohist server.
+    compileOnly 'com.github.Zrips:Residence:6.0.2.4'
+
+    // Bukkit/Paper API is supplied by Mohist at runtime.
+    compileOnly 'io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT'
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }
