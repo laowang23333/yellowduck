@@ -16,7 +16,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.util.Mth;
 
@@ -41,13 +40,6 @@ public class MountEntity extends PathfinderMob {
     private static final double RIDER_BOB_AMOUNT = 0.12D;
     private static final double RIDER_SWAY_AMOUNT = 0.075D;
     private static final float RIDER_SWAY_YAW = 4.0F;
-
-    // 鬼狼星实际是“前后长、左右窄”的模型。Minecraft 原生 sized() 只能
-    // 给水平面一个正方形碰撞体，因此这里按坐骑朝向动态计算 AABB：
-    // 正向长度 2.65 格，横向宽度 1.70 格。
-    private static final double COLLISION_LENGTH = 2.65D;
-    private static final double COLLISION_WIDTH = 1.70D;
-    private static final double COLLISION_HEIGHT = 2.20D;
 
     private UUID ownerUUID;
 
@@ -181,31 +173,6 @@ public class MountEntity extends PathfinderMob {
             player.yBodyRotO = player.yBodyRot;
             player.setYBodyRot(bodyYaw);
         }
-    }
-
-    /**
-     * 动态矩形碰撞箱：沿坐骑朝向方向更长，横向更窄。
-     * 这样不会再出现“侧面碰撞太宽、正面又太短”的方形碰撞问题。
-     */
-    @Override
-    public AABB getBoundingBox() {
-        double yaw = Math.toRadians(this.getYRot());
-        double sin = Math.abs(Math.sin(yaw));
-        double cos = Math.abs(Math.cos(yaw));
-
-        double halfLength = COLLISION_LENGTH * 0.5D;
-        double halfWidth = COLLISION_WIDTH * 0.5D;
-        double halfX = halfLength * sin + halfWidth * cos;
-        double halfZ = halfLength * cos + halfWidth * sin;
-
-        return new AABB(
-                this.getX() - halfX,
-                this.getY(),
-                this.getZ() - halfZ,
-                this.getX() + halfX,
-                this.getY() + COLLISION_HEIGHT,
-                this.getZ() + halfZ
-        );
     }
 
     @Override
