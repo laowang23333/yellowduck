@@ -1,0 +1,6 @@
+{
+  "parent": "item/generated",
+  "textures": {
+    "layer0": "yellowduck:item/mount_egg_ghost_wolf_stars"
+  }
+}
