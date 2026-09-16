@@ -16,6 +16,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.util.Mth;
 
@@ -37,8 +38,16 @@ public class MountEntity extends PathfinderMob {
     private static final double FORWARD_OFFSET = 0.65D;
 
     // 乘骑时的轻微上下/左右晃动，让人物不会像“焊死”在坐骑上一样。
-    private static final double RIDER_BOB_AMOUNT = 0.055D;
-    private static final double RIDER_SWAY_AMOUNT = 0.035D;
+    private static final double RIDER_BOB_AMOUNT = 0.12D;
+    private static final double RIDER_SWAY_AMOUNT = 0.075D;
+    private static final float RIDER_SWAY_YAW = 4.0F;
+
+    // 鬼狼星实际是“前后长、左右窄”的模型。Minecraft 原生 sized() 只能
+    // 给水平面一个正方形碰撞体，因此这里按坐骑朝向动态计算 AABB：
+    // 正向长度 2.65 格，横向宽度 1.70 格。
+    private static final double COLLISION_LENGTH = 2.65D;
+    private static final double COLLISION_WIDTH = 1.70D;
+    private static final double COLLISION_HEIGHT = 2.20D;
 
     private UUID ownerUUID;
 
@@ -147,11 +156,15 @@ public class MountEntity extends PathfinderMob {
 
         double bob = 0.0D;
         double sway = 0.0D;
+        float swayYaw = 0.0F;
         if (passenger instanceof Player && this.isVehicle()) {
             if (this.entityData.get(IS_WALKING)) {
-                double phase = (this.tickCount + 0.35D) * 0.95D;
-                bob = Math.abs(Math.sin(phase)) * RIDER_BOB_AMOUNT;
+                // 用实体 tick + partial tick 无法直接拿到这里的 partialTick，
+                // 所以保持连续的相位；同时把幅度提高到肉眼可见。
+                double phase = this.tickCount * 0.82D;
+                bob = (0.5D - 0.5D * Math.cos(phase)) * RIDER_BOB_AMOUNT;
                 sway = Math.sin(phase * 0.5D) * RIDER_SWAY_AMOUNT;
+                swayYaw = (float) Math.sin(phase * 0.5D) * RIDER_SWAY_YAW;
             }
         }
 
@@ -162,9 +175,37 @@ public class MountEntity extends PathfinderMob {
         moveFunction.accept(passenger, x, y, z);
 
         if (passenger instanceof Player player) {
-            // 只跟随身体朝向，不锁死玩家头部/镜头。
-            player.setYBodyRot(renderYaw);
+            // 只让玩家身体跟着坐骑左右摆，不修改玩家头部/镜头。
+            // 同时更新 O 值，避免身体摆动本身产生另一种“卡一下”。
+            float bodyYaw = renderYaw + swayYaw;
+            player.yBodyRotO = player.yBodyRot;
+            player.setYBodyRot(bodyYaw);
         }
+    }
+
+    /**
+     * 动态矩形碰撞箱：沿坐骑朝向方向更长，横向更窄。
+     * 这样不会再出现“侧面碰撞太宽、正面又太短”的方形碰撞问题。
+     */
+    @Override
+    public AABB getBoundingBox() {
+        double yaw = Math.toRadians(this.getYRot());
+        double sin = Math.abs(Math.sin(yaw));
+        double cos = Math.abs(Math.cos(yaw));
+
+        double halfLength = COLLISION_LENGTH * 0.5D;
+        double halfWidth = COLLISION_WIDTH * 0.5D;
+        double halfX = halfLength * sin + halfWidth * cos;
+        double halfZ = halfLength * cos + halfWidth * sin;
+
+        return new AABB(
+                this.getX() - halfX,
+                this.getY(),
+                this.getZ() - halfZ,
+                this.getX() + halfX,
+                this.getY() + COLLISION_HEIGHT,
+                this.getZ() + halfZ
+        );
     }
 
     @Override
