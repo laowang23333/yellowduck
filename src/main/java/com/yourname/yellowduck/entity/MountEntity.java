@@ -37,6 +37,9 @@ public class MountEntity extends PathfinderMob {
 
     private UUID ownerUUID;
 
+    // 仅客户端 GUI 预览使用，不同步到服务端。
+    private boolean guiPreview = false;
+
     public MountEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
         this.setPersistenceRequired();
@@ -93,6 +96,16 @@ public class MountEntity extends PathfinderMob {
 
     public UUID getOwnerUUID() {
         return ownerUUID;
+    }
+
+    /** GUI 预览实体专用开关。*/
+    public void setGuiPreview(boolean guiPreview) {
+        this.guiPreview = guiPreview;
+    }
+
+    /** 是否为 GUI 中的本地预览实体。*/
+    public boolean isGuiPreview() {
+        return guiPreview;
     }
 
     public boolean isOwner(Player player) {
@@ -224,6 +237,6 @@ public class MountEntity extends PathfinderMob {
 
     @Override
     public ItemStack getPickResult() {
-        return new ItemStack(ModItems.GHOST_WOLF_MOUNT_DISPLAY.get());
+        return new ItemStack(ModItems.GHOST_WOLF_MOUNT.get());
     }
 }
