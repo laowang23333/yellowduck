@@ -4,6 +4,7 @@ import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
+import com.yourname.yellowduck.network.MountNetwork;
 import com.yourname.yellowduck.particle.ModParticles;
 import com.yourname.yellowduck.registry.ModEffects;
 import com.yourname.yellowduck.registry.ModEntities;
@@ -25,6 +26,7 @@ public class YellowDuckMod {
         com.yourname.yellowduck.registry.ModMenuTypes.MENUS.register(bus);
         com.yourname.yellowduck.registry.ModCreativeTabs.CREATIVE_TABS.register(bus);
         ModEntities.ENTITIES.register(bus);
+        com.yourname.yellowduck.registry.ModItems.ITEMS.register(bus);
         ModParticles.PARTICLES.register(bus);
 
         // 注册音效
@@ -32,6 +34,7 @@ public class YellowDuckMod {
 
         // 注册自定义 MobEffect
         ModEffects.EFFECTS.register(bus);
+        MountNetwork.init();
 
         bus.addListener(this::registerAttributes);
     }
