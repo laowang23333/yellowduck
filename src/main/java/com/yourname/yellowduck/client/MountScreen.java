@@ -10,9 +10,12 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 
 /** 奶块式通用坐骑收藏界面：只显示已拥有坐骑蛋，右侧直接渲染真实 GLB 实体。 */
 public class MountScreen extends Screen {
+    private static final ResourceLocation DISPLAY_ICON =
+            new ResourceLocation("yellowduck", "textures/item/mount_ghost_wolf_stars_display.png");
     private int panelLeft;
     private int panelTop;
     private int listLeft;
@@ -173,7 +176,12 @@ public class MountScreen extends Screen {
             if (hover) graphics.fill(x, y, x + slotSize, y + slotSize, 0x442D70B8);
 
             RenderSystem.enableBlend();
-            graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 56, 56);
+            if ("ghost_wolf_stars".equals(mount.id())) {
+                // 坐骑收藏界面使用独立高清展示图；物品栏坐骑蛋仍使用 eggTexture。
+                graphics.blit(DISPLAY_ICON, x + 6, y + 5, 0, 0, 56, 56, 3072, 3072);
+            } else {
+                graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 56, 56);
+            }
             RenderSystem.disableBlend();
             graphics.drawCenteredString(this.font, Component.literal(mount.name()),
                     x + slotSize / 2, y + slotSize + 5,
