@@ -1,8 +1,5 @@
 package com.yourname.yellowduck.block;
 
-import com.bekvon.bukkit.residence.api.ResidenceApi;
-import com.bekvon.bukkit.residence.containers.Flags;
-import com.bekvon.bukkit.residence.protection.ClaimedResidence;
 import com.yourname.yellowduck.menu.BigChestMenu;
 import com.yourname.yellowduck.registry.ModBlockEntities;
 import net.minecraft.core.BlockPos;
@@ -26,9 +23,14 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+
 public class BigChestBlock extends BaseEntityBlock {
 
-    public BigChestBlock(Properties props) { super(props); }
+    public BigChestBlock(Properties props) {
+        super(props);
+    }
 
     @Override
     public RenderShape getRenderShape(BlockState state) {
@@ -44,65 +46,139 @@ public class BigChestBlock extends BaseEntityBlock {
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos,
                                  Player player, InteractionHand hand, BlockHitResult hit) {
-        // Residence protection is checked only when opening the container.
-        // Placement is intentionally left to the normal Minecraft/Mohist/Residence flow.
-        if (!level.isClientSide && player instanceof ServerPlayer serverPlayer
-                && level.getBlockEntity(pos) instanceof BigChestBlockEntity be) {
+        if (level.isClientSide) {
+            return InteractionResult.SUCCESS;
+        }
 
-            if (!ResidenceProtection.canOpen(serverPlayer, pos)) {
-                player.displayClientMessage(
-                        Component.literal("§c你没有权限打开这个海盗箱！"), true);
-                return InteractionResult.CONSUME;
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            return InteractionResult.CONSUME;
+        }
+
+        if (!(level.getBlockEntity(pos) instanceof BigChestBlockEntity be)) {
+            return InteractionResult.CONSUME;
+        }
+
+        // Residence is a Bukkit/Mohist plugin.  Do not reference its classes
+        // directly here: on Mohist the Forge mod classloader may not be able to
+        // resolve ResidenceApi even when the Residence plugin itself is loaded.
+        if (!ResidenceProtection.canOpen(serverPlayer, pos)) {
+            serverPlayer.displayClientMessage(
+                    Component.literal("§c你没有权限打开这个海盗箱！"), true);
+            return InteractionResult.CONSUME;
+        }
+
+        NetworkHooks.openScreen(serverPlayer, new MenuProvider() {
+            @Override
+            public Component getDisplayName() {
+                return Component.literal("海盗箱");
             }
 
-            NetworkHooks.openScreen(serverPlayer, new MenuProvider() {
-                @Override public Component getDisplayName() {
-                    return Component.literal("海盗箱");
-                }
+            @Override
+            public AbstractContainerMenu createMenu(int id, Inventory inv, Player p) {
+                return new BigChestMenu(id, inv, be);
+            }
+        }, pos);
 
-                @Override public AbstractContainerMenu createMenu(int id, Inventory inv, Player p) {
-                    return new BigChestMenu(id, inv, be);
-                }
-            }, pos);
-        }
-        return InteractionResult.sidedSuccess(level.isClientSide);
+        return InteractionResult.CONSUME;
     }
 
     /**
-     * Direct Residence 6.0.2.4 API integration for Mohist 1.20.1.
-     * This check is only used on the server-side right-click/open path.
+     * Residence protection for Mohist, deliberately isolated behind reflection.
+     *
+     * The important detail is that ResidenceApi is loaded with Residence's own
+     * Bukkit plugin classloader rather than the Forge mod classloader.  This
+     * prevents ClassNotFoundException from taking down the server when a Forge
+     * class touches the chest.
      */
     private static final class ResidenceProtection {
+        private static final String RESIDENCE_PLUGIN = "Residence";
+        private static final String RESIDENCE_API =
+                "com.bekvon.bukkit.residence.api.ResidenceApi";
+        private static final String FLAGS =
+                "com.bekvon.bukkit.residence.containers.Flags";
+
+        private ResidenceProtection() {
+        }
 
         private static boolean canOpen(ServerPlayer player, BlockPos pos) {
-            if (!Bukkit.getPluginManager().isPluginEnabled("Residence")) {
+            try {
+                if (!Bukkit.getPluginManager().isPluginEnabled(RESIDENCE_PLUGIN)) {
+                    return true;
+                }
+
+                org.bukkit.plugin.Plugin residencePlugin =
+                        Bukkit.getPluginManager().getPlugin(RESIDENCE_PLUGIN);
+                if (residencePlugin == null) {
+                    return true;
+                }
+
+                org.bukkit.entity.Player bukkitPlayer =
+                        Bukkit.getPlayer(player.getUUID());
+                if (bukkitPlayer == null) {
+                    return true;
+                }
+
+                World world = bukkitPlayer.getWorld();
+                Location location = new Location(
+                        world,
+                        pos.getX() + 0.5D,
+                        pos.getY(),
+                        pos.getZ() + 0.5D
+                );
+
+                ClassLoader residenceLoader = residencePlugin.getClass().getClassLoader();
+                Class<?> apiClass = Class.forName(RESIDENCE_API, true, residenceLoader);
+                Method getResidenceManager = apiClass.getMethod("getResidenceManager");
+                Object manager = getResidenceManager.invoke(null);
+                if (manager == null) {
+                    return true;
+                }
+
+                Method getByLoc = manager.getClass().getMethod("getByLoc", Location.class);
+                Object residence = getByLoc.invoke(manager, location);
+                if (residence == null) {
+                    return true;
+                }
+
+                Method getPermissions = residence.getClass().getMethod("getPermissions");
+                Object permissions = getPermissions.invoke(residence);
+                if (permissions == null) {
+                    return false;
+                }
+
+                Class<?> flagsClass = Class.forName(FLAGS, true, residenceLoader);
+                Field containerField = flagsClass.getField("container");
+                Object containerFlag = containerField.get(null);
+
+                for (Method method : permissions.getClass().getMethods()) {
+                    if (!method.getName().equals("playerHas")) {
+                        continue;
+                    }
+
+                    Class<?>[] params = method.getParameterTypes();
+                    if (params.length != 3 || params[2] != boolean.class) {
+                        continue;
+                    }
+
+                    if (!params[0].isAssignableFrom(bukkitPlayer.getClass())) {
+                        continue;
+                    }
+                    if (!params[1].isInstance(containerFlag)) {
+                        continue;
+                    }
+
+                    Object result = method.invoke(permissions, bukkitPlayer, containerFlag, true);
+                    return result instanceof Boolean && (Boolean) result;
+                }
+
+                // Residence is present but its API shape is different from the
+                // expected version.  Keep the chest usable instead of crashing.
+                return true;
+            } catch (Throwable ignored) {
+                // Never let Residence compatibility problems crash the server.
+                // The chest remains usable if the protection hook cannot be read.
                 return true;
             }
-
-            org.bukkit.entity.Player bukkitPlayer = Bukkit.getPlayer(player.getUUID());
-            if (bukkitPlayer == null) {
-                // The player is a real server player but Bukkit cannot resolve it;
-                // don't interfere with normal container behavior.
-                return true;
-            }
-
-            World world = bukkitPlayer.getWorld();
-            Location location = new Location(
-                    world,
-                    pos.getX() + 0.5D,
-                    pos.getY(),
-                    pos.getZ() + 0.5D
-            );
-
-            ClaimedResidence residence =
-                    ResidenceApi.getResidenceManager().getByLoc(location);
-
-            if (residence == null) {
-                return true;
-            }
-
-            return residence.getPermissions()
-                    .playerHas(bukkitPlayer, Flags.container, true);
         }
     }
 }
