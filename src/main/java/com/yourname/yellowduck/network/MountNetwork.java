@@ -89,7 +89,7 @@ public final class MountNetwork {
                 syncTo(player);
                 if (!MountData.hasGhostWolf(player)) {
                     player.displayClientMessage(
-                            Component.literal("§e还没有绑定鬼狼星坐骑。"), true);
+                            Component.literal("§e还没有绑定魔化天狗坐骑。"), true);
                 }
             });
             c.setPacketHandled(true);
