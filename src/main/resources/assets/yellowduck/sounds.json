@@ -43,5 +43,30 @@
     "sounds": [
       "yellowduck:yidiyidi"
     ]
+  },
+  "music_disc_1": {
+    "sounds": [
+      "yellowduck/music_disc_1"
+    ]
+  },
+  "music_disc_2": {
+    "sounds": [
+      "yellowduck/music_disc_2"
+    ]
+  },
+  "music_disc_3": {
+    "sounds": [
+      "yellowduck/music_disc_3"
+    ]
+  },
+  "music_disc_4": {
+    "sounds": [
+      "yellowduck/music_disc_4"
+    ]
+  },
+  "music_disc_5": {
+    "sounds": [
+      "yellowduck/music_disc_5"
+    ]
   }
 }
