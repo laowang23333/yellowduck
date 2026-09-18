@@ -197,7 +197,12 @@ public class MountEntity extends PathfinderMob {
 
     @Override
     public boolean hurt(DamageSource source, float amount) {
-        if (this.isVehicle() && source.getEntity() instanceof Player player && isOwner(player)) {
+        /*
+         * 坐骑只允许存在于世界中供玩家骑乘，不参与 PVP/PVE 仇恨。
+         * 只要伤害的直接来源或真正施法/射击来源是玩家，就完全忽略。
+         * 这样普通攻击、弓箭/弩等玩家发射物都无法伤害坐骑。
+         */
+        if (source.getEntity() instanceof Player || source.getDirectEntity() instanceof Player) {
             return false;
         }
         return super.hurt(source, amount);
