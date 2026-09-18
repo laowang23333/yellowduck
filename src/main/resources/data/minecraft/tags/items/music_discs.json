@@ -2,6 +2,11 @@
   "replace": false,
   "values": [
     "yellowduck:xiaoqi_disc",
-    "yellowduck:yidiyidi_disc"
+    "yellowduck:yidiyidi_disc",
+    "yellowduck:music_disc_1",
+    "yellowduck:music_disc_2",
+    "yellowduck:music_disc_3",
+    "yellowduck:music_disc_4",
+    "yellowduck:music_disc_5"
   ]
 }
