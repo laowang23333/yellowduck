@@ -1,5 +1,6 @@
 package com.yourname.yellowduck.util;
 
+import com.yourname.yellowduck.entity.AlpacaMountEntity;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.registry.ModEntities;
 import net.minecraft.network.chat.Component;
@@ -24,7 +25,8 @@ public final class MountManager {
     private MountManager() {}
 
     public static void startMountCountdown(ServerPlayer player, String mountId) {
-        if (!MountData.hasMount(player, mountId)) {
+        mountId = MountData.canonicalizeMountId(mountId);
+        if (!isKnownMountId(mountId) || !MountData.hasMount(player, mountId)) {
             player.displayClientMessage(Component.literal("§c你还没有绑定这个坐骑。"), true);
             return;
         }
@@ -41,13 +43,15 @@ public final class MountManager {
     }
 
     public static void releaseMount(ServerPlayer player, String mountId) {
+        mountId = MountData.canonicalizeMountId(mountId);
+        if (!isKnownMountId(mountId)) return;
+
         MountEntity mount = findOwnedMount(player, mountId);
+        String name = getMountName(mountId);
         if (mount != null) {
             mount.discard();
-            String name = "alpaca".equals(mountId) ? "羊驼" : "魔化天狗";
             player.displayClientMessage(Component.literal("§7" + name + " 已放生，随时可以再次召唤。"), true);
         } else {
-            String name = "alpaca".equals(mountId) ? "羊驼" : "魔化天狗";
             player.displayClientMessage(Component.literal("§7当前没有已召唤的" + name + "。"), true);
         }
         COUNTDOWNS.remove(player.getUUID());
@@ -60,12 +64,18 @@ public final class MountManager {
     public static MountEntity findOwnedMount(ServerPlayer player, String mountId) {
         Level level = player.level();
         if (!(level instanceof ServerLevel serverLevel)) return null;
+
+        String canonicalId = mountId == null ? null : MountData.canonicalizeMountId(mountId);
+        if (canonicalId != null && !isKnownMountId(canonicalId)) return null;
+
         for (MountEntity mount : serverLevel.getEntitiesOfClass(
                 MountEntity.class, player.getBoundingBox().inflate(256.0D))) {
             if (!mount.isOwner(player) || mount.isRemoved()) continue;
-            if (mountId == null) return mount;
-            boolean alpaca = mount instanceof com.yourname.yellowduck.entity.AlpacaMountEntity;
-            if (alpaca == "alpaca".equals(mountId)) return mount;
+            if (canonicalId == null) return mount;
+
+            boolean alpaca = mount instanceof AlpacaMountEntity;
+            if (MountData.ALPACA_ID.equals(canonicalId) && alpaca) return mount;
+            if (MountData.DEMON_TENGU_ID.equals(canonicalId) && !alpaca) return mount;
         }
         return null;
     }
@@ -105,14 +115,19 @@ public final class MountManager {
     }
 
     private static void summonAndRide(ServerPlayer player, String mountId) {
+        mountId = MountData.canonicalizeMountId(mountId);
         if (player.isPassenger() || player.isVehicle()) return;
-        if (!MountData.hasMount(player, mountId) || findOwnedMount(player, mountId) != null) return;
+        if (!isKnownMountId(mountId)
+                || !MountData.hasMount(player, mountId)
+                || findOwnedMount(player, mountId) != null) {
+            return;
+        }
 
         ServerLevel level = player.serverLevel();
         MountEntity mount;
-        if ("alpaca".equals(mountId)) {
+        if (MountData.ALPACA_ID.equals(mountId)) {
             mount = ModEntities.ALPACA_MOUNT.get().create(level);
-        } else if ("ghost_wolf_stars".equals(mountId)) {
+        } else if (MountData.DEMON_TENGU_ID.equals(mountId)) {
             mount = ModEntities.MOUNT.get().create(level);
         } else {
             return;
@@ -124,7 +139,15 @@ public final class MountManager {
         level.addFreshEntity(mount);
         player.startRiding(mount, true);
         player.displayClientMessage(Component.literal(
-                "§a✦ " + ("alpaca".equals(mountId) ? "羊驼" : "魔化天狗") + " 已到达！"), true);
+                "§a✦ " + getMountName(mountId) + " 已到达！"), true);
+    }
+
+    private static boolean isKnownMountId(String mountId) {
+        return MountData.DEMON_TENGU_ID.equals(mountId) || MountData.ALPACA_ID.equals(mountId);
+    }
+
+    private static String getMountName(String mountId) {
+        return MountData.ALPACA_ID.equals(mountId) ? "羊驼" : "魔化天狗";
     }
 
     @SubscribeEvent
