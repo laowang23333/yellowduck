@@ -10,6 +10,7 @@ import com.yourname.yellowduck.particle.ModParticles;
 import com.yourname.yellowduck.registry.ModEffects;
 import com.yourname.yellowduck.registry.ModEntities;
 import com.yourname.yellowduck.registry.ModSounds;
+import com.yourname.yellowduck.silk.SilkContent;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
@@ -27,6 +28,7 @@ public class YellowDuckMod {
         com.yourname.yellowduck.registry.ModMenuTypes.MENUS.register(bus);
         com.yourname.yellowduck.registry.ModCreativeTabs.CREATIVE_TABS.register(bus);
         ModEntities.ENTITIES.register(bus);
+        SilkContent.ENTITY_TYPES.register(bus);
         com.yourname.yellowduck.registry.ModItems.ITEMS.register(bus);
         ModParticles.PARTICLES.register(bus);
 
