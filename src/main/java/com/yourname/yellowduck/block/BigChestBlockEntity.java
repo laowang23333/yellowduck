@@ -32,7 +32,16 @@ public class BigChestBlockEntity extends BlockEntity implements Container {
 
     @Override
     public ItemStack removeItem(int slot, int amount) {
-        ItemStack r = ContainerHelper.removeItem(items, slot, amount);
+        ItemStack current = items.get(slot);
+        if (current.isEmpty()) return ItemStack.EMPTY;
+
+        // 海盗箱内部可以超过物品原版堆叠上限，但任何一次“取出”都必须恢复
+        // 到该物品自己的正常上限。这样普通左键、右键、丢弃等操作都不会
+        // 把 127 个物品作为一个非法大堆带到玩家背包/鼠标上。
+        int vanillaMax = Math.max(1, current.getMaxStackSize());
+        int safeAmount = Math.min(amount, vanillaMax);
+
+        ItemStack r = ContainerHelper.removeItem(items, slot, safeAmount);
         if (!r.isEmpty()) setChanged();
         return r;
     }
