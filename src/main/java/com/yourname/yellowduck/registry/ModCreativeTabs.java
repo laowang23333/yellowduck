@@ -38,8 +38,9 @@ public class ModCreativeTabs {
                         output.accept(ModBlocks.MUSIC_DISC_5.get());
 
                         // 坐骑蛋：用于第一次绑定坐骑图鉴
-                        output.accept(ModItems.DEMON_TENGU_MOUNT.get());
+                        output.accept(ModItems.GHOST_WOLF_MOUNT.get());
                         output.accept(ModItems.ALPACA_MOUNT.get());
+                        output.accept(ModItems.RABBIT_MOUNT.get());
                     })
                     .build());
 }
