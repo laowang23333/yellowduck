@@ -1,6 +1,7 @@
 package com.yourname.yellowduck;
 
 import com.yourname.yellowduck.entity.MountEntity;
+import com.yourname.yellowduck.entity.AlpacaMountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
@@ -42,6 +43,7 @@ public class YellowDuckMod {
     private void registerAttributes(EntityAttributeCreationEvent event) {
         event.put(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossEntity.createAttributes().build());
         event.put(ModEntities.MOUNT.get(), MountEntity.createAttributes().build());
+        event.put(ModEntities.ALPACA_MOUNT.get(), AlpacaMountEntity.createAttributes().build());
         event.put(ModEntities.SAKURA_WITCH.get(), SakurawitchEntity.createAttributes().build());
         event.put(ModEntities.TOY_BEAR.get(), ToyBearEntity.createAttributes().build());
     }
