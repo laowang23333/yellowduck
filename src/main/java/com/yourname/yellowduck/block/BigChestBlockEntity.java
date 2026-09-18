@@ -46,7 +46,26 @@ public class BigChestBlockEntity extends BlockEntity implements Container {
         return r;
     }
 
-    @Override public ItemStack removeItemNoUpdate(int slot) { return ContainerHelper.takeItem(items, slot); }
+    @Override
+    public ItemStack removeItemNoUpdate(int slot) {
+        ItemStack current = items.get(slot);
+        if (current.isEmpty()) return ItemStack.EMPTY;
+
+        // removeItemNoUpdate() 原来用 ContainerHelper.takeItem() 会一次把整格取走。
+        // 对海盗箱来说这会绕过“箱外恢复正常堆叠”的规则，例如直接取出 4 把镐子。
+        // 因此这里也只允许一次离开海盗箱一组正常上限。
+        int vanillaMax = Math.max(1, current.getMaxStackSize());
+        int safeAmount = Math.min(current.getCount(), vanillaMax);
+
+        ItemStack result = current.copy();
+        result.setCount(safeAmount);
+        current.shrink(safeAmount);
+
+        if (current.isEmpty()) {
+            items.set(slot, ItemStack.EMPTY);
+        }
+        return result;
+    }
 
     @Override
     public void setItem(int slot, ItemStack stack) {
