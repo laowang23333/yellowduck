@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.network.MountNetwork;
 import com.yourname.yellowduck.registry.ModEntities;
+import com.yourname.yellowduck.util.MountData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -15,7 +16,7 @@ import net.minecraft.resources.ResourceLocation;
 /** 奶块式通用坐骑收藏界面：只显示已拥有坐骑蛋，右侧直接渲染真实 GLB 实体。 */
 public class MountScreen extends Screen {
     private static final ResourceLocation DISPLAY_ICON =
-            new ResourceLocation("yellowduck", "textures/item/mount_ghost_wolf_stars_display.png");
+            new ResourceLocation("yellowduck", "textures/item/mount_demon_tengu_display.png");
     private int panelLeft;
     private int panelTop;
     private int listLeft;
@@ -61,7 +62,7 @@ public class MountScreen extends Screen {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || selected == null) return;
         try {
-            if ("alpaca".equals(selected.id())) {
+            if (MountData.ALPACA_ID.equals(selected.id())) {
                 previewEntity = ModEntities.ALPACA_MOUNT.get().create(mc.level);
             } else {
                 previewEntity = ModEntities.MOUNT.get().create(mc.level);
@@ -187,10 +188,10 @@ public class MountScreen extends Screen {
             if (hover) graphics.fill(x, y, x + slotSize, y + slotSize, 0x442D70B8);
 
             RenderSystem.enableBlend();
-            if ("ghost_wolf_stars".equals(mount.id())) {
+            if (MountData.DEMON_TENGU_ID.equals(mount.id())) {
                 // 坐骑收藏界面使用独立高清展示图；物品栏坐骑蛋仍使用 eggTexture。
                 graphics.blit(DISPLAY_ICON, x + 6, y + 5, 0, 0, 56, 56, 3072, 3072);
-            } else if ("alpaca".equals(mount.id())) {
+            } else if (MountData.ALPACA_ID.equals(mount.id())) {
                 graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 1536, 1536);
             } else {
                 graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 56, 56);

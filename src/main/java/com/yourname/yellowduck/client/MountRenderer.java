@@ -17,7 +17,7 @@ import net.minecraftforge.client.event.EntityRenderersEvent;
 @OnlyIn(Dist.CLIENT)
 public class MountRenderer extends GltfEntityRenderer<MountEntity> {
     private static final ResourceLocation MODEL_ID =
-            new ResourceLocation("yellowduck", "ghost_wolf_mount_final_v2");
+            new ResourceLocation("yellowduck", "demon_tengu_mount");
     private static final float MODEL_SCALE = 0.16F;
 
     public MountRenderer(EntityRendererProvider.Context ctx) {

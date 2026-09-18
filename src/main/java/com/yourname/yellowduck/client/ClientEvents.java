@@ -24,7 +24,7 @@ public class ClientEvents {
         // 小黄鸭 Boss 渲染器
         event.registerEntityRenderer(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossRenderer::new);
 
-        // 鬼狼星坐骑渲染器
+        // 魔化天狗坐骑渲染器
         MountRenderer.register(event, ModEntities.MOUNT.get());
 
         // 羊驼坐骑渲染器

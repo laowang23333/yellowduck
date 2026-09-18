@@ -1,5 +1,7 @@
 package com.yourname.yellowduck.client;
 
+import com.yourname.yellowduck.util.MountData;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -13,12 +15,14 @@ public final class MountClientState {
     public static void replace(Iterable<String> ids) {
         OWNED.clear();
         for (String id : ids) {
-            if (id != null && !id.isBlank()) OWNED.add(id);
+            if (id != null && !id.isBlank()) {
+                OWNED.add(MountData.canonicalizeMountId(id));
+            }
         }
     }
 
     public static boolean has(String id) {
-        return OWNED.contains(id);
+        return OWNED.contains(MountData.canonicalizeMountId(id));
     }
 
     public static Set<String> snapshot() {
