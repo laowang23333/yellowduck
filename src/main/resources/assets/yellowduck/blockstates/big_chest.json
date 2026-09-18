@@ -1,5 +1,8 @@
 {
   "variants": {
-    "": { "model": "yellowduck:block/big_chest" }
+    "facing=north": { "model": "yellowduck:block/big_chest" },
+    "facing=south": { "model": "yellowduck:block/big_chest" },
+    "facing=east": { "model": "yellowduck:block/big_chest" },
+    "facing=west": { "model": "yellowduck:block/big_chest" }
   }
 }
