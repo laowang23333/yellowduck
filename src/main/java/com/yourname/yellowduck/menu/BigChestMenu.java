@@ -59,6 +59,11 @@ public class BigChestMenu extends AbstractContainerMenu {
      */
     @Override
     public void clicked(int slotId, int button, ClickType clickType, Player player) {
+        // 先把已经跑到鼠标/玩家背包里的非法大堆拆开。
+        // 这一步放在 super.clicked() 之前很重要：否则玩家按 Q、点界面外等操作
+        // 可能先把“4 把镐子一组”之类的非法 ItemStack 直接生成成掉落物。
+        normalizeExternalStacks(player);
+
         if (slotId >= 0
                 && slotId < BigChestBlockEntity.SIZE
                 && clickType == ClickType.SWAP) {
@@ -70,6 +75,11 @@ public class BigChestMenu extends AbstractContainerMenu {
         }
 
         super.clicked(slotId, button, clickType, player);
+
+        // 所有 GUI 点击完成后再兜底检查一次。
+        // 海盗箱允许 127 只存在于前 54 个 BigSlot；鼠标和玩家背包必须恢复
+        // ItemStack 自身的正常上限（镐子=1、珍珠=16、普通方块=64）。
+        normalizeExternalStacks(player);
     }
 
     /**
@@ -253,9 +263,115 @@ public class BigChestMenu extends AbstractContainerMenu {
         return moved;
     }
 
+    /**
+     * 海盗箱的 127 堆叠只允许存在于海盗箱自己的 54 个槽位。
+     * 鼠标光标和玩家背包属于“箱外”，任何超过物品原版上限的 ItemStack
+     * 都会立即被拆成正常大小。
+     *
+     * 例如：
+     *  - 4 把镐子 -> 1 + 1 + 1 + 1
+     *  - 127 个石头 -> 64 + 63
+     *  - 31 个末影珍珠 -> 16 + 15
+     */
+    private void normalizeExternalStacks(Player player) {
+        if (player.level().isClientSide) {
+            return;
+        }
+
+        normalizeCarriedStack(player);
+        normalizePlayerInventory(player);
+    }
+
+    /** 把鼠标光标上的非法大堆拆开，只保留一组正常上限，其余放回背包。 */
+    private void normalizeCarriedStack(Player player) {
+        ItemStack carried = getCarried();
+        if (carried.isEmpty()) {
+            return;
+        }
+
+        int max = Math.max(1, carried.getMaxStackSize());
+        if (carried.getCount() <= max) {
+            return;
+        }
+
+        int overflow = carried.getCount() - max;
+        carried.setCount(max);
+        setCarried(carried);
+        distributeOverflow(player, carried, overflow);
+    }
+
+    /** 扫描玩家全部 Inventory 槽位，把任何超过物品自身上限的堆拆开。 */
+    private void normalizePlayerInventory(Player player) {
+        Inventory inventory = player.getInventory();
+
+        // 先收集所有溢出量，再统一回填。不能边扫描边 add，
+        // 否则新加进去的物品可能又被当前循环重复处理。
+        java.util.List<ItemStack> overflowStacks = new java.util.ArrayList<>();
+
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            ItemStack stack = inventory.getItem(i);
+            if (stack.isEmpty()) {
+                continue;
+            }
+
+            int max = Math.max(1, stack.getMaxStackSize());
+            if (stack.getCount() <= max) {
+                continue;
+            }
+
+            int overflow = stack.getCount() - max;
+            stack.setCount(max);
+            inventory.setChanged();
+
+            while (overflow > 0) {
+                int amount = Math.min(max, overflow);
+                ItemStack split = stack.copy();
+                split.setCount(amount);
+                overflowStacks.add(split);
+                overflow -= amount;
+            }
+        }
+
+        for (ItemStack overflow : overflowStacks) {
+            putInInventoryOrDrop(player, overflow);
+        }
+    }
+
+    /**
+     * 将指定溢出数量按该物品自己的正常堆叠上限拆分后放进玩家背包。
+     * 背包满时以正常大小的掉落物丢在脚下，绝不生成 4 把镐子一组这种非法实体。
+     */
+    private void distributeOverflow(Player player, ItemStack template, int count) {
+        int max = Math.max(1, template.getMaxStackSize());
+
+        while (count > 0) {
+            int amount = Math.min(max, count);
+            ItemStack split = template.copy();
+            split.setCount(amount);
+            putInInventoryOrDrop(player, split);
+            count -= amount;
+        }
+    }
+
+    private void putInInventoryOrDrop(Player player, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+
+        // Inventory#add 会按物品自己的正常最大堆叠数合并/寻找空槽。
+        // 这里传入的 stack 本身已经保证 <= getMaxStackSize()。
+        if (!player.getInventory().add(stack)) {
+            player.drop(stack, false);
+        }
+    }
+
     @Override
     public void removed(Player player) {
+        // 关闭界面前先拆一次，避免 super.removed() 把非法鼠标堆直接塞回背包/丢地上。
+        normalizeExternalStacks(player);
         super.removed(player);
+        // super.removed() 可能把鼠标物品归还给玩家，再检查一次作为最终保险。
+        normalizeExternalStacks(player);
         container.stopOpen(player);
     }
 
