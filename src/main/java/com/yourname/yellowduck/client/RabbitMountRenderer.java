@@ -37,12 +37,7 @@ public class RabbitMountRenderer extends GltfEntityRenderer<RabbitMountEntity> {
         try {
             AnimationController controller = this.getAnimationController(entity);
             if (controller != null) {
-                boolean walking = entity.getEntityData().get(MountEntity.IS_WALKING);
-                if (entity.getControllingPassenger() instanceof Player player) {
-                    walking = walking || Math.abs(player.xxa) > 0.01F
-                            || Math.abs(player.zza) > 0.01F
-                            || entity.getDeltaMovement().horizontalDistanceSqr() > 0.00001D;
-                }
+                boolean walking = MountAnimationState.isWalking(entity);
 
                 // 玉兔动画：
                 // 未骑乘 / 骑乘静止 -> Anim-1_stand（待机）

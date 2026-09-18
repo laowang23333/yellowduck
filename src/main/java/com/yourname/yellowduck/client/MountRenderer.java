@@ -17,7 +17,7 @@ import net.minecraftforge.client.event.EntityRenderersEvent;
 @OnlyIn(Dist.CLIENT)
 public class MountRenderer extends GltfEntityRenderer<MountEntity> {
     private static final ResourceLocation MODEL_ID =
-            new ResourceLocation("yellowduck", "demon_tengu_mount");
+            new ResourceLocation("yellowduck", "ghost_wolf_mount_final_v2");
     private static final float MODEL_SCALE = 0.16F;
 
     public MountRenderer(EntityRendererProvider.Context ctx) {
@@ -36,12 +36,7 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
         try {
             AnimationController controller = this.getAnimationController(entity);
             if (controller != null) {
-                boolean walking = entity.getEntityData().get(MountEntity.IS_WALKING);
-                if (entity.getControllingPassenger() instanceof Player player) {
-                    walking = Math.abs(player.xxa) > 0.01F
-                            || Math.abs(player.zza) > 0.01F
-                            || entity.getDeltaMovement().horizontalDistanceSqr() > 0.00001D;
-                }
+                boolean walking = MountAnimationState.isWalking(entity);
                 String wanted = walking ? "run" : "idle";
                 if (!wanted.equals(controller.getAnimationName())) {
                     controller.play(wanted, true);
