@@ -138,7 +138,7 @@ public class MountScreen extends Screen {
 
         renderActualGlbPreview(graphics, mouseX, mouseY);
 
-        graphics.drawCenteredString(this.font, Component.literal("拖动鼠标查看模型"),
+        graphics.drawCenteredString(this.font, Component.literal("移动鼠标查看模型"),
                 px + 120, bottom - 61, 0xFF718AB0);
         graphics.drawString(this.font, Component.literal("点击坐骑蛋可切换预览"),
                 left + 18, bottom - 15, 0xFF718AB0, false);
@@ -148,20 +148,22 @@ public class MountScreen extends Screen {
 
     private void renderActualGlbPreview(GuiGraphics graphics, int mouseX, int mouseY) {
         if (previewEntity == null || Minecraft.getInstance().level == null || selected == null) return;
+        int centerX = panelLeft + 378;
+        int baseY = panelTop + 184;
+        // 参数必须为相对预览中心的鼠标偏移，不是屏幕绝对坐标。
+        float lookX = net.minecraft.util.Mth.clamp((float) (centerX - mouseX), -35.0F, 35.0F);
+        float lookY = net.minecraft.util.Mth.clamp((float) (baseY - 55 - mouseY), -12.0F, 12.0F);
+        int scale = "ghost_wolf_stars".equals(selected.id()) ? 34
+                : "alpaca".equals(selected.id()) ? 42 : 60;
+        graphics.enableScissor(panelLeft + 262, panelTop + 67, panelLeft + 493, panelTop + 188);
         try {
-            // 这是 Minecraft 的真实实体 GUI 渲染入口；MountRenderer 内部使用 Polymesh GLB。
             InventoryScreen.renderEntityInInventoryFollowsMouse(
-                    graphics,
-                    panelLeft + 380,
-                    panelTop + 150,
-                    72,
-                    mouseX,
-                    mouseY,
-                    previewEntity
-            );
+                    graphics, centerX, baseY, scale, lookX, lookY, previewEntity);
         } catch (Throwable ignored) {
             graphics.drawCenteredString(this.font, Component.literal("3D 模型加载中…"),
-                    panelLeft + 380, panelTop + 150, 0xFF9DB6D8);
+                    centerX, panelTop + 130, 0xFF9DB6D8);
+        } finally {
+            graphics.disableScissor();
         }
     }
 
@@ -190,14 +192,13 @@ public class MountScreen extends Screen {
 
             RenderSystem.enableBlend();
             if ("ghost_wolf_stars".equals(mount.id())) {
-                // 坐骑收藏界面使用独立高清展示图；物品栏坐骑蛋仍使用 eggTexture。
-                graphics.blit(DISPLAY_ICON, x + 6, y + 5, 0, 0, 56, 56, 3072, 3072);
-            } else if ("rabbit".equals(mount.id())) {
-                graphics.blit(mount.eggTexture(), x + 6, y + 5, 56, 56, 0.0F, 0.0F, 1536, 1536, 1536, 1536);
-            } else if ("alpaca".equals(mount.id())) {
-                graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 1536, 1536);
+                // 完整展示图为1536x1024，按原比例缩放，不截取左上角。
+                graphics.blit(DISPLAY_ICON, x + 6, y + 14, 56, 37,
+                        0.0F, 0.0F, 1536, 1024, 1536, 1024);
             } else {
-                graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 56, 56);
+                // 归一化UV覆盖整张贴图：64x64羊驼与1536x1536玉兔均适用。
+                graphics.blit(mount.eggTexture(), x + 6, y + 5, 56, 56,
+                        0.0F, 0.0F, 1, 1, 1, 1);
             }
             RenderSystem.disableBlend();
             graphics.drawCenteredString(this.font, Component.literal(mount.name()),
