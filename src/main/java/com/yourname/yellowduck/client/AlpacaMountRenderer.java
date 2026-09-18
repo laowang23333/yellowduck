@@ -37,13 +37,14 @@ public class AlpacaMountRenderer extends GltfEntityRenderer<AlpacaMountEntity> {
         try {
             AnimationController controller = this.getAnimationController(entity);
             if (controller != null) {
-                boolean walking = entity.getEntityData().get(MountEntity.IS_WALKING);
-                if (entity.getControllingPassenger() instanceof Player player) {
-                    walking = Math.abs(player.xxa) > 0.01F
-                            || Math.abs(player.zza) > 0.01F
-                            || entity.getDeltaMovement().horizontalDistanceSqr() > 0.00001D;
-                }
-                String wanted = walking ? "Anim-1_walk" : "Anim-1_ride";
+                // 羊驼 GLB 的动画对应关系：
+                // 未骑乘：stand（待机）
+                // 骑乘但不移动：stand（待机）
+                // 骑乘移动：ride（跑步）
+                // 注意：GLB 中没有使用 Anim-1_walk；Anim-1_ride 才是跑步动画。
+                boolean riding = entity.isVehicle();
+                boolean walking = riding && entity.getEntityData().get(MountEntity.IS_WALKING);
+                String wanted = walking ? "Anim-1_ride" : "Anim-1_stand";
                 if (!wanted.equals(controller.getAnimationName())) {
                     controller.play(wanted, true);
                 }
