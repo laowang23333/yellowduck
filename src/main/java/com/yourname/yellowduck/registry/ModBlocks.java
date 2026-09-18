@@ -120,4 +120,23 @@ public class ModBlocks {
                     new Item.Properties().stacksTo(1),
                     600
             ));
+
+    // =========================
+    // 新增五张唱片
+    // =========================
+
+    public static final RegistryObject<Item> MUSIC_DISC_1 = ITEMS.register("music_disc_1",
+            () -> new RecordItem(1, ModSounds.MUSIC_DISC_1, new Item.Properties().stacksTo(1), 2381));
+
+    public static final RegistryObject<Item> MUSIC_DISC_2 = ITEMS.register("music_disc_2",
+            () -> new RecordItem(2, ModSounds.MUSIC_DISC_2, new Item.Properties().stacksTo(1), 2613));
+
+    public static final RegistryObject<Item> MUSIC_DISC_3 = ITEMS.register("music_disc_3",
+            () -> new RecordItem(3, ModSounds.MUSIC_DISC_3, new Item.Properties().stacksTo(1), 1204));
+
+    public static final RegistryObject<Item> MUSIC_DISC_4 = ITEMS.register("music_disc_4",
+            () -> new RecordItem(4, ModSounds.MUSIC_DISC_4, new Item.Properties().stacksTo(1), 1398));
+
+    public static final RegistryObject<Item> MUSIC_DISC_5 = ITEMS.register("music_disc_5",
+            () -> new RecordItem(5, ModSounds.MUSIC_DISC_5, new Item.Properties().stacksTo(1), 5234));
 }

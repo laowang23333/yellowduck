@@ -30,6 +30,13 @@ public class ModCreativeTabs {
                         output.accept(ModBlocks.XIAOQI_DISC.get());
                         output.accept(ModBlocks.YIDIYIDI_DISC.get());
 
+                        // 新增五张唱片
+                        output.accept(ModBlocks.MUSIC_DISC_1.get());
+                        output.accept(ModBlocks.MUSIC_DISC_2.get());
+                        output.accept(ModBlocks.MUSIC_DISC_3.get());
+                        output.accept(ModBlocks.MUSIC_DISC_4.get());
+                        output.accept(ModBlocks.MUSIC_DISC_5.get());
+
                         // 坐骑蛋：用于第一次绑定坐骑图鉴
                         output.accept(ModItems.GHOST_WOLF_MOUNT.get());
                         output.accept(ModItems.ALPACA_MOUNT.get());

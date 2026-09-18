@@ -27,6 +27,13 @@ public class ModSounds {
     // 印神像放置音效
     public static final RegistryObject<SoundEvent> XJY = register("xjy");
 
+    // 新增五张唱片
+    public static final RegistryObject<SoundEvent> MUSIC_DISC_1 = register("music_disc_1");
+    public static final RegistryObject<SoundEvent> MUSIC_DISC_2 = register("music_disc_2");
+    public static final RegistryObject<SoundEvent> MUSIC_DISC_3 = register("music_disc_3");
+    public static final RegistryObject<SoundEvent> MUSIC_DISC_4 = register("music_disc_4");
+    public static final RegistryObject<SoundEvent> MUSIC_DISC_5 = register("music_disc_5");
+
     private static RegistryObject<SoundEvent> register(String name) {
         return SOUND_EVENTS.register(
                 name,
