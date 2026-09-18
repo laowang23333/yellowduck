@@ -24,11 +24,12 @@ public class ClientEvents {
         // 小黄鸭 Boss 渲染器
         event.registerEntityRenderer(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossRenderer::new);
 
-        // 魔化天狗坐骑渲染器
+        // 鬼狼星坐骑渲染器
         MountRenderer.register(event, ModEntities.MOUNT.get());
 
         // 羊驼坐骑渲染器
         AlpacaMountRenderer.register(event, ModEntities.ALPACA_MOUNT.get());
+        RabbitMountRenderer.register(event, ModEntities.RABBIT_MOUNT.get());
 
         // 大箱子方块实体渲染器
         event.registerBlockEntityRenderer(

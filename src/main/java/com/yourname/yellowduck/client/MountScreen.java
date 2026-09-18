@@ -1,20 +1,21 @@
 package com.yourname.yellowduck.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.network.MountNetwork;
 import com.yourname.yellowduck.registry.ModEntities;
-import com.yourname.yellowduck.registry.ModItems;
-import com.yourname.yellowduck.util.MountData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.resources.ResourceLocation;
 
 /** 奶块式通用坐骑收藏界面：只显示已拥有坐骑蛋，右侧直接渲染真实 GLB 实体。 */
 public class MountScreen extends Screen {
+    private static final ResourceLocation DISPLAY_ICON =
+            new ResourceLocation("yellowduck", "textures/item/mount_ghost_wolf_stars_display.png");
     private int panelLeft;
     private int panelTop;
     private int listLeft;
@@ -60,7 +61,9 @@ public class MountScreen extends Screen {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || selected == null) return;
         try {
-            if (MountData.ALPACA_ID.equals(selected.id())) {
+            if ("rabbit".equals(selected.id())) {
+                previewEntity = ModEntities.RABBIT_MOUNT.get().create(mc.level);
+            } else if ("alpaca".equals(selected.id())) {
                 previewEntity = ModEntities.ALPACA_MOUNT.get().create(mc.level);
             } else {
                 previewEntity = ModEntities.MOUNT.get().create(mc.level);
@@ -185,47 +188,23 @@ public class MountScreen extends Screen {
                     active ? 0xFFFFC95C : 0xFF294E84);
             if (hover) graphics.fill(x, y, x + slotSize, y + slotSize, 0x442D70B8);
 
-            // 左侧收藏栏不再读取独立展示贴图，直接渲染真正的坐骑蛋 ItemStack。
-            // 这样这里看到的图标会和玩家背包/创造栏里的坐骑蛋完全一致。
-            renderMountEgg(graphics, mount, x, y, slotSize);
+            RenderSystem.enableBlend();
+            if ("ghost_wolf_stars".equals(mount.id())) {
+                // 坐骑收藏界面使用独立高清展示图；物品栏坐骑蛋仍使用 eggTexture。
+                graphics.blit(DISPLAY_ICON, x + 6, y + 5, 0, 0, 56, 56, 3072, 3072);
+            } else if ("rabbit".equals(mount.id())) {
+                graphics.blit(mount.eggTexture(), x + 6, y + 5, 56, 56, 0.0F, 0.0F, 1536, 1536, 1536, 1536);
+            } else if ("alpaca".equals(mount.id())) {
+                graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 1536, 1536);
+            } else {
+                graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 56, 56);
+            }
+            RenderSystem.disableBlend();
             graphics.drawCenteredString(this.font, Component.literal(mount.name()),
                     x + slotSize / 2, y + slotSize + 5,
                     active ? 0xFFEAF4FF : 0xFFB6C9E6);
             index++;
         }
-    }
-
-
-    /**
-     * 直接使用注册的坐骑蛋物品模型来绘制收藏栏图标。
-     * 原版 GUI 物品图标是 16x16，这里等比放大到 48x48 并居中。
-     */
-    private void renderMountEgg(GuiGraphics graphics, MountCatalog.MountDefinition mount,
-                                int slotX, int slotY, int slotSize) {
-        ItemStack egg = getMountEggStack(mount.id());
-        if (egg.isEmpty()) return;
-
-        final float scale = 3.0F;
-        final int iconSize = 16;
-        final float renderedSize = iconSize * scale;
-        final float offsetX = slotX + (slotSize - renderedSize) / 2.0F;
-        final float offsetY = slotY + (slotSize - renderedSize) / 2.0F;
-
-        graphics.pose().pushPose();
-        graphics.pose().translate(offsetX, offsetY, 100.0F);
-        graphics.pose().scale(scale, scale, 1.0F);
-        graphics.renderItem(egg, 0, 0);
-        graphics.pose().popPose();
-    }
-
-    private ItemStack getMountEggStack(String mountId) {
-        if (MountData.DEMON_TENGU_ID.equals(mountId)) {
-            return new ItemStack(ModItems.DEMON_TENGU_MOUNT.get());
-        }
-        if (MountData.ALPACA_ID.equals(mountId)) {
-            return new ItemStack(ModItems.ALPACA_MOUNT.get());
-        }
-        return ItemStack.EMPTY;
     }
 
     private int ownedCount() {

@@ -1,6 +1,5 @@
 package com.yourname.yellowduck.client;
 
-import com.yourname.yellowduck.util.MountData;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
@@ -14,22 +13,24 @@ public final class MountCatalog {
             ResourceLocation modelId
     ) {}
 
-    public static final MountDefinition DEMON_TENGU = new MountDefinition(
-            MountData.DEMON_TENGU_ID,
+    public static final MountDefinition GHOST_WOLF = new MountDefinition(
+            "ghost_wolf_stars",
             "魔化天狗",
-            new ResourceLocation("yellowduck", "textures/item/mount_egg_demon_tengu.png"),
-            new ResourceLocation("yellowduck", "demon_tengu_mount")
+            new ResourceLocation("yellowduck", "textures/item/mount_egg_ghost_wolf_stars.png"),
+            new ResourceLocation("yellowduck", "ghost_wolf_mount_final_v2")
     );
 
     public static final MountDefinition ALPACA = new MountDefinition(
-            MountData.ALPACA_ID,
+            "alpaca",
             "羊驼",
             new ResourceLocation("yellowduck", "textures/item/alpaca_egg.png"),
             new ResourceLocation("yellowduck", "alpaca_embedded")
     );
 
     public static List<MountDefinition> all() {
-        return List.of(DEMON_TENGU, ALPACA);
+        return List.of(GHOST_WOLF, ALPACA, new MountDefinition("rabbit", "玉兔",
+                new ResourceLocation("yellowduck", "textures/item/items_mount_egg_rabbit.png"),
+                new ResourceLocation("yellowduck", "rabbit_mount_embedded")));
     }
 
     private MountCatalog() {}
