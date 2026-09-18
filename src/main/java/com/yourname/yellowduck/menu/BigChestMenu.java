@@ -9,6 +9,7 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
@@ -52,6 +53,26 @@ public class BigChestMenu extends AbstractContainerMenu {
     }
 
     /**
+     * 数字键/副手交换会绕过普通 removeItem() 的“取出数量”限制。
+     * 如果箱内这一格正处于超量堆叠状态，就禁止直接整组交换出去，
+     * 避免 127 个物品被原样塞进快捷栏或副手。
+     */
+    @Override
+    public void clicked(int slotId, int button, ClickType clickType, Player player) {
+        if (slotId >= 0
+                && slotId < BigChestBlockEntity.SIZE
+                && clickType == ClickType.SWAP) {
+            ItemStack chestStack = slots.get(slotId).getItem();
+            if (!chestStack.isEmpty()
+                    && chestStack.getCount() > chestStack.getMaxStackSize()) {
+                return;
+            }
+        }
+
+        super.clicked(slotId, button, clickType, player);
+    }
+
+    /**
      * Shift-click 自动搬运。
      *
      * 原版 AbstractContainerMenu.moveItemStackTo() 会把
@@ -77,8 +98,12 @@ public class BigChestMenu extends AbstractContainerMenu {
         ItemStack result = source.copy();
 
         if (index < BigChestBlockEntity.SIZE) {
-            // 海盗箱 -> 玩家背包：按玩家背包自己的 64 上限拆分。
-            if (!moveItemStackTo(source, BigChestBlockEntity.SIZE, slots.size(), true)) {
+            // 海盗箱 -> 玩家背包：不能把海盗箱里的“超量堆叠”原样带出去。
+            // 必须按该物品自己的原版最大堆叠数拆开：
+            //   127 个普通物品 -> 64 + 63
+            //   31 个末影珍珠   -> 16 + 15
+            //   2 把不可堆叠工具 -> 1 + 1
+            if (!moveBigChestStackToPlayer(source)) {
                 return ItemStack.EMPTY;
             }
         } else {
@@ -99,6 +124,68 @@ public class BigChestMenu extends AbstractContainerMenu {
         }
 
         return result;
+    }
+
+    /**
+     * Shift+左键从海盗箱搬到玩家背包。
+     *
+     * 海盗箱内部允许 127 堆叠，但这种超量堆叠绝不能进入玩家背包。
+     * 因此这里不再依赖原版 moveItemStackTo()，而是显式使用
+     * ItemStack#getMaxStackSize() 作为玩家背包中的硬上限。
+     */
+    private boolean moveBigChestStackToPlayer(ItemStack source) {
+        boolean moved = false;
+        int vanillaMax = Math.max(1, source.getMaxStackSize());
+
+        // 第一阶段：先补满玩家背包里已有的同类物品堆。
+        for (int i = BigChestBlockEntity.SIZE; i < slots.size() && !source.isEmpty(); i++) {
+            Slot targetSlot = slots.get(i);
+            ItemStack target = targetSlot.getItem();
+
+            if (target.isEmpty()
+                    || !ItemStack.isSameItemSameTags(target, source)
+                    || !targetSlot.mayPlace(source)) {
+                continue;
+            }
+
+            int slotLimit = Math.min(vanillaMax, targetSlot.getMaxStackSize(source));
+            if (target.getCount() >= slotLimit) {
+                continue;
+            }
+
+            int amount = Math.min(slotLimit - target.getCount(), source.getCount());
+            target.grow(amount);
+            source.shrink(amount);
+            targetSlot.setChanged();
+            moved = true;
+        }
+
+        // 第二阶段：再放入空的玩家背包槽，每格都严格不超过原版上限。
+        for (int i = slots.size() - 1;
+             i >= BigChestBlockEntity.SIZE && !source.isEmpty();
+             i--) {
+            Slot targetSlot = slots.get(i);
+
+            if (targetSlot.hasItem() || !targetSlot.mayPlace(source)) {
+                continue;
+            }
+
+            int slotLimit = Math.min(vanillaMax, targetSlot.getMaxStackSize(source));
+            if (slotLimit <= 0) {
+                continue;
+            }
+
+            int amount = Math.min(slotLimit, source.getCount());
+            ItemStack placed = source.copy();
+            placed.setCount(amount);
+
+            targetSlot.set(placed);
+            targetSlot.setChanged();
+            source.shrink(amount);
+            moved = true;
+        }
+
+        return moved;
     }
 
     /**
