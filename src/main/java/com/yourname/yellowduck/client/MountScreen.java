@@ -33,27 +33,39 @@ public class MountScreen extends Screen {
         panelTop = Math.max(8, this.height / 2 - 135);
         listLeft = panelLeft + 18;
 
+        if (selected == null) {
+            for (MountCatalog.MountDefinition mount : MountCatalog.all()) {
+                if (isOwned(mount.id())) {
+                    selected = mount;
+                    break;
+                }
+            }
+        }
         createPreviewEntity();
 
         addRenderableWidget(Button.builder(Component.literal("乘骑"), b -> {
             if (selected != null && isOwned(selected.id())) {
-                MountNetwork.CHANNEL.sendToServer(new MountNetwork.MountActionPacket(0));
+                MountNetwork.CHANNEL.sendToServer(new MountNetwork.MountActionPacket(0, selected.id()));
                 this.onClose();
             }
         }).bounds(panelLeft + 300, panelTop + 218, 92, 22).build());
 
         addRenderableWidget(Button.builder(Component.literal("放生"), b -> {
             if (selected != null && isOwned(selected.id())) {
-                MountNetwork.CHANNEL.sendToServer(new MountNetwork.MountActionPacket(1));
+                MountNetwork.CHANNEL.sendToServer(new MountNetwork.MountActionPacket(1, selected.id()));
             }
         }).bounds(panelLeft + 398, panelTop + 218, 92, 22).build());
     }
 
     private void createPreviewEntity() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return;
+        if (mc.level == null || selected == null) return;
         try {
-            previewEntity = ModEntities.MOUNT.get().create(mc.level);
+            if ("alpaca".equals(selected.id())) {
+                previewEntity = ModEntities.ALPACA_MOUNT.get().create(mc.level);
+            } else {
+                previewEntity = ModEntities.MOUNT.get().create(mc.level);
+            }
             if (previewEntity != null) {
                 previewEntity.setGuiPreview(true);
                 previewEntity.setNoGravity(true);
@@ -65,6 +77,14 @@ public class MountScreen extends Screen {
         } catch (Throwable ignored) {
             previewEntity = null;
         }
+    }
+
+    private void recreatePreviewEntity() {
+        if (previewEntity != null) {
+            previewEntity.remove(net.minecraft.world.entity.Entity.RemovalReason.DISCARDED);
+            previewEntity = null;
+        }
+        createPreviewEntity();
     }
 
     @Override
@@ -101,15 +121,6 @@ public class MountScreen extends Screen {
         graphics.drawString(this.font,
                 Component.literal("已拥有 " + ownedCount() + "/" + MountCatalog.all().size()),
                 left + 145, top + 46, 0xFF748DB2, false);
-
-        if (selected == null) {
-            for (MountCatalog.MountDefinition mount : MountCatalog.all()) {
-                if (isOwned(mount.id())) {
-                    selected = mount;
-                    break;
-                }
-            }
-        }
 
         drawOwnedMounts(graphics, mouseX, mouseY);
 
@@ -179,6 +190,8 @@ public class MountScreen extends Screen {
             if ("ghost_wolf_stars".equals(mount.id())) {
                 // 坐骑收藏界面使用独立高清展示图；物品栏坐骑蛋仍使用 eggTexture。
                 graphics.blit(DISPLAY_ICON, x + 6, y + 5, 0, 0, 56, 56, 3072, 3072);
+            } else if ("alpaca".equals(mount.id())) {
+                graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 1536, 1536);
             } else {
                 graphics.blit(mount.eggTexture(), x + 6, y + 5, 0, 0, 56, 56, 56, 56);
             }
@@ -219,6 +232,7 @@ public class MountScreen extends Screen {
             if (mouseX >= x && mouseX <= x + slotSize
                     && mouseY >= y && mouseY <= y + slotSize) {
                 selected = mount;
+                recreatePreviewEntity();
                 return true;
             }
             index++;

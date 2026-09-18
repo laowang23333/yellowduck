@@ -20,8 +20,15 @@ public final class MountCatalog {
             new ResourceLocation("yellowduck", "ghost_wolf_mount_final_v2")
     );
 
+    public static final MountDefinition ALPACA = new MountDefinition(
+            "alpaca",
+            "羊驼",
+            new ResourceLocation("yellowduck", "textures/item/alpaca_egg.png"),
+            new ResourceLocation("yellowduck", "alpaca_embedded")
+    );
+
     public static List<MountDefinition> all() {
-        return List.of(GHOST_WOLF);
+        return List.of(GHOST_WOLF, ALPACA);
     }
 
     private MountCatalog() {}
