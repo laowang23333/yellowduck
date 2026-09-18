@@ -19,7 +19,8 @@ import java.util.function.Supplier;
 
 /** 坐骑 GUI 与服务端之间的 C2S/S2C 通讯。 */
 public final class MountNetwork {
-    private static final String PROTOCOL = "3";
+    // 坐骑 ID 从旧名称切换为 demon_tengu，协议同步升级，防止新旧客户端混用。
+    private static final String PROTOCOL = "4";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation("yellowduck", "mount"),
             () -> PROTOCOL, PROTOCOL::equals, PROTOCOL::equals);
@@ -43,11 +44,11 @@ public final class MountNetwork {
 
     public static void syncTo(ServerPlayer player) {
         List<String> owned = new ArrayList<>();
-        if (MountData.hasGhostWolf(player)) {
-            owned.add("ghost_wolf_stars");
+        if (MountData.hasDemonTengu(player)) {
+            owned.add(MountData.DEMON_TENGU_ID);
         }
-        if (MountData.hasMount(player, "alpaca")) {
-            owned.add("alpaca");
+        if (MountData.hasMount(player, MountData.ALPACA_ID)) {
+            owned.add(MountData.ALPACA_ID);
         }
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new MountSyncPacket(owned));
     }
@@ -67,8 +68,9 @@ public final class MountNetwork {
             c.enqueueWork(() -> {
                 ServerPlayer player = c.getSender();
                 if (player == null) return;
-                if (msg.action == 0) MountManager.startMountCountdown(player, msg.mountId);
-                else if (msg.action == 1) MountManager.releaseMount(player, msg.mountId);
+                String mountId = MountData.canonicalizeMountId(msg.mountId);
+                if (msg.action == 0) MountManager.startMountCountdown(player, mountId);
+                else if (msg.action == 1) MountManager.releaseMount(player, mountId);
             });
             c.setPacketHandled(true);
         }
@@ -87,7 +89,7 @@ public final class MountNetwork {
                 ServerPlayer player = c.getSender();
                 if (player == null) return;
                 syncTo(player);
-                if (!MountData.hasGhostWolf(player)) {
+                if (!MountData.hasDemonTengu(player)) {
                     player.displayClientMessage(
                             Component.literal("§e还没有绑定魔化天狗坐骑。"), true);
                 }
