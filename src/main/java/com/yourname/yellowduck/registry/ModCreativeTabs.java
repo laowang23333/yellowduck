@@ -32,6 +32,7 @@ public class ModCreativeTabs {
 
                         // 坐骑蛋：用于第一次绑定坐骑图鉴
                         output.accept(ModItems.GHOST_WOLF_MOUNT.get());
+                        output.accept(ModItems.ALPACA_MOUNT.get());
                     })
                     .build());
 }

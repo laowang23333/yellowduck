@@ -2,6 +2,7 @@ package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.entity.MountEntity;
+import com.yourname.yellowduck.entity.AlpacaMountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
@@ -26,6 +27,13 @@ public class ModEntities {
                     EntityType.Builder.<MountEntity>of(MountEntity::new, MobCategory.CREATURE)
                             .sized(2.4F, 2.2F)
                             .build("mount"));
+
+    public static final RegistryObject<EntityType<AlpacaMountEntity>> ALPACA_MOUNT =
+            ENTITIES.register("alpaca_mount", () ->
+                    EntityType.Builder.<AlpacaMountEntity>of(AlpacaMountEntity::new, MobCategory.CREATURE)
+                            .sized(1.4F, 2.2F)
+                            .clientTrackingRange(10)
+                            .build("alpaca_mount"));
 
     // ==========================================
     // 小樱 Boss

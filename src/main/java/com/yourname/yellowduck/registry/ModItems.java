@@ -24,5 +24,9 @@ public final class ModItems {
             ITEMS.register("mount_display_ghost_wolf_stars",
                     () -> new Item(new Item.Properties().stacksTo(1)));
 
+    public static final RegistryObject<Item> ALPACA_MOUNT =
+            ITEMS.register("mount_egg_alpaca",
+                    () -> new MountSummonItem(new Item.Properties(), "alpaca"));
+
     private ModItems() {}
 }
