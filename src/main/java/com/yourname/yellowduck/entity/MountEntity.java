@@ -61,7 +61,7 @@ public class MountEntity extends PathfinderMob {
 
     @Override
     public Component getName() {
-        return Component.literal("鬼狼星坐骑");
+        return Component.literal("魔化天狗");
     }
 
     @Override
@@ -289,6 +289,6 @@ public class MountEntity extends PathfinderMob {
 
     @Override
     public ItemStack getPickResult() {
-        return new ItemStack(ModItems.GHOST_WOLF_MOUNT.get());
+        return new ItemStack(ModItems.DEMON_TENGU_MOUNT.get());
     }
 }
