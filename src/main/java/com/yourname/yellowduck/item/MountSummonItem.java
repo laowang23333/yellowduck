@@ -29,11 +29,11 @@ public class MountSummonItem extends Item {
                 if (player instanceof ServerPlayer serverPlayer) {
                     MountNetwork.syncTo(serverPlayer);
                 }
-                String name = "alpaca".equals(mountId) ? "羊驼" : "鬼狼星";
+                String name = "alpaca".equals(mountId) ? "羊驼" : "魔化天狗";
                 player.displayClientMessage(Component.literal("§a✦ " + name + " 已绑定到你的坐骑图鉴！"), true);
                 player.displayClientMessage(Component.literal("§7按 M 打开坐骑界面，选择乘骑或放生。"), false);
             } else {
-                String name = "alpaca".equals(mountId) ? "羊驼" : "鬼狼星";
+                String name = "alpaca".equals(mountId) ? "羊驼" : "魔化天狗";
                 player.displayClientMessage(Component.literal("§b" + name + " 已经绑定。按 M 打开坐骑界面。"), true);
             }
         }
