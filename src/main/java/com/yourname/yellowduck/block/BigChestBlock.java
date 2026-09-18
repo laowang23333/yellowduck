@@ -12,6 +12,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -41,6 +42,48 @@ public class BigChestBlock extends BaseEntityBlock {
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new BigChestBlockEntity(ModBlockEntities.BIG_CHEST.get(), pos, state);
+    }
+
+    /**
+     * 海盗箱内有物品时禁止破坏。
+     * 空箱则正常破坏，并交给原版/Forge 的掉落机制掉落海盗箱本身。
+     */
+    @Override
+    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos,
+                                       Player player, boolean willHarvest, FluidState fluidState) {
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+
+        if (blockEntity instanceof BigChestBlockEntity be && hasAnyItem(be)) {
+            if (player instanceof ServerPlayer serverPlayer) {
+                serverPlayer.displayClientMessage(
+                        Component.literal("§c海盗箱内还有物品，无法挖掘！"), true);
+            }
+            return false;
+        }
+
+        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluidState);
+    }
+
+    /**
+     * 通过反射检查海盗箱库存，避免依赖 BigChestBlockEntity 的具体容器接口实现。
+     */
+    private static boolean hasAnyItem(BigChestBlockEntity be) {
+        try {
+            Method getContainerSize = be.getClass().getMethod("getContainerSize");
+            Method getItem = be.getClass().getMethod("getItem", int.class);
+            int size = ((Number) getContainerSize.invoke(be)).intValue();
+
+            for (int i = 0; i < size; i++) {
+                Object stack = getItem.invoke(be, i);
+                if (stack instanceof net.minecraft.world.item.ItemStack itemStack
+                        && !itemStack.isEmpty()) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+            // 如果当前箱子实现没有标准容器方法，不阻止正常破坏。
+        }
+        return false;
     }
 
     @Override
@@ -102,6 +145,10 @@ public class BigChestBlock extends BaseEntityBlock {
 
         private static boolean canOpen(ServerPlayer player, BlockPos pos) {
             try {
+                // OP 无视 Residence 领地容器权限，任何位置都可以打开海盗箱。
+                if (player.hasPermissions(2)) {
+                    return true;
+                }
                 if (!Bukkit.getPluginManager().isPluginEnabled(RESIDENCE_PLUGIN)) {
                     return true;
                 }
