@@ -4,6 +4,7 @@ import com.yourname.yellowduck.menu.BigChestMenu;
 import com.yourname.yellowduck.registry.ModBlockEntities;
 import com.yourname.yellowduck.registry.ModBlocks;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -13,12 +14,17 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.block.BaseEntityBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraftforge.network.NetworkHooks;
 import org.bukkit.Bukkit;
@@ -31,9 +37,31 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 public class BigChestBlock extends BaseEntityBlock {
+    /**
+     * 海盗箱的朝向。
+     * FACING 表示箱子的正面（锁扣一侧）朝向哪个方向。
+     */
+    public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
 
     public BigChestBlock(Properties props) {
         super(props);
+        this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH));
+    }
+
+    /**
+     * 放置海盗箱时，根据玩家朝向保存箱子的正面方向。
+     * 玩家面对哪个方向，箱子正面就朝向玩家，所以取 opposite。
+     */
+    @Nullable
+    @Override
+    public BlockState getStateForPlacement(BlockPlaceContext context) {
+        return this.defaultBlockState()
+                .setValue(FACING, context.getHorizontalDirection().getOpposite());
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(FACING);
     }
 
     @Override
@@ -269,8 +297,8 @@ public class BigChestBlock extends BaseEntityBlock {
                 }
 
                 Class<?> flagsClass = Class.forName(FLAGS, true, residenceLoader);
-                Field buildField = flagsClass.getField("build");
-                Object buildFlag = buildField.get(null);
+                Field containerField = flagsClass.getField("container");
+                Object containerFlag = containerField.get(null);
 
                 for (Method method : permissions.getClass().getMethods()) {
                     if (!method.getName().equals("playerHas")) {
@@ -285,12 +313,12 @@ public class BigChestBlock extends BaseEntityBlock {
                     if (!params[0].isAssignableFrom(bukkitPlayer.getClass())) {
                         continue;
                     }
-                    if (!params[1].isInstance(buildFlag)) {
+                    if (!params[1].isInstance(containerFlag)) {
                         continue;
                     }
 
                     Object result = method.invoke(
-                            permissions, bukkitPlayer, buildFlag, true);
+                            permissions, bukkitPlayer, containerFlag, true);
                     return result instanceof Boolean && (Boolean) result;
                 }
 
