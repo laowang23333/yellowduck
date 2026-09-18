@@ -46,16 +46,20 @@ public final class MountNetwork {
         if (MountData.hasGhostWolf(player)) {
             owned.add("ghost_wolf_stars");
         }
+        if (MountData.hasMount(player, "alpaca")) {
+            owned.add("alpaca");
+        }
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new MountSyncPacket(owned));
     }
 
-    public record MountActionPacket(int action) {
+    public record MountActionPacket(int action, String mountId) {
         public static void encode(MountActionPacket msg, FriendlyByteBuf buf) {
             buf.writeVarInt(msg.action);
+            buf.writeUtf(msg.mountId == null ? "" : msg.mountId, 64);
         }
 
         public static MountActionPacket decode(FriendlyByteBuf buf) {
-            return new MountActionPacket(buf.readVarInt());
+            return new MountActionPacket(buf.readVarInt(), buf.readUtf(64));
         }
 
         public static void handle(MountActionPacket msg, Supplier<NetworkEvent.Context> ctx) {
@@ -63,8 +67,8 @@ public final class MountNetwork {
             c.enqueueWork(() -> {
                 ServerPlayer player = c.getSender();
                 if (player == null) return;
-                if (msg.action == 0) MountManager.startMountCountdown(player);
-                else if (msg.action == 1) MountManager.releaseMount(player);
+                if (msg.action == 0) MountManager.startMountCountdown(player, msg.mountId);
+                else if (msg.action == 1) MountManager.releaseMount(player, msg.mountId);
             });
             c.setPacketHandled(true);
         }
