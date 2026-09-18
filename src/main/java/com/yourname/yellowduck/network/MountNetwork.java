@@ -46,7 +46,7 @@ public final class MountNetwork {
 
     public static void syncTo(ServerPlayer player) {
         List<String> owned = new ArrayList<>();
-        if (MountData.hasGhostWolf(player)) {
+        if (MountData.hasMount(player, "ghost_wolf_stars")) {
             owned.add("ghost_wolf_stars");
         }
         if (MountData.hasMount(player, "alpaca")) {
@@ -111,7 +111,7 @@ public final class MountNetwork {
                 ServerPlayer player = c.getSender();
                 if (player == null) return;
                 syncTo(player);
-                if (!MountData.hasGhostWolf(player) && !MountData.hasMount(player, "alpaca")
+                if (!MountData.hasMount(player, "ghost_wolf_stars") && !MountData.hasMount(player, "alpaca")
                         && !MountData.hasMount(player, "rabbit")) {
                     player.displayClientMessage(
                             Component.literal("§e还没有绑定坐骑。"), true);
