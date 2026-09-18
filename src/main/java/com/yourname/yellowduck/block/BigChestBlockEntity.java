@@ -61,7 +61,9 @@ public class BigChestBlockEntity extends BlockEntity implements Container {
         ItemStack cur = items.get(slot);
         if (cur.isEmpty()) return true;
         if (!ItemStack.isSameItemSameTags(cur, stack)) return false;
-        return cur.getCount() + stack.getCount() <= MAX_STACK;
+        // 只要当前格还有空间，就允许部分放入。
+        // 否则一个 64 个的来源堆无法自动补进已有的 100 个堆。
+        return cur.getCount() < MAX_STACK;
     }
 
     @Override public void clearContent() { items.clear(); }
