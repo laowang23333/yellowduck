@@ -33,6 +33,7 @@ public class MountEntity extends PathfinderMob {
     private static final float MAX_HEALTH = 40.0F;
     private static final double SEAT_Y_OFFSET = 0.0D;
     // GLB 的 seat01 在 Polymesh 居中后的实际坐标约为 1.03 格高、向前 1.03 格。
+    // 默认坐骑座位参数。具体坐骑可通过 protected 方法覆盖。
     private static final double RIDER_Y_OFFSET = 1.45D;
     private static final double FORWARD_OFFSET = 0.65D;
 
@@ -123,9 +124,19 @@ public class MountEntity extends PathfinderMob {
         return 0.6F;
     }
 
+    /** 子坐骑可覆盖，用于把玩家座位调整到模型实际背部。 */
+    protected double getRiderYOffset() {
+        return RIDER_Y_OFFSET;
+    }
+
+    /** 子坐骑可覆盖，用于调整玩家相对坐骑中心的前后位置。 */
+    protected double getRiderForwardOffset() {
+        return FORWARD_OFFSET;
+    }
+
     @Override
     public double getPassengersRidingOffset() {
-        return RIDER_Y_OFFSET;
+        return getRiderYOffset();
     }
 
     @Override
@@ -143,8 +154,9 @@ public class MountEntity extends PathfinderMob {
         double yaw = Math.toRadians(renderYaw);
         double sin = Math.sin(yaw);
         double cos = Math.cos(yaw);
-        double dx = -sin * FORWARD_OFFSET;
-        double dz = cos * FORWARD_OFFSET;
+        double riderForwardOffset = getRiderForwardOffset();
+        double dx = -sin * riderForwardOffset;
+        double dz = cos * riderForwardOffset;
 
         double bob = 0.0D;
         double sway = 0.0D;

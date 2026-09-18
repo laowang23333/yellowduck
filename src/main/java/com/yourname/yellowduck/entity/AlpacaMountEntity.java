@@ -17,6 +17,20 @@ public class AlpacaMountEntity extends MountEntity {
         return Component.literal("羊驼");
     }
 
+    /**
+     * 羊驼模型的背部比基础坐骑默认座位低；这里把玩家放到背部中央。
+     */
+    @Override
+    protected double getRiderYOffset() {
+        return 0.92D;
+    }
+
+    /** 不再把玩家向羊驼头部前移，座位保持在身体/背部中央。 */
+    @Override
+    protected double getRiderForwardOffset() {
+        return 0.0D;
+    }
+
     @Override
     public ItemStack getPickResult() {
         return new ItemStack(ModItems.ALPACA_MOUNT.get());
