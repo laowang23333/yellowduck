@@ -44,10 +44,10 @@ public final class MountManager {
         MountEntity mount = findOwnedMount(player, mountId);
         if (mount != null) {
             mount.discard();
-            String name = "alpaca".equals(mountId) ? "羊驼" : "鬼狼星";
+            String name = "alpaca".equals(mountId) ? "羊驼" : "魔化天狗";
             player.displayClientMessage(Component.literal("§7" + name + " 已放生，随时可以再次召唤。"), true);
         } else {
-            String name = "alpaca".equals(mountId) ? "羊驼" : "鬼狼星";
+            String name = "alpaca".equals(mountId) ? "羊驼" : "魔化天狗";
             player.displayClientMessage(Component.literal("§7当前没有已召唤的" + name + "。"), true);
         }
         COUNTDOWNS.remove(player.getUUID());
@@ -89,7 +89,7 @@ public final class MountManager {
                 COUNTDOWNS.put(uuid, new Countdown(left, countdown.mountId()));
                 if (left == 40 || left == 20) {
                     player.displayClientMessage(
-                            Component.literal("§b鬼狼星召唤倒计时：§e" + (left / 20)), true);
+                            Component.literal("§b坐骑召唤倒计时：§e" + (left / 20)), true);
                 }
             } else {
                 summonAndRide(player, countdown.mountId());
@@ -124,7 +124,7 @@ public final class MountManager {
         level.addFreshEntity(mount);
         player.startRiding(mount, true);
         player.displayClientMessage(Component.literal(
-                "§a✦ " + ("alpaca".equals(mountId) ? "羊驼" : "鬼狼星") + " 已到达！"), true);
+                "§a✦ " + ("alpaca".equals(mountId) ? "羊驼" : "魔化天狗") + " 已到达！"), true);
     }
 
     @SubscribeEvent
