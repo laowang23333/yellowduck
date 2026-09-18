@@ -15,7 +15,7 @@ public final class MountCatalog {
 
     public static final MountDefinition GHOST_WOLF = new MountDefinition(
             "ghost_wolf_stars",
-            "鬼狼星",
+            "魔化天狗",
             new ResourceLocation("yellowduck", "textures/item/mount_egg_ghost_wolf_stars.png"),
             new ResourceLocation("yellowduck", "ghost_wolf_mount_final_v2")
     );
