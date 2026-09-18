@@ -29,8 +29,24 @@ public class RabbitMountEntity extends MountEntity {
     }
     @Override public Component getName() { return Component.literal("玉兔"); }
     @Override public ItemStack getPickResult() { return new ItemStack(ModItems.RABBIT_MOUNT.get()); }
-    @Override protected double getRiderYOffset() { return 1.11D; }
-    @Override protected double getRiderForwardOffset() { return 0.0D; }
+    @Override protected double getRiderYOffset() { return 0.50D; }
+    @Override protected double getRiderForwardOffset() { return -0.20D; }
+    @Override public double getPassengersRidingOffset() { return getRiderYOffset(); }
+    @Override public void positionRider(net.minecraft.world.entity.Entity passenger,
+                                       net.minecraft.world.entity.Entity.MoveFunction moveFunction) {
+        if (!hasPassenger(passenger)) return;
+        // 玉兔独立定位，不受基础坐骑硬编码座位或行走抖动影响。
+        double yaw = Math.toRadians(getYRot());
+        double forward = getRiderForwardOffset();
+        moveFunction.accept(passenger,
+                getX() - Math.sin(yaw) * forward,
+                getY() + getPassengersRidingOffset(),
+                getZ() + Math.cos(yaw) * forward);
+        if (passenger instanceof Player player) {
+            player.yBodyRotO = player.yBodyRot;
+            player.setYBodyRot(getYRot());
+        }
+    }
     @Override public boolean isControlledByLocalInstance() { return !level().isClientSide; }
     public boolean isFlying() { return entityData.get(FLYING); }
     public int getEnergy() { return entityData.get(ENERGY); }
