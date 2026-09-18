@@ -2,6 +2,7 @@ package com.yourname.yellowduck.menu;
 
 import com.yourname.yellowduck.block.BigChestBlockEntity;
 import com.yourname.yellowduck.registry.ModMenuTypes;
+import com.yourname.yellowduck.util.BigChestStackGuard;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.Container;
@@ -358,11 +359,9 @@ public class BigChestMenu extends AbstractContainerMenu {
             return;
         }
 
-        // Inventory#add 会按物品自己的正常最大堆叠数合并/寻找空槽。
-        // 这里传入的 stack 本身已经保证 <= getMaxStackSize()。
-        if (!player.getInventory().add(stack)) {
-            player.drop(stack, false);
-        }
+        // Mohist/插件环境下某些拾取/放回路径可能把不可堆叠物品再次并堆。
+        // 使用全局箱外保护的严格插入逻辑，确保镐子=1、珍珠=16、普通物品=64。
+        BigChestStackGuard.insertStrictOrDrop(player, stack);
     }
 
     @Override
