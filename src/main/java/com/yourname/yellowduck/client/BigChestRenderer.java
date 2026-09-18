@@ -35,10 +35,10 @@ public class BigChestRenderer extends GltfBlockEntityRenderer<BigChestBlockEntit
         // big_chest.glb 的默认正面为 SOUTH。
         // FACING 表示锁扣/正面朝向，因此把模型旋转到保存的方向。
         float rotation = switch (facing) {
-            case SOUTH -> 0.0F;
-            case EAST -> 90.0F;
-            case NORTH -> 180.0F;
-            case WEST -> 270.0F;
+            case SOUTH -> 180.0F;
+            case EAST -> 270.0F;
+            case NORTH -> 0.0F;
+            case WEST -> 90.0F;
             default -> 0.0F;
         };
 
