@@ -23,9 +23,9 @@ import java.util.WeakHashMap;
 @Mod.EventBusSubscriber(modid = "yellowduck", value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class SilkClient {
     @SubscribeEvent public static void renderers(EntityRenderersEvent.RegisterRenderers event) {
-        event.registerEntityRenderer(SilkContent.BOSS, BossRenderer::new);
-        event.registerEntityRenderer(SilkContent.BAT, BatRenderer::new);
-        event.registerEntityRenderer(SilkContent.METEOR, MeteorRenderer::new);
+        event.registerEntityRenderer(SilkContent.BOSS.get(), BossRenderer::new);
+        event.registerEntityRenderer(SilkContent.BAT.get(), BatRenderer::new);
+        event.registerEntityRenderer(SilkContent.METEOR.get(), MeteorRenderer::new);
     }
     public static final class BossRenderer extends GltfEntityRenderer<SilkBoss> {
         private final Map<SilkBoss, Integer> serials = new WeakHashMap<>();

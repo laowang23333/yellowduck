@@ -222,7 +222,7 @@ public class SilkBoss extends Monster {
     }
     private void bats() {
         for (ServerPlayer p : randomTargets(3)) {
-            SilkBat bat = SilkContent.BAT.create(level());
+            SilkBat bat = SilkContent.BAT.get().create(level());
             if (bat == null) continue;
             Vec3 start = position().add(0, 2, 0);
             bat.moveTo(start.x, start.y, start.z, getYRot(), 0); bat.launch(this, p.getEyePosition());
@@ -310,7 +310,7 @@ public class SilkBoss extends Monster {
         announce("§b心智光柱出现，靠近光柱降低心智腐蚀！");
     }
     private void chaser() {
-        SilkMeteor meteor = SilkContent.METEOR.create(level()); if (meteor == null) return;
+        SilkMeteor meteor = SilkContent.METEOR.get().create(level()); if (meteor == null) return;
         Vec3 p = randomFloor().add(0, 2, 0); meteor.moveTo(p.x, p.y, p.z, 0, 0); meteor.setOwner(this);
         level().addFreshEntity(meteor); summons.add(meteor.getUUID());
         announce("§5追踪陨石出现！集火摧毁，或远离它！");
