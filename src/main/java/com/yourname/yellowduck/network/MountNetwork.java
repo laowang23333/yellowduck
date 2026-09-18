@@ -19,7 +19,6 @@ import java.util.function.Supplier;
 
 /** 坐骑 GUI 与服务端之间的 C2S/S2C 通讯。 */
 public final class MountNetwork {
-    // 坐骑 ID 从旧名称切换为 demon_tengu，协议同步升级，防止新旧客户端混用。
     private static final String PROTOCOL = "4";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation("yellowduck", "mount"),
@@ -34,6 +33,9 @@ public final class MountNetwork {
         if (initialized) return;
         initialized = true;
 
+        CHANNEL.registerMessage(id++, RabbitInputPacket.class,
+                RabbitInputPacket::encode, RabbitInputPacket::decode, RabbitInputPacket::handle,
+                java.util.Optional.of(net.minecraftforge.network.NetworkDirection.PLAY_TO_SERVER));
         CHANNEL.registerMessage(id++, MountActionPacket.class,
                 MountActionPacket::encode, MountActionPacket::decode, MountActionPacket::handle);
         CHANNEL.registerMessage(id++, OpenMountGuiPacket.class,
@@ -44,13 +46,34 @@ public final class MountNetwork {
 
     public static void syncTo(ServerPlayer player) {
         List<String> owned = new ArrayList<>();
-        if (MountData.hasDemonTengu(player)) {
-            owned.add(MountData.DEMON_TENGU_ID);
+        if (MountData.hasGhostWolf(player)) {
+            owned.add("ghost_wolf_stars");
         }
-        if (MountData.hasMount(player, MountData.ALPACA_ID)) {
-            owned.add(MountData.ALPACA_ID);
+        if (MountData.hasMount(player, "alpaca")) {
+            owned.add("alpaca");
         }
+        if (MountData.hasMount(player, "rabbit")) owned.add("rabbit");
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new MountSyncPacket(owned));
+    }
+
+    public record RabbitInputPacket(boolean jump, boolean down) {
+        public static void encode(RabbitInputPacket msg, FriendlyByteBuf buf) {
+            buf.writeBoolean(msg.jump); buf.writeBoolean(msg.down);
+        }
+        public static RabbitInputPacket decode(FriendlyByteBuf buf) {
+            return new RabbitInputPacket(buf.readBoolean(), buf.readBoolean());
+        }
+        public static void handle(RabbitInputPacket msg, Supplier<NetworkEvent.Context> ctx) {
+            NetworkEvent.Context c = ctx.get();
+            c.enqueueWork(() -> {
+                ServerPlayer player = c.getSender();
+                if (player != null && player.isAlive() && player.getVehicle() instanceof
+                        com.yourname.yellowduck.entity.RabbitMountEntity rabbit && rabbit.isOwner(player)) {
+                    rabbit.acceptInput(msg.jump, msg.down);
+                }
+            });
+            c.setPacketHandled(true);
+        }
     }
 
     public record MountActionPacket(int action, String mountId) {
@@ -68,9 +91,8 @@ public final class MountNetwork {
             c.enqueueWork(() -> {
                 ServerPlayer player = c.getSender();
                 if (player == null) return;
-                String mountId = MountData.canonicalizeMountId(msg.mountId);
-                if (msg.action == 0) MountManager.startMountCountdown(player, mountId);
-                else if (msg.action == 1) MountManager.releaseMount(player, mountId);
+                if (msg.action == 0) MountManager.startMountCountdown(player, msg.mountId);
+                else if (msg.action == 1) MountManager.releaseMount(player, msg.mountId);
             });
             c.setPacketHandled(true);
         }
@@ -89,9 +111,10 @@ public final class MountNetwork {
                 ServerPlayer player = c.getSender();
                 if (player == null) return;
                 syncTo(player);
-                if (!MountData.hasDemonTengu(player)) {
+                if (!MountData.hasGhostWolf(player) && !MountData.hasMount(player, "alpaca")
+                        && !MountData.hasMount(player, "rabbit")) {
                     player.displayClientMessage(
-                            Component.literal("§e还没有绑定魔化天狗坐骑。"), true);
+                            Component.literal("§e还没有绑定坐骑。"), true);
                 }
             });
             c.setPacketHandled(true);
