@@ -22,5 +22,7 @@
   "item.yellowduck.music_disc_2": "唱片2",
   "item.yellowduck.music_disc_3": "唱片3",
   "item.yellowduck.music_disc_4": "唱片4",
-  "item.yellowduck.music_disc_5": "唱片5"
+  "item.yellowduck.music_disc_5": "唱片5",
+  "entity.yellowduck.mount": "魔化天狗",
+  "item.yellowduck.mount_display_ghost_wolf_stars": "魔化天狗"
 }
