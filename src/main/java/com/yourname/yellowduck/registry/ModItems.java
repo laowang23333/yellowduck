@@ -16,6 +16,9 @@ public final class ModItems {
             ITEMS.register("mount_egg_ghost_wolf_stars",
                     () -> new MountSummonItem(new Item.Properties(), "ghost_wolf_stars"));
 
+    // 兼容新版 MountEntity 使用的魔化天狗字段名；复用同一注册对象，避免重复注册。
+    public static final RegistryObject<Item> DEMON_TENGU_MOUNT = GHOST_WOLF_MOUNT;
+
     /**
      * Jade / 坐骑收藏界面专用展示物品。
      * 不加入创造栏、不参与坐骑绑定；仅用于给实体提供独立的高清图标。
