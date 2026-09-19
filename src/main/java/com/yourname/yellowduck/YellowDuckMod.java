@@ -47,6 +47,7 @@ public class YellowDuckMod {
         event.put(ModEntities.MOUNT.get(), MountEntity.createAttributes().build());
         event.put(ModEntities.ALPACA_MOUNT.get(), AlpacaMountEntity.createAttributes().build());
         event.put(ModEntities.RABBIT_MOUNT.get(), MountEntity.createAttributes().build());
+        event.put(ModEntities.BAMBOO_HORSE_MOUNT.get(), MountEntity.createAttributes().build());
         event.put(ModEntities.SAKURA_WITCH.get(), SakurawitchEntity.createAttributes().build());
         event.put(ModEntities.TOY_BEAR.get(), ToyBearEntity.createAttributes().build());
     }
