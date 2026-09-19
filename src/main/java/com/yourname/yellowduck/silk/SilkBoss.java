@@ -1,6 +1,6 @@
 package com.yourname.yellowduck.silk;
 
-import com.yourname.yellowduck.entity.HateHelper;
+import com.yourname.yellowduck.boss.NetcraftBossBase;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -8,12 +8,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
-import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.BossEvent;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -31,21 +29,19 @@ import net.minecraft.world.phys.Vec3;
 import java.util.*;
 
 /** 根据用户提供的斯尔克机制实现。伤害与未注明的冷却见SilkBalance。所有伤害、状态和随机点名均由服务端计算。 */
-public class SilkBoss extends Monster {
+public class SilkBoss extends NetcraftBossBase {
     public static final EntityDataAccessor<Integer> ANIMATION = SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
     public static final EntityDataAccessor<Integer> CAST_SERIAL = SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
     public static final EntityDataAccessor<Boolean> MAD = SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.BOOLEAN);
     public static final EntityDataAccessor<Boolean> WALKING = SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.BOOLEAN);
-    private final ServerBossEvent bar = new ServerBossEvent(Component.literal("疯狂教授斯尔克"), BossEvent.BossBarColor.PURPLE, BossEvent.BossBarOverlay.PROGRESS);
     private final Map<UUID, Fighter> fighters = new HashMap<>();
-    private final Map<UUID, Double> threat = new HashMap<>();
     private final List<Column> columns = new ArrayList<>();
     private final List<Star> stars = new ArrayList<>();
     private final List<Echo> echoes = new ArrayList<>();
     private final Set<UUID> summons = new HashSet<>();
-    private Vec3 home, waterCenter;
+    private Vec3 waterCenter;
     private float flameYaw;
-    private int energy, madUntil, idleTicks, combatAge, blackWaterAge;
+    private int energy, madUntil, combatAge, blackWaterAge;
     private boolean crossed80, crossed70, flamePending, plaguePending, engaged;
     private int cast, castAge, castDuration;
     private UUID castTarget;
@@ -60,7 +56,10 @@ public class SilkBoss extends Monster {
     private record Star(Vec3 point, int due) {}
     private record Echo(UUID target, Vec3 fallback, int due) {}
     public SilkBoss(EntityType<? extends SilkBoss> type, net.minecraft.world.level.Level level) {
-        super(type, level); setPersistenceRequired(); xpReward = 150;
+        super(type, level);
+        setPersistenceRequired();
+        setBaseDamage((int) SilkBalance.BASIC_DAMAGE);
+        xpReward = 150;
     }
     public static AttributeSupplier.Builder createAttributes() {
         return Monster.createMonsterAttributes().add(Attributes.MAX_HEALTH, SilkBalance.HEALTH)
@@ -74,83 +73,110 @@ public class SilkBoss extends Monster {
     }
     @Override public Component getName() { return Component.literal("疯狂教授斯尔克"); }
     @Override public boolean removeWhenFarAway(double distance) { return false; }
-    @Override public void startSeenByPlayer(ServerPlayer player) { super.startSeenByPlayer(player); bar.addPlayer(player); }
-    @Override public void stopSeenByPlayer(ServerPlayer player) { super.stopSeenByPlayer(player); bar.removePlayer(player); }
+    @Override public boolean isPlayingAttackAnimation() { return cast > 0; }
     public int phase() { return getHealth() <= getMaxHealth() * 0.20F ? 3 : getHealth() <= getMaxHealth() * 0.80F ? 2 : 1; }
-    public boolean valid(ServerPlayer player) {
-        return player.isAlive() && !player.isCreative() && !player.isSpectator() && player.level() == level()
-                && (home == null || player.position().distanceToSqr(home) <= SilkBalance.ARENA_RADIUS * SilkBalance.ARENA_RADIUS);
+    @Override
+    public boolean isValidHatredPlayer(net.minecraft.world.entity.player.Player player) {
+        if (!super.isValidHatredPlayer(player)) return false;
+        Vec3 spawn = getSpawnPosition();
+        return spawn == null || player.position().distanceToSqr(spawn)
+                <= SilkBalance.ARENA_RADIUS * SilkBalance.ARENA_RADIUS;
     }
+
+    public boolean valid(ServerPlayer player) {
+        return isValidHatredPlayer(player);
+    }
+
     public List<ServerPlayer> targets() {
         if (!(level() instanceof ServerLevel sl)) return List.of();
-        Vec3 center = home == null ? position() : home;
-        return sl.getEntitiesOfClass(ServerPlayer.class, new AABB(center, center).inflate(SilkBalance.ARENA_RADIUS), this::valid);
+        Vec3 spawn = getSpawnPosition();
+        Vec3 center = spawn == null ? position() : spawn;
+        return sl.getEntitiesOfClass(
+                ServerPlayer.class,
+                new AABB(center, center).inflate(SilkBalance.ARENA_RADIUS),
+                this::valid
+        );
     }
+
     private ServerPlayer chooseTank(List<ServerPlayer> players) {
-        return players.stream().max(Comparator.comparingDouble(p ->
-                (1 + threat.getOrDefault(p.getUUID(), 0.0)) * HateHelper.getHateWeight(p))).orElse(null);
+        return getAttackTargetEntity() instanceof ServerPlayer player && valid(player) ? player : null;
     }
     private List<ServerPlayer> randomTargets(int count) {
         List<ServerPlayer> list = new ArrayList<>(targets());
         for (int i = list.size() - 1; i > 0; i--) Collections.swap(list, i, random.nextInt(i + 1));
         return list.subList(0, Math.min(count, list.size()));
     }
-    @Override public boolean hurt(DamageSource source, float amount) {
-        boolean hit = super.hurt(source, amount);
-        if (hit && !level().isClientSide && source.getEntity() instanceof ServerPlayer player && valid(player)) {
-            threat.merge(player.getUUID(), (double) amount, Double::sum);
-        }
-        return hit;
-    }
     @Override public void tick() {
+        // super.tick() 会先运行通用 NetCraft 仇恨/脱战/回位逻辑。
         super.tick();
         if (level().isClientSide || !isAlive()) return;
-        if (home == null) home = position();
-        if (position().distanceToSqr(home) > SilkBalance.LEASH_RADIUS * SilkBalance.LEASH_RADIUS) { resetFight(); return; }
+
         List<ServerPlayer> players = targets();
-        if (players.isEmpty()) {
-            getNavigation().stop(); setTarget(null);
+        ServerPlayer tank = chooseTank(players);
+
+        // NetCraft 普通仇恨模式：没有有效仇恨目标时 Boss 不会因为“玩家在场”就自动开战。
+        if (tank == null || !tank.isAlive()) {
+            getNavigation().stop();
             entityData.set(WALKING, false);
-            if (engaged && ++idleTicks >= 200) resetFight();
             return;
         }
-        idleTicks = 0;
+
         if (!engaged) {
-            engaged = true; previousX = getX(); previousZ = getZ();
-            nextBats = tickCount + 120; nextStar = tickCount + 180; nextColumn = tickCount + 100;
-            nextPlague = tickCount + 100; nextBurst = tickCount + 180; nextChaser = tickCount + 100;
+            engaged = true;
+            previousX = getX();
+            previousZ = getZ();
+            nextBats = tickCount + 120;
+            nextStar = tickCount + 180;
+            nextColumn = tickCount + 100;
+            nextPlague = tickCount + 100;
+            nextBurst = tickCount + 180;
+            nextChaser = tickCount + 100;
             nextFlame = tickCount + SilkBalance.FLAME_COOLDOWN;
         }
+
         combatAge++;
         for (ServerPlayer p : players) fighters.computeIfAbsent(p.getUUID(), ignored -> new Fighter());
-        if (phase() >= 2 && !crossed80) { crossed80 = true; flamePending = true; }
-        if (getHealth() <= getMaxHealth() * 0.70F && !crossed70) {
-            crossed70 = true; startMadness(); summonHelpers(); plaguePending = true;
+
+        if (phase() >= 2 && !crossed80) {
+            crossed80 = true;
+            flamePending = true;
         }
-        if (entityData.get(MAD) && tickCount >= madUntil) { entityData.set(MAD, false); energy = 0; }
+        if (getHealth() <= getMaxHealth() * 0.70F && !crossed70) {
+            crossed70 = true;
+            startMadness();
+            summonHelpers();
+            plaguePending = true;
+        }
+        if (entityData.get(MAD) && tickCount >= madUntil) {
+            entityData.set(MAD, false);
+            energy = 0;
+        }
         if (!entityData.get(MAD) && energy >= 100) startMadness();
+
         updateHazards(players);
         updateFighters(players);
         if (!isAlive()) return;
-        ServerPlayer tank = chooseTank(players);
-        if (tank == null || !tank.isAlive()) return;
+
         setTarget(tank);
         getLookControl().setLookAt(tank, 30, 30);
+
         if (cast > 0) {
-            getNavigation().stop(); tickCast();
+            getNavigation().stop();
+            tickCast();
         } else {
-            if (distanceToSqr(tank) > 64 && hasLineOfSight(tank)) getNavigation().moveTo(tank, 1.0);
-            else if (!hasLineOfSight(tank)) getNavigation().moveTo(tank, 1.0);
-            else getNavigation().stop();
+            if (distanceToSqr(tank) > 64 || !hasLineOfSight(tank)) {
+                getNavigation().moveTo(tank, 1.0);
+            } else {
+                getNavigation().stop();
+            }
             schedule(tank);
         }
-        double dx = getX() - previousX, dz = getZ() - previousZ;
+
+        double dx = getX() - previousX;
+        double dz = getZ() - previousZ;
         entityData.set(WALKING, dx * dx + dz * dz > 1.0E-5);
-        previousX = getX(); previousZ = getZ();
-        bar.setProgress(Math.max(0, getHealth() / getMaxHealth()));
-        bar.setColor(entityData.get(MAD) ? BossEvent.BossBarColor.RED : BossEvent.BossBarColor.PURPLE);
-        bar.setName(Component.literal("疯狂教授斯尔克 · 阶段" + phase() + (entityData.get(MAD)
-                ? " · 疯狂 " + Math.max(0, (madUntil - tickCount + 19) / 20) + "秒" : " · 理智 · 黑暗能量 " + energy + "/100")));
+        previousX = getX();
+        previousZ = getZ();
     }
     private void schedule(ServerPlayer tank) {
         if (flamePending) { flamePending = false; begin(7, tank); return; }
@@ -170,6 +196,7 @@ public class SilkBoss extends Monster {
         }
     }
     private void begin(int animation, ServerPlayer target) {
+        faceTargetForAttack(target);
         cast = animation; castAge = 0; castTarget = target.getUUID(); castPoint = target.position();
         castDuration = switch (animation) { case 1 -> 28; case 2 -> 50; case 3 -> 32; case 4 -> 24; case 5 -> 58; case 6 -> 54; default -> 172; };
         entityData.set(ANIMATION, animation); entityData.set(CAST_SERIAL, entityData.get(CAST_SERIAL) + 1);
@@ -201,7 +228,7 @@ public class SilkBoss extends Monster {
     public boolean hit(ServerPlayer player, float amount, int corruption) {
         if (!isAlive() || !valid(player) || !hasLineOfSight(player)) return false;
         float damage = amount * (phase() == 3 ? SilkBalance.PHASE_THREE_MULTIPLIER : 1);
-        boolean hit = player.hurt(damageSources().indirectMagic(this, this), damage);
+        boolean hit = hurtWithoutKnockback(player, damageSources().indirectMagic(this, this), damage);
         if (hit) {
             corrupt(player, corruption);
             if (phase() == 3) {
@@ -275,18 +302,29 @@ public class SilkBoss extends Monster {
         announce("§4斯尔克进入疯狂形态！持续120秒！");
         level().playSound(null, blockPosition(), SoundEvents.ENDER_DRAGON_GROWL, SoundSource.HOSTILE, 2, 0.7F);
     }
+    private Vec3 homePosition() {
+        Vec3 spawn = getSpawnPosition();
+        return spawn == null ? position() : spawn;
+    }
+
     private Vec3 floorPoint(double x, double z) {
+        Vec3 home = homePosition();
         BlockPos start = BlockPos.containing(x, home.y + 5, z);
         for (int i = 0; i < 12; i++) {
             BlockPos at = start.below(i);
             if (level().getBlockState(at.below()).isSolidRender(level(), at.below())
                     && level().getBlockState(at).getCollisionShape(level(), at).isEmpty()
-                    && level().getBlockState(at.above()).getCollisionShape(level(), at.above()).isEmpty()) return new Vec3(x, at.getY(), z);
+                    && level().getBlockState(at.above()).getCollisionShape(level(), at.above()).isEmpty()) {
+                return new Vec3(x, at.getY(), z);
+            }
         }
         return home;
     }
+
     private Vec3 randomFloor() {
-        double angle = random.nextDouble() * Math.PI * 2, radius = 5 + random.nextDouble() * 13;
+        Vec3 home = homePosition();
+        double angle = random.nextDouble() * Math.PI * 2;
+        double radius = 5 + random.nextDouble() * 13;
         return floorPoint(home.x + Math.cos(angle) * radius, home.z + Math.sin(angle) * radius);
     }
     private void summonHelpers() {
@@ -362,7 +400,7 @@ public class SilkBoss extends Monster {
         for (var entry : new ArrayList<>(fighters.entrySet())) {
             if (!isAlive()) return;
             ServerPlayer p = player(entry.getKey()); Fighter f = entry.getValue();
-            if (p == null) { fighters.remove(entry.getKey()); threat.remove(entry.getKey()); continue; }
+            if (p == null) { fighters.remove(entry.getKey()); continue; }
             if (f.rootUntil > tickCount && f.rootPoint != null) {
                 if (p.isPassenger()) p.stopRiding();
                 p.teleportTo(f.rootPoint.x, f.rootPoint.y, f.rootPoint.z); p.setDeltaMovement(Vec3.ZERO);
@@ -411,35 +449,78 @@ public class SilkBoss extends Monster {
         if (level() instanceof ServerLevel sl) for (UUID id : summons) {
             Entity e = sl.getEntity(id); if (e != null) e.discard();
         }
-        summons.clear(); fighters.clear(); threat.clear(); columns.clear(); stars.clear(); echoes.clear();
+        summons.clear(); fighters.clear(); columns.clear(); stars.clear(); echoes.clear();
     }
-    private void resetFight() {
-        cleanup(); getNavigation().stop(); setTarget(null); setHealth(getMaxHealth());
-        if (home != null) teleportTo(home.x, home.y, home.z);
-        cast = energy = idleTicks = combatAge = blackWaterAge = 0; waterCenter = null;
+    private void resetSilkCombatState() {
+        cleanup();
+        getNavigation().stop();
+        setTarget(null);
+        cast = energy = combatAge = blackWaterAge = 0;
+        waterCenter = null;
+        castTarget = null;
+        castPoint = null;
         crossed80 = crossed70 = flamePending = plaguePending = engaged = false;
-        entityData.set(ANIMATION, 0); entityData.set(MAD, false); entityData.set(WALKING, false); bar.setProgress(1);
+        entityData.set(ANIMATION, 0);
+        entityData.set(MAD, false);
+        entityData.set(WALKING, false);
     }
+
+    @Override
+    protected void onNetcraftDisengageStarted() {
+        // NetCraft 清仇恨时立即结束本场技能状态；传送和回血由通用管理器处理。
+        resetSilkCombatState();
+    }
+
+    @Override
+    protected void onNetcraftFightReset() {
+        resetSilkCombatState();
+        getHatredManager().clearCombatStatistics();
+    }
+
     @Override public void die(DamageSource source) {
         super.die(source);
-        if (!level().isClientSide) { cleanup(); bar.removeAllPlayers(); entityData.set(ANIMATION, -1); }
+        if (!level().isClientSide) {
+            cleanup();
+            getHatredManager().clearAll();
+            entityData.set(ANIMATION, -1);
+        }
     }
+
     @Override protected void tickDeath() {
         deathTime++;
         if (!level().isClientSide && deathTime >= 40) remove(Entity.RemovalReason.KILLED);
     }
+
     @Override public void remove(Entity.RemovalReason reason) {
-        if (!level().isClientSide) { cleanup(); bar.removeAllPlayers(); }
+        if (!level().isClientSide) cleanup();
         super.remove(reason);
     }
+
     @Override public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
-        if (home != null) { tag.putDouble("SilkHomeX", home.x); tag.putDouble("SilkHomeY", home.y); tag.putDouble("SilkHomeZ", home.z); }
-        // 战斗不跨区块卸载延续；重新载入回满重开，避免遗留点名和无主召唤物。
+        // 出生点由 NetcraftBossBase 统一保存；技能战斗状态不跨卸载延续。
     }
+
     @Override public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
-        if (tag.contains("SilkHomeX")) home = new Vec3(tag.getDouble("SilkHomeX"), tag.getDouble("SilkHomeY"), tag.getDouble("SilkHomeZ"));
+
+        // 兼容旧版斯尔克存档中的 SilkHomeX/Y/Z。
+        if (getSpawnPosition() == null && tag.contains("SilkHomeX")) {
+            setSpawnPosition(new Vec3(
+                    tag.getDouble("SilkHomeX"),
+                    tag.getDouble("SilkHomeY"),
+                    tag.getDouble("SilkHomeZ")
+            ));
+        }
+
         setHealth(getMaxHealth());
+        resetSilkCombatState();
     }
+
+    /** NetCraft boss_map_icon.png 右上角小红旗左边的徽章。 */
+    @Override public int getIconAtlasU() { return 1152; }
+    @Override public int getIconAtlasV() { return 2; }
+    @Override public int getIconWidth() { return 106; }
+    @Override public int getIconHeight() { return 95; }
+
 }
