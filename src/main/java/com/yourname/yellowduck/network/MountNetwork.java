@@ -40,6 +40,7 @@ public final class MountNetwork {
                 MountActionPacket::encode, MountActionPacket::decode, MountActionPacket::handle);
         CHANNEL.registerMessage(id++, OpenMountGuiPacket.class,
                 OpenMountGuiPacket::encode, OpenMountGuiPacket::decode, OpenMountGuiPacket::handle);
+        CHANNEL.registerMessage(id++, SilkReviveLockPacket.class, SilkReviveLockPacket::encode, SilkReviveLockPacket::decode, SilkReviveLockPacket::handle);
         CHANNEL.registerMessage(id++, MountSyncPacket.class,
                 MountSyncPacket::encode, MountSyncPacket::decode, MountSyncPacket::handle);
     }
@@ -118,6 +119,18 @@ public final class MountNetwork {
                 }
             });
             c.setPacketHandled(true);
+        }
+    }
+
+
+    public static void sendSilkReviveLock(ServerPlayer player, int ticks) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new SilkReviveLockPacket(ticks));
+    }
+    public record SilkReviveLockPacket(int ticks) {
+        public static void encode(SilkReviveLockPacket msg, FriendlyByteBuf buf) { buf.writeVarInt(Math.max(0, msg.ticks)); }
+        public static SilkReviveLockPacket decode(FriendlyByteBuf buf) { return new SilkReviveLockPacket(buf.readVarInt()); }
+        public static void handle(SilkReviveLockPacket msg, Supplier<NetworkEvent.Context> ctx) {
+            NetworkEvent.Context c = ctx.get(); c.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> com.yourname.yellowduck.client.SilkReviveClientState.set(msg.ticks))); c.setPacketHandled(true);
         }
     }
 
