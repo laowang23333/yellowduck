@@ -1,5 +1,6 @@
 package com.yourname.yellowduck;
 
+import com.yourname.yellowduck.config.EntityTuningConfig;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.entity.AlpacaMountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
@@ -13,7 +14,9 @@ import com.yourname.yellowduck.registry.ModSounds;
 import com.yourname.yellowduck.silk.SilkContent;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
 @Mod(YellowDuckMod.MOD_ID)
@@ -38,6 +41,9 @@ public class YellowDuckMod {
         // 注册自定义 MobEffect
         ModEffects.EFFECTS.register(bus);
         MountNetwork.init();
+
+        // 首次启动后自动生成 config/yellowduck-entities.toml。
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, EntityTuningConfig.SPEC, "yellowduck-entities.toml");
 
         bus.addListener(this::registerAttributes);
     }
