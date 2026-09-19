@@ -25,10 +25,6 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
-import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
-import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
-import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
-import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -134,6 +130,15 @@ public class SakurawitchEntity extends PathfinderMob {
      */
     private static final int NORMAL_ATTACK_INTERVAL = 40;
 
+    /** NetCraft：进入 2.5 格才开始普通攻击。 */
+    private static final double NORMAL_ATTACK_RANGE = 2.5D;
+
+    /** NetCraft：15 tick 后结算时，目标必须仍在 3.5 格内。 */
+    private static final double NORMAL_DAMAGE_RANGE = 3.5D;
+
+    /** NetCraft：攻击动作开始后 15 tick 才真正造成伤害。 */
+    private static final int NORMAL_DAMAGE_DELAY = 15;
+
     /**
      * 火焰喷射间隔
      *
@@ -212,6 +217,9 @@ public class SakurawitchEntity extends PathfinderMob {
      */
     private int normalAttackTimer = 20;
 
+    private UUID pendingNormalAttackTargetUUID;
+    private int pendingNormalAttackDamageTicks = 0;
+
     /**
      * 火焰蓄能计时
      */
@@ -252,6 +260,11 @@ public class SakurawitchEntity extends PathfinderMob {
     private boolean toyBearSummoned = false;
     private UUID toyBearUUID;
 
+    // NetCraft 1.4.18：仇恨、出生点限制、脱战回位和回血。
+    private final SakuraHatredManager hatredManager = new SakuraHatredManager(this);
+    private Vec3 netcraftSpawnPosition;
+    private boolean netcraftSpawnPositionSet = false;
+
     // =========================================================
     // Boss 血条
     // =========================================================
@@ -286,7 +299,8 @@ public class SakurawitchEntity extends PathfinderMob {
     @Override
     public void startSeenByPlayer(ServerPlayer player) {
         super.startSeenByPlayer(player);
-        bossEvent.addPlayer(player);
+        // 使用客户端 NetCraft 风格 HUD，避免同时出现原版 Boss 血条。
+        // bossEvent.addPlayer(player);
     }
 
     @Override
@@ -307,44 +321,16 @@ public class SakurawitchEntity extends PathfinderMob {
         );
 
         /*
-         * 小樱是魔法 Boss。
-         *
-         * 不使用 MeleeAttackGoal，
-         * 避免她像普通僵尸一样贴脸砍人。
+         * NetCraft 小樱不使用 vanilla 的 HurtByTargetGoal /
+         * NearestAttackableTargetGoal，也不随机游走。
+         * 锁敌完全由 SakuraHatredManager 决定；无仇恨时返回出生点。
          */
-        goalSelector.addGoal(
-                5,
-                new WaterAvoidingRandomStrollGoal(
-                        this,
-                        0.8D
-                )
-        );
-
         goalSelector.addGoal(
                 6,
                 new LookAtPlayerGoal(
                         this,
                         Player.class,
                         20.0F
-                )
-        );
-
-        goalSelector.addGoal(
-                7,
-                new RandomLookAroundGoal(this)
-        );
-
-        targetSelector.addGoal(
-                1,
-                new HurtByTargetGoal(this)
-        );
-
-        targetSelector.addGoal(
-                2,
-                new NearestAttackableTargetGoal<>(
-                        this,
-                        Player.class,
-                        false
                 )
         );
     }
@@ -418,7 +404,14 @@ public class SakurawitchEntity extends PathfinderMob {
             return;
         }
 
-        updateTarget();
+        ensureNetcraftSpawnPosition();
+        hatredManager.tick();
+
+        // NetCraft 普攻冷却从攻击开始就持续计时，不等动画结束。
+        if (normalAttackTimer > 0) {
+            normalAttackTimer--;
+        }
+        tickPendingNormalAttackDamage();
 
         updatePhase();
 
@@ -429,8 +422,13 @@ public class SakurawitchEntity extends PathfinderMob {
         updateWalking();
 
         /*
-         * 普通魔法攻击始终存在。
+         * NetCraft：没有有效仇恨目标时不进入攻击/技能循环。
+         * 仇恨控制器会负责回出生点并在脱战后回满血。
          */
+        if (!hatredManager.hasCurrentTarget()) {
+            return;
+        }
+
         if (entityData.get(SKILL_STATE) == IDLE) {
             tickNormalMagicAttack();
         }
@@ -453,32 +451,51 @@ public class SakurawitchEntity extends PathfinderMob {
     }
 
     // =========================================================
-    // 目标
+    // NetCraft 出生点 / 仇恨
     // =========================================================
 
-    private void updateTarget() {
-        if (tickCount % 10 != 0) {
+    private void ensureNetcraftSpawnPosition() {
+        if (!netcraftSpawnPositionSet) {
+            netcraftSpawnPosition = position();
+            netcraftSpawnPositionSet = true;
+        }
+    }
+
+    Vec3 getNetcraftSpawnPosition() {
+        return netcraftSpawnPosition;
+    }
+
+    /**
+     * SakuraHatredManager 脱战时调用。
+     * fullReset=true 表示已回到出生点并完成回血。
+     */
+    void onNetcraftDisengage(boolean fullReset) {
+        getNavigation().stop();
+        setTarget(null);
+        cancelCurrentSkill();
+
+        sprayTarget = null;
+        eruptionTarget = null;
+        eruptionPos = null;
+        eruptionTimer = 0;
+        pendingNormalAttackTargetUUID = null;
+        pendingNormalAttackDamageTicks = 0;
+
+        if (!fullReset) {
             return;
         }
 
-        Entity current = getTarget();
+        // 回满血后视为一次完整重置，避免旧阶段技能继续残留。
+        entityData.set(PHASE, 1);
+        entityData.set(FIRE_MARK_STACKS, 0);
+        fireChargeTimer = 0;
+        sprayCD = 200;
+        normalAttackTimer = 20;
+        eruptionCD = ERUPTION_INTERVAL;
+        playedPhaseTwoSound = false;
 
-        if (current != null
-                && current.isAlive()
-                && !current.isRemoved()
-                && distanceToSqr(current) <= 35.0D * 35.0D) {
-            return;
-        }
-
-        Player nearest =
-                level().getNearestPlayer(
-                        this,
-                        35.0D
-                );
-
-        if (valid(nearest)) {
-            setTarget(nearest);
-        }
+        removeToyBear();
+        toyBearSummoned = false;
     }
 
     // =========================================================
@@ -734,95 +751,57 @@ public class SakurawitchEntity extends PathfinderMob {
             return;
         }
 
-        if (entityData.get(ATTACK_TIMER) > 0) {
-            return;
-        }
-
-        if (normalAttackTimer > 0) {
-            normalAttackTimer--;
+        if (entityData.get(ATTACK_TIMER) > 0 || normalAttackTimer > 0) {
             return;
         }
 
         Player target = getNearestCombatPlayer();
-
         if (!valid(target)) {
-            normalAttackTimer = 20;
             return;
         }
 
         /*
-         * 小樱普通攻击不是近战砍人，
-         * 而是魔法攻击。
+         * NetCraft SakuraWitchAttackGoal：
+         * - 始终看向当前仇恨目标；
+         * - 超过 2.5 格时以 1.0 导航倍率追击；
+         * - 进入 2.5 格才停下并开始攻击动画。
          */
-        lookAt(
-                target.position().add(
-                        0.0D,
-                        1.0D,
-                        0.0D
-                )
-        );
+        getLookControl().setLookAt(target, 30.0F, 30.0F);
 
-        entityData.set(
-                ATTACK_INDEX,
-                1
-        );
-
-        entityData.set(
-                ATTACK_TIMER,
-                ATTACK_LENGTH
-        );
+        if (distanceTo(target) > NORMAL_ATTACK_RANGE) {
+            getNavigation().moveTo(target, 1.0D);
+            return;
+        }
 
         getNavigation().stop();
+        lookAt(target.position().add(0.0D, 1.0D, 0.0D));
 
-        setDeltaMovement(
-                Vec3.ZERO
-        );
+        entityData.set(ATTACK_INDEX, 1);
+        entityData.set(ATTACK_TIMER, ATTACK_LENGTH);
+        setDeltaMovement(Vec3.ZERO);
 
-        magicDamage(
-                target,
-                NORMAL_MAGIC_DAMAGE
-        );
+        normalAttackTimer = NORMAL_ATTACK_INTERVAL;
+        pendingNormalAttackTargetUUID = target.getUUID();
+        pendingNormalAttackDamageTicks = NORMAL_DAMAGE_DELAY;
 
-        addMagicVulnerability(target);
+        // NetCraft 的 faceTargetForAttack() 会刷新“攻击动作”时间。
+        hatredManager.notifyAttackAction();
 
-        /*
-         * 普通魔法攻击视觉。
-         */
+        /* 普通魔法攻击视觉。 */
         if (level() instanceof ServerLevel serverLevel) {
-            Vec3 start =
-                    position().add(
-                            0.0D,
-                            1.45D,
-                            0.0D
-                    );
-
-            Vec3 direction =
-                    target.position()
-                            .add(
-                                    0.0D,
-                                    1.0D,
-                                    0.0D
-                            )
-                            .subtract(start)
-                            .normalize();
+            Vec3 start = position().add(0.0D, 1.45D, 0.0D);
+            Vec3 direction = target.position()
+                    .add(0.0D, 1.0D, 0.0D)
+                    .subtract(start)
+                    .normalize();
 
             for (int i = 1; i <= 8; i++) {
-                Vec3 pos =
-                        start.add(
-                                direction.scale(
-                                        i * 0.65D
-                                )
-                        );
-
+                Vec3 pos = start.add(direction.scale(i * 0.65D));
                 serverLevel.sendParticles(
                         ModParticles.SAKURA_MAGIC.get(),
-                        pos.x,
-                        pos.y,
-                        pos.z,
+                        pos.x, pos.y, pos.z,
                         1,
-                        0.03D,
-                        0.03D,
-                        0.03D,
+                        0.03D, 0.03D, 0.03D,
                         0.0D
                 );
             }
@@ -848,9 +827,35 @@ public class SakurawitchEntity extends PathfinderMob {
                 1.2F,
                 1.0F
         );
+    }
 
-        normalAttackTimer =
-                NORMAL_ATTACK_INTERVAL;
+    /**
+     * NetCraft：普攻动画开始 15 tick 后才结算；
+     * 此时目标如果已经离开 3.5 格，则本次攻击落空。
+     */
+    private void tickPendingNormalAttackDamage() {
+        if (pendingNormalAttackDamageTicks <= 0) {
+            return;
+        }
+
+        pendingNormalAttackDamageTicks--;
+        if (pendingNormalAttackDamageTicks > 0) {
+            return;
+        }
+
+        UUID targetId = pendingNormalAttackTargetUUID;
+        pendingNormalAttackTargetUUID = null;
+        if (targetId == null) {
+            return;
+        }
+
+        Player target = level().getPlayerByUUID(targetId);
+        if (!valid(target) || distanceTo(target) > NORMAL_DAMAGE_RANGE) {
+            return;
+        }
+
+        magicDamage(target, NORMAL_MAGIC_DAMAGE);
+        addMagicVulnerability(target);
     }
 
     // =========================================================
@@ -969,6 +974,7 @@ public class SakurawitchEntity extends PathfinderMob {
         );
 
         sprayTimer = 0;
+        hatredManager.notifyAttackAction();
 
         getNavigation().stop();
 
@@ -1641,6 +1647,7 @@ public class SakurawitchEntity extends PathfinderMob {
                 ERUPTION_DELAY + ATTACK_LENGTH
         );
 
+        hatredManager.notifyAttackAction();
         getNavigation().stop();
 
         setDeltaMovement(
@@ -1897,6 +1904,8 @@ public class SakurawitchEntity extends PathfinderMob {
         );
 
         sprayTimer = 0;
+        pendingNormalAttackTargetUUID = null;
+        pendingNormalAttackDamageTicks = 0;
     }
 
     // =========================================================
@@ -1939,6 +1948,14 @@ public class SakurawitchEntity extends PathfinderMob {
                                 * stacks
                 );
 
+        /*
+         * NetCraft 小樱：hurt() 前保存目标速度，伤害后立即恢复。
+         * 所以会正常受伤，但不会被这次攻击击退。
+         * 你现有的普攻、喷火、爆炸、喷发都走 magicDamage()，
+         * 因此统一获得同样的无击退效果。
+         */
+        Vec3 oldMotion = player.getDeltaMovement();
+
         player.hurt(
                 damageSources().indirectMagic(
                         this,
@@ -1946,6 +1963,9 @@ public class SakurawitchEntity extends PathfinderMob {
                 ),
                 damage
         );
+
+        player.setDeltaMovement(oldMotion);
+        hatredManager.notifyAttackAction();
     }
 
     // =========================================================
@@ -1973,16 +1993,8 @@ public class SakurawitchEntity extends PathfinderMob {
     }
 
     private Player getNearestCombatPlayer() {
-
-        Player nearest =
-                level().getNearestPlayer(
-                        this,
-                        35.0D
-                );
-
-        return valid(nearest)
-                ? nearest
-                : null;
+        Player target = hatredManager.getCurrentTarget();
+        return valid(target) ? target : null;
     }
 
     // =========================================================
@@ -2136,10 +2148,19 @@ public class SakurawitchEntity extends PathfinderMob {
             return false;
         }
 
-        return super.hurt(
+        boolean damaged = super.hurt(
                 source,
                 amount
         );
+
+        if (damaged
+                && !level().isClientSide
+                && source.getEntity() instanceof Player player) {
+            // NetCraft LivingHurtEvent：实际伤害 × 玩家仇恨倍率。
+            hatredManager.addDamageHatred(player, amount);
+        }
+
+        return damaged;
     }
 
     // =========================================================
@@ -2192,6 +2213,7 @@ public class SakurawitchEntity extends PathfinderMob {
 
         deathTimer = 0;
 
+        hatredManager.clearAll();
         removeToyBear();
 
         bossEvent.removeAllPlayers();
@@ -2289,6 +2311,13 @@ public class SakurawitchEntity extends PathfinderMob {
 
         super.addAdditionalSaveData(tag);
 
+        if (netcraftSpawnPositionSet && netcraftSpawnPosition != null) {
+            tag.putDouble("SpawnX", netcraftSpawnPosition.x);
+            tag.putDouble("SpawnY", netcraftSpawnPosition.y);
+            tag.putDouble("SpawnZ", netcraftSpawnPosition.z);
+            tag.putBoolean("SpawnPositionSet", true);
+        }
+
         tag.putInt(
                 "FireSprayCD",
                 sprayCD
@@ -2341,6 +2370,15 @@ public class SakurawitchEntity extends PathfinderMob {
     ) {
 
         super.readAdditionalSaveData(tag);
+
+        if (tag.getBoolean("SpawnPositionSet")) {
+            netcraftSpawnPosition = new Vec3(
+                    tag.getDouble("SpawnX"),
+                    tag.getDouble("SpawnY"),
+                    tag.getDouble("SpawnZ")
+            );
+            netcraftSpawnPositionSet = true;
+        }
 
         sprayCD =
                 tag.getInt(
@@ -2404,7 +2442,7 @@ public class SakurawitchEntity extends PathfinderMob {
 
                 .add(
                         Attributes.MAX_HEALTH,
-                        200000.0D
+                        28000.0D
                 )
 
                 .add(
