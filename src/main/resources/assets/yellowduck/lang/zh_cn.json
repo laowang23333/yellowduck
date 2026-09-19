@@ -40,5 +40,9 @@
   "item.yellowduck.music_disc_4.desc": "唱片4",
   "item.yellowduck.music_disc_5.desc": "唱片5",
   "item.yellowduck.mount_egg_bamboo_horse": "竹马坐骑蛋",
-  "entity.yellowduck.bamboo_horse_mount": "竹马"
+  "entity.yellowduck.bamboo_horse_mount": "竹马",
+  "entity.yellowduck.silk_plague_bear": "疫病转移之熊",
+  "entity.yellowduck.silk_boss": "疯狂教授斯尔克",
+  "entity.yellowduck.silk_shadow_bat": "暗影蝙蝠",
+  "entity.yellowduck.silk_meteor": "追踪陨石"
 }
