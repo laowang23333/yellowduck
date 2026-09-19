@@ -1,14 +1,14 @@
 package com.yourname.yellowduck.client.event;
 
+import com.yourname.yellowduck.client.NetcraftBossHud;
 import com.yourname.yellowduck.client.SakuraNetcraftHud;
-import com.yourname.yellowduck.silk.SilkNetcraftHud;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 /**
- * 使用 Forge HUD 渲染事件绘制斯尔克血条。
+ * 使用 Forge HUD 渲染事件绘制 YellowDuck 的 NetCraft 风格 Boss 血条。
  *
  * 注意：这个类虽然文件仍放在旧的 mixin/client 目录，实际 Java package
  * 已移动到 com.yourname.yellowduck.client.event，避免被 Mixin 包规则拦截。
@@ -19,8 +19,8 @@ public final class BossHealthBarMixin {
     }
 
     @SubscribeEvent
-    public static void yellowduck$renderSilk(RenderGuiEvent.Post event) {
+    public static void yellowduck$renderBossHud(RenderGuiEvent.Post event) {
         SakuraNetcraftHud.render(event);
-        SilkNetcraftHud.render(event);
+        NetcraftBossHud.render(event);
     }
 }
