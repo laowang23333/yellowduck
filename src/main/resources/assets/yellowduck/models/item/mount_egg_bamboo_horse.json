@@ -1,0 +1,4 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": { "layer0": "yellowduck:item/items_mount_egg_bamboo_horse" }
+}
