@@ -122,6 +122,14 @@ public final class NetcraftHatredManager {
         return boss.isValidHatredPlayer(player) ? player : null;
     }
 
+    /** 当前仇恨表中数值真正最高的玩家，不经过Boss目标切换阈值/观察时间。 */
+    public Player getHighestHatredTarget() {
+        UUID highest = findHighestHatredPlayer();
+        if (highest == null) return null;
+        Player player = boss.level().getPlayerByUUID(highest);
+        return boss.isValidHatredPlayer(player) ? player : null;
+    }
+
     public boolean hasCurrentTarget() {
         return getCurrentTarget() != null;
     }
