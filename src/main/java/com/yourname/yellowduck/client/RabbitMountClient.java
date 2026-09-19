@@ -2,6 +2,7 @@ package com.yourname.yellowduck.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.yourname.yellowduck.entity.RabbitMountEntity;
+import com.yourname.yellowduck.entity.BambooHorseEntity;
 import com.yourname.yellowduck.network.MountNetwork;
 import com.yourname.yellowduck.util.RabbitFlight;
 import net.minecraft.client.KeyMapping;
@@ -25,12 +26,15 @@ public final class RabbitMountClient {
             int x = width / 2 - 91;
             int y = height - Math.max(59, Math.max(gui.leftHeight, gui.rightHeight) + 10);
             int energy = rabbit.getEnergy();
-            int color = rabbit.isFlying() ? 0xFF76DFFF : rabbit.isResting() ? 0xFFFFC466 : 0xFF9BECAD;
+            if (!rabbit.isFlying() && !rabbit.isResting() && energy >= RabbitFlight.MAX) return;
+            boolean bamboo = rabbit instanceof BambooHorseEntity;
+            String mountName = bamboo ? "竹马" : "玉兔";
+            int color = rabbit.isFlying() ? 0xFF76DFFF : 0xFFFFC466;
             graphics.fill(x, y, x + 182, y + 7, 0xDD172332);
             graphics.fill(x + 1, y + 1, x + 181, y + 6, 0xFF394555);
             graphics.fill(x + 1, y + 1, x + 1 + energy * 180 / RabbitFlight.MAX, y + 6, color);
-            String label = rabbit.isFlying() ? "玉兔飞行 " + ((energy + 59) / 60) + "秒"
-                    : rabbit.isResting() ? "玉兔恢复中 " + ((rabbit.getRestTicks() + 19) / 20) + "秒" : "玉兔耐力已满";
+            String label = rabbit.isFlying() ? mountName + "飞行 " + ((energy + 59) / 60) + "秒"
+                    : mountName + "恢复中 " + ((rabbit.getRestTicks() + 19) / 20) + "秒";
             graphics.drawCenteredString(mc.font, label, width / 2, y - 10, color);
         });
     }

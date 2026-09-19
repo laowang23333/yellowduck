@@ -65,6 +65,8 @@ public class MountScreen extends Screen {
                 previewEntity = ModEntities.RABBIT_MOUNT.get().create(mc.level);
             } else if ("alpaca".equals(selected.id())) {
                 previewEntity = ModEntities.ALPACA_MOUNT.get().create(mc.level);
+            } else if ("bamboo_horse".equals(selected.id())) {
+                previewEntity = ModEntities.BAMBOO_HORSE_MOUNT.get().create(mc.level);
             } else {
                 previewEntity = ModEntities.MOUNT.get().create(mc.level);
             }
@@ -154,7 +156,7 @@ public class MountScreen extends Screen {
         float lookX = net.minecraft.util.Mth.clamp((float) (centerX - mouseX), -35.0F, 35.0F);
         float lookY = net.minecraft.util.Mth.clamp((float) (baseY - 55 - mouseY), -12.0F, 12.0F);
         int scale = "ghost_wolf_stars".equals(selected.id()) ? 34
-                : "alpaca".equals(selected.id()) ? 42 : 60;
+                : "alpaca".equals(selected.id()) ? 42 : "bamboo_horse".equals(selected.id()) ? 58 : 60;
         graphics.enableScissor(panelLeft + 262, panelTop + 67, panelLeft + 493, panelTop + 188);
         try {
             InventoryScreen.renderEntityInInventoryFollowsMouse(

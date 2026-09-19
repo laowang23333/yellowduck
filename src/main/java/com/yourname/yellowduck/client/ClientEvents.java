@@ -30,6 +30,7 @@ public class ClientEvents {
         // 羊驼坐骑渲染器
         AlpacaMountRenderer.register(event, ModEntities.ALPACA_MOUNT.get());
         RabbitMountRenderer.register(event, ModEntities.RABBIT_MOUNT.get());
+        event.registerEntityRenderer(ModEntities.BAMBOO_HORSE_MOUNT.get(), BambooHorseRenderer::new);
 
         // 大箱子方块实体渲染器
         event.registerBlockEntityRenderer(

@@ -30,7 +30,10 @@ public final class MountCatalog {
     public static List<MountDefinition> all() {
         return List.of(GHOST_WOLF, ALPACA, new MountDefinition("rabbit", "玉兔",
                 new ResourceLocation("yellowduck", "textures/item/items_mount_egg_rabbit.png"),
-                new ResourceLocation("yellowduck", "rabbit_mount_embedded")));
+                new ResourceLocation("yellowduck", "rabbit_mount_embedded")),
+                new MountDefinition("bamboo_horse", "竹马",
+                new ResourceLocation("yellowduck", "textures/item/items_mount_egg_bamboo_horse.png"),
+                new ResourceLocation("yellowduck", "bamboo_horse_embedded")));
     }
 
     private MountCatalog() {}
