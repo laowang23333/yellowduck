@@ -35,5 +35,9 @@ public final class ModItems {
             ITEMS.register("mount_egg_alpaca",
                     () -> new MountSummonItem(new Item.Properties(), "alpaca"));
 
+    public static final RegistryObject<Item> BAMBOO_HORSE_MOUNT =
+            ITEMS.register("mount_egg_bamboo_horse",
+                    () -> new MountSummonItem(new Item.Properties(), "bamboo_horse"));
+
     private ModItems() {}
 }

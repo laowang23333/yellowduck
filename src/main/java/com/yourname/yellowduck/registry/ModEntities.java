@@ -4,6 +4,7 @@ import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.entity.RabbitMountEntity;
 import com.yourname.yellowduck.entity.AlpacaMountEntity;
+import com.yourname.yellowduck.entity.BambooHorseEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
@@ -41,6 +42,12 @@ public class ModEntities {
                     EntityType.Builder.<RabbitMountEntity>of(RabbitMountEntity::new, MobCategory.CREATURE)
                             .sized(1.4F, 1.25F).clientTrackingRange(10).updateInterval(1)
                             .build("rabbit_mount"));
+
+    public static final RegistryObject<EntityType<BambooHorseEntity>> BAMBOO_HORSE_MOUNT =
+            ENTITIES.register("bamboo_horse_mount", () ->
+                    EntityType.Builder.<BambooHorseEntity>of(BambooHorseEntity::new, MobCategory.CREATURE)
+                            .sized(1.5F, 1.45F).clientTrackingRange(10).updateInterval(1)
+                            .build("bamboo_horse_mount"));
 
     // ==========================================
     // 小樱 Boss

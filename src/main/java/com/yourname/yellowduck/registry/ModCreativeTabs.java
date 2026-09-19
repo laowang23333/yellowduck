@@ -41,6 +41,7 @@ public class ModCreativeTabs {
                         output.accept(ModItems.GHOST_WOLF_MOUNT.get());
                         output.accept(ModItems.ALPACA_MOUNT.get());
                         output.accept(ModItems.RABBIT_MOUNT.get());
+                        output.accept(ModItems.BAMBOO_HORSE_MOUNT.get());
                     })
                     .build());
 }
