@@ -49,8 +49,5 @@ public class YellowDuckMod {
         event.put(ModEntities.RABBIT_MOUNT.get(), MountEntity.createAttributes().build());
         event.put(ModEntities.SAKURA_WITCH.get(), SakurawitchEntity.createAttributes().build());
         event.put(ModEntities.TOY_BEAR.get(), ToyBearEntity.createAttributes().build());
-        event.put(SilkContent.BOSS.get(), com.yourname.yellowduck.silk.SilkBoss.createAttributes().build());
-        event.put(SilkContent.BAT.get(), net.minecraft.world.entity.ambient.Bat.createAttributes().build());
-        event.put(SilkContent.METEOR.get(), net.minecraft.world.entity.PathfinderMob.createMobAttributes().add(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH, 40).add(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED, 0.15).add(net.minecraft.world.entity.ai.attributes.Attributes.KNOCKBACK_RESISTANCE, 1).build());
     }
 }
