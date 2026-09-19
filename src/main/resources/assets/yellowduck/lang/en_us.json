@@ -38,5 +38,7 @@
   "item.yellowduck.music_disc_2.desc": "唱片2",
   "item.yellowduck.music_disc_3.desc": "唱片3",
   "item.yellowduck.music_disc_4.desc": "唱片4",
-  "item.yellowduck.music_disc_5.desc": "唱片5"
+  "item.yellowduck.music_disc_5.desc": "唱片5",
+  "item.yellowduck.mount_egg_bamboo_horse": "Bamboo Horse Mount Egg",
+  "entity.yellowduck.bamboo_horse_mount": "Bamboo Horse"
 }
