@@ -1,5 +1,6 @@
 package com.yourname.yellowduck.client.event;
 
+import com.yourname.yellowduck.client.SakuraNetcraftHud;
 import com.yourname.yellowduck.silk.SilkNetcraftHud;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiEvent;
@@ -19,6 +20,7 @@ public final class BossHealthBarMixin {
 
     @SubscribeEvent
     public static void yellowduck$renderSilk(RenderGuiEvent.Post event) {
+        SakuraNetcraftHud.render(event);
         SilkNetcraftHud.render(event);
     }
 }
