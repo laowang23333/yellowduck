@@ -40,13 +40,13 @@ public class ModEntities {
     public static final RegistryObject<EntityType<RabbitMountEntity>> RABBIT_MOUNT =
             ENTITIES.register("rabbit_mount", () ->
                     EntityType.Builder.<RabbitMountEntity>of(RabbitMountEntity::new, MobCategory.CREATURE)
-                            .sized(1.4F, 1.25F).clientTrackingRange(10).updateInterval(1)
+                            .sized(1.4F, 1.25F).clientTrackingRange(10).updateInterval(2)
                             .build("rabbit_mount"));
 
     public static final RegistryObject<EntityType<BambooHorseEntity>> BAMBOO_HORSE_MOUNT =
             ENTITIES.register("bamboo_horse_mount", () ->
                     EntityType.Builder.<BambooHorseEntity>of(BambooHorseEntity::new, MobCategory.CREATURE)
-                            .sized(1.5F, 1.45F).clientTrackingRange(10).updateInterval(1)
+                            .sized(1.5F, 1.45F).clientTrackingRange(10).updateInterval(2)
                             .build("bamboo_horse_mount"));
 
     // ==========================================
