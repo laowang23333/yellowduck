@@ -26,6 +26,7 @@ public final class SilkClient {
         event.registerEntityRenderer(SilkContent.BOSS.get(), BossRenderer::new);
         event.registerEntityRenderer(SilkContent.BAT.get(), BatRenderer::new);
         event.registerEntityRenderer(SilkContent.METEOR.get(), MeteorRenderer::new);
+        event.registerEntityRenderer(SilkContent.PLAGUE_BEAR.get(), PlagueBearRenderer::new);
     }
     public static final class BossRenderer extends GltfEntityRenderer<SilkBoss> {
         private final Map<SilkBoss, Integer> serials = new WeakHashMap<>();
@@ -50,6 +51,28 @@ public final class SilkClient {
             super.render(boss, yaw, partialTick, pose, buffers, light);
         }
     }
+
+    /** 疫病熊直接复用小樱布偶熊的 GLB 和 Anim-1 动画。 */
+    public static final class PlagueBearRenderer extends GltfEntityRenderer<SilkPlagueBear> {
+        public PlagueBearRenderer(EntityRendererProvider.Context context) {
+            super(context, new ResourceLocation("yellowduck", "entity_toy_bear"), GltfRenderOptions.builder()
+                    .scale(0.15F).shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
+                    .preferGpuAnimatedMeshes(false).preferGpuStaticMeshes(false).loopAnimation(true).build());
+        }
+
+        @Override
+        public void render(SilkPlagueBear bear, float yaw, float partialTick, PoseStack pose, MultiBufferSource buffers, int light) {
+            try {
+                AnimationController controller = getAnimationController(bear);
+                if (controller != null && !"Anim-1".equals(controller.getAnimationName())) {
+                    controller.play("Anim-1", true);
+                }
+            } catch (Throwable ignored) {
+            }
+            super.render(bear, yaw, partialTick, pose, buffers, light);
+        }
+    }
+
     public static final class MeteorRenderer extends EntityRenderer<SilkMeteor> {
         public MeteorRenderer(EntityRendererProvider.Context context) { super(context); shadowRadius = 0.6F; }
         @Override public ResourceLocation getTextureLocation(SilkMeteor entity) { return new ResourceLocation("minecraft", "textures/atlas/blocks.png"); }

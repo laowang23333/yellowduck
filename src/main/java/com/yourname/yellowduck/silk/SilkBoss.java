@@ -21,7 +21,6 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.animal.PolarBear;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.phys.AABB;
@@ -58,6 +57,7 @@ public class SilkBoss extends NetcraftBossBase {
     public SilkBoss(EntityType<? extends SilkBoss> type, net.minecraft.world.level.Level level) {
         super(type, level);
         setPersistenceRequired();
+        setBaseTier(5); // 疯狂教授斯尔克：NetCraft T5。
         setBaseDamage((int) SilkBalance.BASIC_DAMAGE);
         xpReward = 150;
     }
@@ -210,7 +210,8 @@ public class SilkBoss extends NetcraftBossBase {
     private void tickCast() {
         castAge++;
         if (cast == 7) {
-            if (castAge < 40 && castAge % 5 == 0) fan(false);
+            // 蓄力阶段只在教授手部聚集/喷出火焰，不再把预警粒子直接铺在地板上。
+            if (castAge < 40 && castAge % 2 == 0) chargeFlameFromHand();
             if (castAge >= 40 && castAge % 20 == 0) fan(true);
         } else if (castAge == 12) {
             switch (cast) {
@@ -244,7 +245,8 @@ public class SilkBoss extends NetcraftBossBase {
         if (target == null || distanceToSqr(target) > 24 * 24) return;
         Vec3 center = target.position(); ring(center, SilkBalance.BASIC_RADIUS, false);
         for (ServerPlayer p : targets()) if (p.position().distanceToSqr(center) <= SilkBalance.BASIC_RADIUS * SilkBalance.BASIC_RADIUS) {
-            if (hit(p, SilkBalance.BASIC_DAMAGE, SilkBalance.BASIC_CORRUPTION) && !entityData.get(MAD)) energy = Math.min(100, energy + SilkBalance.ENERGY_PER_HIT);
+            float basicDamage = (float) getAttributeValue(Attributes.ATTACK_DAMAGE);
+            if (hit(p, basicDamage, SilkBalance.BASIC_CORRUPTION) && !entityData.get(MAD)) energy = Math.min(100, energy + SilkBalance.ENERGY_PER_HIT);
         }
     }
     private void bats() {
@@ -280,20 +282,79 @@ public class SilkBoss extends NetcraftBossBase {
         }
         ring(position(), 12, true);
     }
+    /** 估算教授右手位置。服务端没有 GLTF 骨骼姿态，因此按身体朝向做稳定的世界坐标偏移。 */
+    private Vec3 flameHandPosition() {
+        double yaw = Math.toRadians(getYRot());
+        Vec3 forward = new Vec3(-Math.sin(yaw), 0.0D, Math.cos(yaw));
+        Vec3 right = new Vec3(forward.z, 0.0D, -forward.x);
+        return position()
+                .add(0.0D, getBbHeight() * 0.68D, 0.0D)
+                .add(forward.scale(0.55D))
+                .add(right.scale(0.48D));
+    }
+
+    private void chargeFlameFromHand() {
+        if (!(level() instanceof ServerLevel sl)) return;
+        setYRot(flameYaw);
+        yBodyRot = flameYaw;
+        Vec3 hand = flameHandPosition();
+        double yaw = Math.toRadians(getYRot());
+        Vec3 forward = new Vec3(-Math.sin(yaw), 0.0D, Math.cos(yaw));
+
+        sl.sendParticles(ParticleTypes.FLAME, hand.x, hand.y, hand.z, 6, 0.12D, 0.12D, 0.12D, 0.015D);
+        sl.sendParticles(ParticleTypes.SMOKE, hand.x, hand.y, hand.z, 3, 0.10D, 0.10D, 0.10D, 0.01D);
+        for (double d = 0.25D; d <= 2.2D; d += 0.35D) {
+            Vec3 point = hand.add(forward.scale(d));
+            sl.sendParticles(ParticleTypes.FLAME, point.x, point.y - d * 0.03D, point.z,
+                    1, 0.04D, 0.04D, 0.04D, 0.0D);
+        }
+    }
+
+    private boolean insideFlameCone(Entity entity, Vec3 forward) {
+        Vec3 delta = entity.position().subtract(position());
+        return Math.abs(delta.y) <= 4.0D
+                && delta.horizontalDistanceSqr() <= SilkBalance.FLAME_RANGE * SilkBalance.FLAME_RANGE
+                && delta.dot(forward) >= 0.0D;
+    }
+
+    private boolean isOwnedProfessorSlime(Slime slime) {
+        CompoundTag data = slime.getPersistentData();
+        return slime.isAlive()
+                && data.getBoolean("SilkProfessorSlime")
+                && data.hasUUID("SilkOwner")
+                && data.getUUID("SilkOwner").equals(getUUID());
+    }
+
     private void fan(boolean damage) {
-        setYRot(flameYaw); yBodyRot = flameYaw;
-        Vec3 forward = new Vec3(-Math.sin(Math.toRadians(getYRot())), 0, Math.cos(Math.toRadians(getYRot())));
+        setYRot(flameYaw);
+        yBodyRot = flameYaw;
+        Vec3 forward = new Vec3(-Math.sin(Math.toRadians(getYRot())), 0.0D, Math.cos(Math.toRadians(getYRot())));
         ServerLevel sl = (ServerLevel) level();
+        Vec3 hand = flameHandPosition();
+
+        // 每一束扇形火焰都从手部开始，再向前逐渐下降；不再从地面直接生成。
         for (int i = -9; i <= 9; i++) {
-            double a = Math.toRadians(getYRot() + i * 10);
-            for (int r = 2; r <= (int) SilkBalance.FLAME_RANGE; r += 2) sl.sendParticles(damage ? ParticleTypes.FLAME : ParticleTypes.SMOKE,
-                    getX() - Math.sin(a) * r, getY() + 0.5, getZ() + Math.cos(a) * r, 1, 0.1, 0.15, 0.1, 0);
+            double a = Math.toRadians(getYRot() + i * 10.0D);
+            Vec3 direction = new Vec3(-Math.sin(a), 0.0D, Math.cos(a));
+            for (double r = 0.4D; r <= SilkBalance.FLAME_RANGE; r += 0.8D) {
+                Vec3 point = hand.add(direction.scale(r));
+                double y = point.y - Math.min(1.8D, r * 0.12D);
+                sl.sendParticles(ParticleTypes.FLAME, point.x, y, point.z,
+                        1, 0.08D, 0.10D, 0.08D, 0.0D);
+            }
         }
         if (!damage) return;
+
         for (ServerPlayer p : targets()) {
-            Vec3 delta = p.position().subtract(position());
-            if (Math.abs(delta.y) <= 4 && delta.horizontalDistanceSqr() <= SilkBalance.FLAME_RANGE * SilkBalance.FLAME_RANGE
-                    && delta.dot(forward) >= 0) hit(p, SilkBalance.FLAME_DAMAGE / 4, 2);
+            if (insideFlameCone(p, forward)) hit(p, SilkBalance.FLAME_DAMAGE / 4.0F, 2);
+        }
+
+        // 教授召唤的史莱姆只有被这道喷火覆盖时才会“安全死亡”，不会触发85固定伤害爆炸。
+        AABB flameBox = getBoundingBox().inflate(SilkBalance.FLAME_RANGE + 2.0D, 5.0D, SilkBalance.FLAME_RANGE + 2.0D);
+        for (Slime slime : sl.getEntitiesOfClass(Slime.class, flameBox, this::isOwnedProfessorSlime)) {
+            if (insideFlameCone(slime, forward)) {
+                SilkCombatEvents.killProfessorSlimeByFlame(this, slime);
+            }
         }
     }
     private void startMadness() {
@@ -328,19 +389,24 @@ public class SilkBoss extends NetcraftBossBase {
         return floorPoint(home.x + Math.cos(angle) * radius, home.z + Math.sin(angle) * radius);
     }
     private void summonHelpers() {
-        PolarBear bear = EntityType.POLAR_BEAR.create(level());
+        SilkPlagueBear bear = SilkContent.PLAGUE_BEAR.get().create(level());
         if (bear != null) {
-            Vec3 p = randomFloor(); bear.moveTo(p.x, p.y, p.z, 0, 0); bear.setNoAi(true); bear.setPersistenceRequired();
-            bear.setCustomName(Component.literal("疫病转移之熊")); bear.setCustomNameVisible(true);
-            bear.getPersistentData().putUUID("SilkOwner", getUUID()); level().addFreshEntity(bear); summons.add(bear.getUUID());
+            Vec3 p = randomFloor();
+            bear.moveTo(p.x, p.y, p.z, 0.0F, 0.0F);
+            bear.setOwner(this);
+            level().addFreshEntity(bear);
+            summons.add(bear.getUUID());
         }
         for (int i = 0; i < 3; i++) {
-            Slime slime = EntityType.SLIME.create(level()); if (slime == null) continue;
-            Vec3 p = randomFloor(); slime.moveTo(p.x, p.y, p.z, 0, 0); SilkCombatEvents.resizeSlime(slime, 2);
-            slime.setPersistenceRequired(); slime.getPersistentData().putUUID("SilkOwner", getUUID());
-            level().addFreshEntity(slime); summons.add(slime.getUUID());
+            Slime slime = EntityType.SLIME.create(level());
+            if (slime == null) continue;
+            Vec3 p = randomFloor();
+            slime.moveTo(p.x, p.y, p.z, 0.0F, 0.0F);
+            SilkCombatEvents.configureProfessorSlime(this, slime);
+            level().addFreshEntity(slime);
+            summons.add(slime.getUUID());
         }
-        announce("§c70%血量：召唤1只熊和3只史莱姆，强制进入疯狂！");
+        announce("§c70%血量：召唤1只疫病熊和3只3000血史莱姆，强制进入疯狂！");
     }
     private void createColumns() {
         columns.clear();
@@ -407,11 +473,14 @@ public class SilkBoss extends NetcraftBossBase {
             }
             if (f.plagueDue > 0 && tickCount >= f.plagueDue) {
                 f.plagueDue = 0;
-                PolarBear bear = level().getEntitiesOfClass(PolarBear.class, p.getBoundingBox().inflate(5), b ->
+                SilkPlagueBear bear = level().getEntitiesOfClass(SilkPlagueBear.class, p.getBoundingBox().inflate(5.0D), b ->
                         b.isAlive() && b.getPersistentData().hasUUID("SilkOwner")
-                                && b.getPersistentData().getUUID("SilkOwner").equals(getUUID()) && b.distanceToSqr(p) <= 25)
+                                && b.getPersistentData().getUUID("SilkOwner").equals(getUUID()) && b.distanceToSqr(p) <= 25.0D)
                         .stream().min(Comparator.comparingDouble(b -> b.distanceToSqr(p))).orElse(null);
-                if (bear != null) { bear.kill(); announce("§a暗黑疫病转移，熊已牺牲！"); }
+                if (bear != null) {
+                    bear.sacrificeForPlague();
+                    announce("§a暗黑疫病成功转移，疫病熊已被牺牲！");
+                }
                 else {
                     SilkCombatEvents.lock(p); aoe(p.position(), SilkBalance.PLAGUE_RADIUS, SilkBalance.PLAGUE_DAMAGE, 15);
                 }
@@ -429,7 +498,9 @@ public class SilkBoss extends NetcraftBossBase {
         f.corruption = Math.min(100, f.corruption + amount);
         if (f.corruption >= 100 && p.isAlive()) {
             p.displayClientMessage(Component.literal("§4心智腐蚀达到100，你被黑暗吞噬！"), false);
-            p.kill(); // 按用户要求直接死亡，不是传送离场，也不经图腾伤害吸收。
+            // 必须在死亡包发出之前先写复活锁，否则 NetCraft 的“原地复活”会在这一帧直接可用。
+            SilkCombatEvents.lock(p);
+            p.kill();
         }
     }
     public void aoe(Vec3 point, double radius, float damage, int corruption) {

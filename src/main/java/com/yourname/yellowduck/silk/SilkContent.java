@@ -48,6 +48,15 @@ public final class SilkContent {
                             .fireImmune()
                             .build("silk_meteor"));
 
+    /** 疫病转移之熊：外观复用小樱布偶熊模型，行为由 SilkPlagueBear 独立控制。 */
+    public static final RegistryObject<EntityType<SilkPlagueBear>> PLAGUE_BEAR =
+            ENTITY_TYPES.register("silk_plague_bear", () ->
+                    EntityType.Builder.<SilkPlagueBear>of(SilkPlagueBear::new, MobCategory.MONSTER)
+                            .sized(1.15F, 1.75F)
+                            .clientTrackingRange(12)
+                            .updateInterval(1)
+                            .build("silk_plague_bear"));
+
     private SilkContent() {
     }
 
@@ -60,5 +69,6 @@ public final class SilkContent {
                 .add(Attributes.MOVEMENT_SPEED, 0.15)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1)
                 .build());
+        event.put(PLAGUE_BEAR.get(), SilkPlagueBear.createAttributes().build());
     }
 }
