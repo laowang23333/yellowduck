@@ -1,0 +1,9 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.yourname.yellowduck.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": ["RescueManagerMixin"],
+  "client": ["client.DeathScreenMixin", "client.BossHealthBarMixin"],
+  "injectors": {"defaultRequire": 0}
+}
