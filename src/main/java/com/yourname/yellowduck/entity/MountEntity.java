@@ -161,7 +161,7 @@ public class MountEntity extends PathfinderMob {
         double bob = 0.0D;
         double sway = 0.0D;
         float swayYaw = 0.0F;
-        if (passenger instanceof Player && this.isVehicle()) {
+        if (this.level().isClientSide && passenger instanceof Player && this.isVehicle()) {
             if (this.entityData.get(IS_WALKING)) {
                 // 用实体 tick + partial tick 无法直接拿到这里的 partialTick，
                 // 所以保持连续的相位；同时把幅度提高到肉眼可见。
@@ -245,6 +245,13 @@ public class MountEntity extends PathfinderMob {
     public void travel(Vec3 travelVector) {
         Entity controller = getControllingPassenger();
         if (controller instanceof Player player && this.isVehicle()) {
+            // 只有服务端和“本地正在骑乘的客户端”自己模拟移动。
+            // 其他客户端只接收服务器插值，避免远程实体重复计算造成位置抖动。
+            if (!this.isControlledByLocalInstance()) {
+                this.setDeltaMovement(Vec3.ZERO);
+                return;
+            }
+
             // 不再同步覆盖 yRotO。
             // yRotO 必须保留上一 tick 的角度，否则客户端旋转插值会被截断，
             // 表现就是横向转身时偶发“小卡一下”。
