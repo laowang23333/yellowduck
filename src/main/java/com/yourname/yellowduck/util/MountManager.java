@@ -65,8 +65,9 @@ public final class MountManager {
             if (!mount.isOwner(player) || mount.isRemoved()) continue;
             if (mountId == null) return mount;
             boolean alpaca = mount instanceof com.yourname.yellowduck.entity.AlpacaMountEntity;
-            boolean rabbit = mount instanceof com.yourname.yellowduck.entity.RabbitMountEntity;
-            String actualId = rabbit ? "rabbit" : (alpaca ? "alpaca" : "ghost_wolf_stars");
+            boolean bamboo = mount instanceof com.yourname.yellowduck.entity.BambooHorseEntity;
+            boolean rabbit = mount instanceof com.yourname.yellowduck.entity.RabbitMountEntity && !bamboo;
+            String actualId = bamboo ? "bamboo_horse" : (rabbit ? "rabbit" : (alpaca ? "alpaca" : "ghost_wolf_stars"));
             if (actualId.equals(mountId)) return mount;
         }
         return null;
@@ -116,6 +117,8 @@ public final class MountManager {
             mount = ModEntities.RABBIT_MOUNT.get().create(level);
         } else if ("alpaca".equals(mountId)) {
             mount = ModEntities.ALPACA_MOUNT.get().create(level);
+        } else if ("bamboo_horse".equals(mountId)) {
+            mount = ModEntities.BAMBOO_HORSE_MOUNT.get().create(level);
         } else if ("ghost_wolf_stars".equals(mountId)) {
             mount = ModEntities.MOUNT.get().create(level);
         } else {
@@ -128,7 +131,7 @@ public final class MountManager {
         level.addFreshEntity(mount);
         player.startRiding(mount, true);
         player.displayClientMessage(Component.literal(
-                "§a✦ " + ("rabbit".equals(mountId) ? "玉兔" : ("alpaca".equals(mountId) ? "羊驼" : "魔化天狗")) + " 已到达！"), true);
+                "§a✦ " + ("rabbit".equals(mountId) ? "玉兔" : ("alpaca".equals(mountId) ? "羊驼" : ("bamboo_horse".equals(mountId) ? "竹马" : "魔化天狗"))) + " 已到达！"), true);
     }
 
     @SubscribeEvent

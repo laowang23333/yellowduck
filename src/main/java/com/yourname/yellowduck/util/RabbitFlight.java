@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.util;
 
 import com.yourname.yellowduck.entity.RabbitMountEntity;
+import com.yourname.yellowduck.entity.BambooHorseEntity;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -20,40 +21,45 @@ public final class RabbitFlight {
     public static final int MAX = 6000;
     private static final String ROOT = "yellowduck_mounts";
     private RabbitFlight() {}
+    private static boolean bamboo(Player player) { return player.getVehicle() instanceof BambooHorseEntity; }
+    private static String suffix(Player player) { return bamboo(player) ? "Bamboo" : "Rabbit"; }
     public static int energy(Player player) {
         CompoundTag data = player.getPersistentData().getCompound(ROOT);
-        return data.contains("RabbitEnergy") ? Math.max(0, Math.min(MAX, data.getInt("RabbitEnergy"))) : MAX;
+        String key = suffix(player) + "Energy";
+        return data.contains(key) ? Math.max(0, Math.min(MAX, data.getInt(key))) : MAX;
     }
     public static boolean canFly(Player player) {
-        return energy(player) == MAX && !player.getPersistentData().getCompound(ROOT).getBoolean("RabbitRest");
+        return energy(player) == MAX && !player.getPersistentData().getCompound(ROOT).getBoolean(suffix(player) + "Rest");
     }
     public static void requireRest(Player player) {
         CompoundTag data = player.getPersistentData().getCompound(ROOT);
-        data.putBoolean("RabbitRest", true);
-        data.putInt("RabbitRestTicks", 1200); data.putInt("RabbitRestStart", energy(player));
+        String suffix = suffix(player);
+        data.putBoolean(suffix + "Rest", true);
+        data.putInt(suffix + "RestTicks", 1200); data.putInt(suffix + "RestStart", energy(player));
         player.getPersistentData().put(ROOT, data);
     }
     @SubscribeEvent public static void tick(TickEvent.PlayerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !(event.player instanceof ServerPlayer player)) return;
-        if (!MountData.hasMount(player, "rabbit")) return;
+        if (!MountData.hasMount(player, "rabbit") && !MountData.hasMount(player, "bamboo_horse")) return;
         Entity vehicle = player.getVehicle();
         RabbitMountEntity rabbit = vehicle instanceof RabbitMountEntity r ? r : null;
         int energy = energy(player);
         CompoundTag data = player.getPersistentData().getCompound(ROOT);
-        boolean rest = data.getBoolean("RabbitRest");
-        int restTicks = Math.max(0, Math.min(1200, data.getInt("RabbitRestTicks")));
+        String suffix = rabbit instanceof BambooHorseEntity ? "Bamboo" : "Rabbit";
+        boolean rest = data.getBoolean(suffix + "Rest");
+        int restTicks = Math.max(0, Math.min(1200, data.getInt(suffix + "RestTicks")));
         if (rabbit != null && rabbit.isFlying()) {
             energy = Math.max(0, energy - 3); rest = true; restTicks = 1200;
-            data.putInt("RabbitRestStart", energy);
+            data.putInt(suffix + "RestStart", energy);
         } else if (rest && (vehicle == null ? player.onGround() : vehicle.onGround())
                 && !player.isFallFlying() && !player.getAbilities().flying) {
             restTicks = Math.max(0, restTicks - 1);
-            int start = Math.max(0, Math.min(MAX, data.getInt("RabbitRestStart")));
+            int start = Math.max(0, Math.min(MAX, data.getInt(suffix + "RestStart")));
             energy = start + (MAX - start) * (1200 - restTicks) / 1200;
             if (restTicks == 0) { energy = MAX; rest = false; }
         }
-        data.putInt("RabbitRestTicks", restTicks);
-        data.putInt("RabbitEnergy", energy); data.putBoolean("RabbitRest", rest); player.getPersistentData().put(ROOT, data);
+        data.putInt(suffix + "RestTicks", restTicks);
+        data.putInt(suffix + "Energy", energy); data.putBoolean(suffix + "Rest", rest); player.getPersistentData().put(ROOT, data);
         if (rabbit != null) { rabbit.syncEnergy(energy, rest, restTicks); if (energy == 0 && rabbit.isFlying()) rabbit.stopFlying(); }
     }
     private static void dismount(Entity entity) {
