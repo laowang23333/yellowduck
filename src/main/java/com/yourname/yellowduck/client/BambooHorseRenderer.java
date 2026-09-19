@@ -18,8 +18,9 @@ public class BambooHorseRenderer extends GltfEntityRenderer<BambooHorseEntity> {
     @Override public void render(BambooHorseEntity entity, float yaw, float partialTick, PoseStack pose, MultiBufferSource buffers, int light) {
         AnimationController controller = getAnimationController(entity);
         if (controller != null) {
-            String wanted = entity.isFlying() ? (entity.getDeltaMovement().horizontalDistanceSqr() > 0.0001 ? "Anim-1_fly_ride" : "Anim-1_fly_stand")
-                    : (entity.isVehicle() && MountAnimationState.isWalking(entity) ? "Anim-1_ride" : "Anim-1_stand");
+            boolean walking = MountAnimationState.isWalking(entity);
+            String wanted = entity.isFlying() ? (walking ? "Anim-1_fly_ride" : "Anim-1_fly_stand")
+                    : (entity.isVehicle() && walking ? "Anim-1_ride" : "Anim-1_stand");
             if (!wanted.equals(controller.getAnimationName())) controller.play(wanted, true);
         }
         super.render(entity, yaw, partialTick, pose, buffers, light);

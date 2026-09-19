@@ -43,14 +43,21 @@ public final class RabbitMountClient {
         private static boolean jump, down;
         private static int mountId = -1, heartbeat;
         @SubscribeEvent public static void tick(TickEvent.ClientTickEvent event) {
-            if (event.phase != TickEvent.Phase.END) return;
+            if (event.phase != TickEvent.Phase.START) return;
             Minecraft mc = Minecraft.getInstance();
             if (mc.player == null || !(mc.player.getVehicle() instanceof RabbitMountEntity rabbit)) {
                 mountId = -1; jump = false; down = false; heartbeat = 0; return;
             }
             boolean nextJump = mc.screen == null && mc.options.keyJump.isDown();
             boolean nextDown = mc.screen == null && DESCEND.isDown();
-            if (mountId != rabbit.getId() || jump != nextJump || down != nextDown || ++heartbeat >= 5) {
+
+            // 本地立即预测跳跃/双击起飞/升降，不等待服务器回包。
+            // 服务端仍会收到同一份输入并进行最终位置校正。
+            rabbit.acceptClientInput(nextJump, nextDown);
+
+            // 状态变化立即发送；持续按住时每 10 tick 发一次心跳即可。
+            // Minecraft 的连接本身是可靠有序的，不需要旧版每 5 tick 重发。
+            if (mountId != rabbit.getId() || jump != nextJump || down != nextDown || ++heartbeat >= 10) {
                 MountNetwork.CHANNEL.sendToServer(new MountNetwork.RabbitInputPacket(nextJump, nextDown));
                 mountId = rabbit.getId(); jump = nextJump; down = nextDown; heartbeat = 0;
             }

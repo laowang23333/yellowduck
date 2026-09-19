@@ -42,7 +42,7 @@ public class RabbitMountRenderer extends GltfEntityRenderer<RabbitMountEntity> {
                 // 玉兔动画：
                 // 未骑乘 / 骑乘静止 -> Anim-1_stand（待机）
                 // 骑乘移动 -> Anim-1_ride（跑步）
-                String wanted = entity.isFlying() ? "Anim-1_fly_stand"
+                String wanted = entity.isFlying() ? (walking ? "Anim-1_fly_ride" : "Anim-1_fly_stand")
                         : (entity.isVehicle() && walking ? "Anim-1_ride" : "Anim-1_stand");
                 if (!wanted.equals(controller.getAnimationName())) {
                     controller.play(wanted, true);
