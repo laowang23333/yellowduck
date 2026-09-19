@@ -54,6 +54,7 @@ public final class MountNetwork {
             owned.add("alpaca");
         }
         if (MountData.hasMount(player, "rabbit")) owned.add("rabbit");
+        if (MountData.hasMount(player, "bamboo_horse")) owned.add("bamboo_horse");
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new MountSyncPacket(owned));
     }
 
