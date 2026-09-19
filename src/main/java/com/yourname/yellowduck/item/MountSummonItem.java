@@ -20,6 +20,8 @@ public class MountSummonItem extends Item {
         this.mountId = mountId;
     }
 
+    private static String nameOf(String id) { return "rabbit".equals(id) ? "玉兔" : ("alpaca".equals(id) ? "羊驼" : ("bamboo_horse".equals(id) ? "竹马" : "魔化天狗")); }
+
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
@@ -29,11 +31,11 @@ public class MountSummonItem extends Item {
                 if (player instanceof ServerPlayer serverPlayer) {
                     MountNetwork.syncTo(serverPlayer);
                 }
-                String name = "rabbit".equals(mountId) ? "玉兔" : ("alpaca".equals(mountId) ? "羊驼" : "魔化天狗");
+                String name = nameOf(mountId);
                 player.displayClientMessage(Component.literal("§a✦ " + name + " 已绑定到你的坐骑图鉴！"), true);
                 player.displayClientMessage(Component.literal("§7按 M 打开坐骑界面，选择乘骑或放生。"), false);
             } else {
-                String name = "rabbit".equals(mountId) ? "玉兔" : ("alpaca".equals(mountId) ? "羊驼" : "魔化天狗");
+                String name = nameOf(mountId);
                 player.displayClientMessage(Component.literal("§b" + name + " 已经绑定。按 M 打开坐骑界面。"), true);
             }
         }
