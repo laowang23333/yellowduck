@@ -59,8 +59,7 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    protected void containerTick() {
         if (++refreshTicks >= 20) {
             refreshTicks = 0;
             sendAction(PartyMenu.ACTION_REFRESH);
