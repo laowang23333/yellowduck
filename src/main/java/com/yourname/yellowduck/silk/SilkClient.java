@@ -32,8 +32,8 @@ public final class SilkClient {
         private final Map<SilkBoss, Integer> serials = new WeakHashMap<>();
         public BossRenderer(EntityRendererProvider.Context context) {
             super(context, new ResourceLocation("yellowduck", "silk_boss_embedded"), GltfRenderOptions.builder()
-                    .scale(0.15F).shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
-                    .preferGpuAnimatedMeshes(false).preferGpuStaticMeshes(false).loopAnimation(true).build());
+                    .scale(0.15F).shaderCompatMode(GltfRenderOptions.ShaderCompatMode.AUTO)
+                    .preferGpuAnimatedMeshes(true).preferGpuStaticMeshes(true).loopAnimation(true).animationTransitionSeconds(0.10F).build());
         }
         @Override public void render(SilkBoss boss, float yaw, float partialTick, PoseStack pose, MultiBufferSource buffers, int light) {
             AnimationController controller = getAnimationController(boss);
@@ -45,7 +45,7 @@ public final class SilkClient {
                         : boss.getEntityData().get(SilkBoss.WALKING) ? "Anim-1_walk"
                         : boss.getEntityData().get(SilkBoss.MAD) ? "Anim-1_stand2" : "Anim-1_stand";
                 if (!animation.equals(controller.getAnimationName()) || (attack > 0 && serials.getOrDefault(boss, -1) != serial)) {
-                    controller.play(animation, attack == 0 && boss.isAlive()); serials.put(boss, serial);
+                    controller.play(animation, attack == 0 && boss.isAlive(), attack > 0 || !boss.isAlive() ? 0.05F : 0.10F); serials.put(boss, serial);
                 }
             }
             super.render(boss, yaw, partialTick, pose, buffers, light);
@@ -56,8 +56,8 @@ public final class SilkClient {
     public static final class PlagueBearRenderer extends GltfEntityRenderer<SilkPlagueBear> {
         public PlagueBearRenderer(EntityRendererProvider.Context context) {
             super(context, new ResourceLocation("yellowduck", "entity_toy_bear"), GltfRenderOptions.builder()
-                    .scale(0.15F).shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
-                    .preferGpuAnimatedMeshes(false).preferGpuStaticMeshes(false).loopAnimation(true).build());
+                    .scale(0.15F).shaderCompatMode(GltfRenderOptions.ShaderCompatMode.AUTO)
+                    .preferGpuAnimatedMeshes(true).preferGpuStaticMeshes(true).loopAnimation(true).animationTransitionSeconds(0.10F).build());
         }
 
         @Override
