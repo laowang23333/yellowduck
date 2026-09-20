@@ -53,7 +53,8 @@ public final class DungeonInstance {
         this.leaderId = leaderId;
         this.definition = definition;
         this.origin = origin;
-        this.arenaRadius = DungeonConfig.arenaRadius();
+        DungeonArenaTemplates.ArenaTemplate arena = DungeonArenaTemplates.get(definition.id());
+        this.arenaRadius = arena == null ? DungeonConfig.arenaRadius() : Math.max(16, arena.horizontalRadius());
     }
 
     public record ReturnPoint(ResourceKey<Level> level, double x, double y, double z,

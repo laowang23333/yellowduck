@@ -4,21 +4,55 @@ import com.yourname.yellowduck.registry.ModBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
-/** 默认虚空竞技场与副本定位方块扫描。 */
+/** 副本永久模板场地与旧版测试竞技场。 */
 public final class DungeonArenaBuilder {
     private DungeonArenaBuilder() {}
 
-    public static void prepare(ServerLevel level, DungeonInstance instance) {
+    /**
+     * 准备实例场地。
+     * 模板副本只有永久槽第一次使用时才真正放置建筑；后续每局只复用现有建筑。
+     */
+    public static void prepare(ServerLevel level, DungeonInstance instance, boolean initializePermanentArena) {
+        DungeonArenaTemplates.ArenaTemplate arena = DungeonArenaTemplates.get(instance.definition.id());
+        if (arena != null) {
+            if (initializePermanentArena) placePermanentTemplate(level, instance, arena);
+            return;
+        }
+        prepareLegacyArena(level, instance);
+    }
+
+    private static void placePermanentTemplate(ServerLevel level, DungeonInstance instance,
+                                               DungeonArenaTemplates.ArenaTemplate arena) {
+        Optional<StructureTemplate> optional = level.getServer().getStructureManager().get(arena.structureId());
+        if (optional.isEmpty()) {
+            throw new IllegalStateException("找不到副本结构模板：" + arena.structureId());
+        }
+        StructureTemplate template = optional.get();
+        BlockPos corner = instance.origin.offset(arena.placementOffset());
+        boolean placed = template.placeInWorld(
+                level,
+                corner,
+                corner,
+                new StructurePlaceSettings(),
+                level.getRandom(),
+                2
+        );
+        if (!placed) throw new IllegalStateException("副本结构模板放置失败：" + arena.structureId());
+    }
+
+    /** 没有独立地图模板的副本继续使用旧版测试场地，方便后续逐个替换。 */
+    private static void prepareLegacyArena(ServerLevel level, DungeonInstance instance) {
         int r = instance.arenaRadius;
         BlockPos o = instance.origin;
 
-        // 新实例位于虚空维度的独立槽位，不再永久强加载区块。
-        // 使用 setBlock(..., 2) 代替 setBlockAndUpdate，显著减少逐方块邻居更新开销。
         for (int x = -r; x <= r; x++) {
             for (int z = -r; z <= r; z++) {
                 boolean border = Math.abs(x) == r || Math.abs(z) == r;
@@ -29,15 +63,11 @@ public final class DungeonArenaBuilder {
             }
         }
 
-        // 按该副本最大人数动态生成入口，避免第6人以后全部叠在最后一个入口。
         placeEntrances(level, instance);
 
-        // 主Boss出生点。
         int bossZ = Math.min(14, Math.max(6, r - 2));
         level.setBlock(o.offset(0, 0, bossZ), ModBlocks.DUNGEON_BOSS_SPAWN_MARKER.get().defaultBlockState(), 2);
 
-        // 艳后三蛇仍按自己的逻辑寻找最近3个金块，不使用Boss出生点方块。
-        // 坐标随竞技场半径缩放，确保小半径配置时也不会生成到场地外。
         int snakeZNear = Math.max(6, r - 10);
         int snakeZFar = Math.max(8, r - 4);
         int snakeX = Math.max(4, Math.min(14, r / 3));
@@ -53,11 +83,9 @@ public final class DungeonArenaBuilder {
         int columns = Math.min(needed, capacityPerRow);
         int placed = 0;
         int row = 0;
-
-        // 少人数时保持入口横向居中；人数较多时再向场内增加新行。
         while (placed < needed) {
             int rowCount = Math.min(columns, needed - placed);
-            int startX = -(rowCount - 1); // 2格间隔时正好围绕X=0居中。
+            int startX = -(rowCount - 1);
             int z = -r + 8 + row * 2;
             for (int col = 0; col < rowCount; col++) {
                 int x = startX + col * 2;
@@ -68,15 +96,22 @@ public final class DungeonArenaBuilder {
         }
     }
 
+    /**
+     * 正常关本时，永久模板建筑完全不删除；只由 DungeonManager 清理本场实体。
+     * 旧版测试场地仍按原逻辑清除。
+     */
     public static void cleanup(ServerLevel level, DungeonInstance instance) {
-        cleanupArea(level, instance.origin, instance.arenaRadius);
-        // 兼容旧版本曾经写入的强加载标记；新版本本身不再创建永久强加载。
+        if (!DungeonArenaTemplates.has(instance.definition.id())) {
+            cleanupArea(level, instance.origin, instance.arenaRadius);
+        }
         forceChunks(level, instance.origin, instance.arenaRadius, false);
     }
 
-    /** 崩服重启后清理SavedData中记录的旧实例。 */
+    /** 崩服重启后仅清除旧版临时竞技场；永久模板场地保留。 */
     public static void cleanupRecovered(ServerLevel level, DungeonSavedData.StaleInstance instance) {
-        cleanupArea(level, instance.origin(), instance.radius());
+        if (!DungeonArenaTemplates.has(instance.dungeonId())) {
+            cleanupArea(level, instance.origin(), instance.radius());
+        }
         forceChunks(level, instance.origin(), instance.radius(), false);
     }
 
@@ -87,11 +122,13 @@ public final class DungeonArenaBuilder {
             BlockPos origin = new BlockPos(slot * DungeonConfig.instanceSpacing(), DungeonConfig.instanceY(), 0);
             forceChunks(level, origin, radius, false);
         }
+        // 配置可能修改过，持久化永久槽也单独解除一次。
+        for (DungeonSavedData.ArenaSlot slot : DungeonSavedData.get(level.getServer()).arenaSlots()) {
+            forceChunks(level, slot.origin(), slot.radius(), false);
+        }
     }
 
     private static void cleanupArea(ServerLevel level, BlockPos o, int r) {
-        // 当前测试场地的实体内容由 DungeonManager 单独 discard；方块只清理地面与墙体附近。
-        // 旧版一次扫描22层，这里压到6层，并使用无邻居更新的setBlock标志，降低开/关本卡顿。
         int minY = Math.max(level.getMinBuildHeight(), o.getY() - 1);
         int maxY = Math.min(level.getMaxBuildHeight() - 1, o.getY() + 4);
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -116,10 +153,18 @@ public final class DungeonArenaBuilder {
     }
 
     public static List<BlockPos> findEntrances(ServerLevel level, DungeonInstance instance) {
+        DungeonArenaTemplates.ArenaTemplate arena = DungeonArenaTemplates.get(instance.definition.id());
+        if (arena != null) {
+            List<BlockPos> result = new ArrayList<>();
+            for (BlockPos offset : arena.entranceOffsets()) result.add(instance.origin.offset(offset));
+            return result;
+        }
         return findBlocks(level, instance, true);
     }
 
     public static BlockPos findBossSpawn(ServerLevel level, DungeonInstance instance) {
+        DungeonArenaTemplates.ArenaTemplate arena = DungeonArenaTemplates.get(instance.definition.id());
+        if (arena != null) return instance.origin.offset(arena.bossOffset());
         List<BlockPos> list = findBlocks(level, instance, false);
         int bossZ = Math.min(14, Math.max(6, instance.arenaRadius - 2));
         return list.isEmpty() ? instance.origin.offset(0, 0, bossZ) : list.get(0);

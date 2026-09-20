@@ -20,8 +20,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 副本异常重启保护数据。
- * 保存玩家回程坐标、待补发奖励，以及崩服后需要清理的旧实例区域。
+ * 副本持久化数据。
+ * 保存玩家回程坐标、待补发奖励、死亡物品、异常重启实例，以及永久副本场地槽位。
  */
 public final class DungeonSavedData extends SavedData {
     private static final String ID = "yellowduck_dungeon_state";
@@ -30,6 +30,8 @@ public final class DungeonSavedData extends SavedData {
     private final Map<UUID, PendingReward> pendingRewards = new LinkedHashMap<>();
     private final Map<UUID, List<ItemStack>> pendingDeathItems = new LinkedHashMap<>();
     private final Map<UUID, StaleInstance> trackedInstances = new LinkedHashMap<>();
+    /** slot -> 永久地图槽。只给拥有 Structure NBT 模板的副本使用。 */
+    private final Map<Integer, ArenaSlot> arenaSlots = new LinkedHashMap<>();
 
     public static DungeonSavedData get(MinecraftServer server) {
         return server.overworld().getDataStorage().computeIfAbsent(DungeonSavedData::load, DungeonSavedData::new, ID);
@@ -78,7 +80,30 @@ public final class DungeonSavedData extends SavedData {
             if (!entry.hasUUID("Id")) continue;
             UUID id = entry.getUUID("Id");
             BlockPos origin = new BlockPos(entry.getInt("X"), entry.getInt("Y"), entry.getInt("Z"));
-            data.trackedInstances.put(id, new StaleInstance(id, entry.getInt("Slot"), origin, Math.max(16, entry.getInt("Radius"))));
+            String dungeonId = entry.getString("Dungeon");
+            data.trackedInstances.put(id, new StaleInstance(
+                    id,
+                    entry.getInt("Slot"),
+                    origin,
+                    Math.max(16, entry.getInt("Radius")),
+                    dungeonId == null ? "" : dungeonId
+            ));
+        }
+
+        ListTag slots = tag.getList("ArenaSlots", Tag.TAG_COMPOUND);
+        for (int i = 0; i < slots.size(); i++) {
+            CompoundTag entry = slots.getCompound(i);
+            int slot = entry.getInt("Slot");
+            String dungeonId = entry.getString("Dungeon");
+            if (slot < 0 || dungeonId == null || dungeonId.isBlank()) continue;
+            BlockPos origin = new BlockPos(entry.getInt("X"), entry.getInt("Y"), entry.getInt("Z"));
+            data.arenaSlots.put(slot, new ArenaSlot(
+                    slot,
+                    dungeonId,
+                    origin,
+                    Math.max(16, entry.getInt("Radius")),
+                    entry.getBoolean("Initialized")
+            ));
         }
         return data;
     }
@@ -131,14 +156,35 @@ public final class DungeonSavedData extends SavedData {
             row.putInt("Y", instance.origin().getY());
             row.putInt("Z", instance.origin().getZ());
             row.putInt("Radius", instance.radius());
+            row.putString("Dungeon", instance.dungeonId());
             instances.add(row);
         }
         tag.put("Instances", instances);
+
+        ListTag slots = new ListTag();
+        for (ArenaSlot slot : arenaSlots.values()) {
+            CompoundTag row = new CompoundTag();
+            row.putInt("Slot", slot.slot());
+            row.putString("Dungeon", slot.dungeonId());
+            row.putInt("X", slot.origin().getX());
+            row.putInt("Y", slot.origin().getY());
+            row.putInt("Z", slot.origin().getZ());
+            row.putInt("Radius", slot.radius());
+            row.putBoolean("Initialized", slot.initialized());
+            slots.add(row);
+        }
+        tag.put("ArenaSlots", slots);
         return tag;
     }
 
     public void trackInstance(DungeonInstance instance) {
-        trackedInstances.put(instance.id, new StaleInstance(instance.id, instance.slot, instance.origin, instance.arenaRadius));
+        trackedInstances.put(instance.id, new StaleInstance(
+                instance.id,
+                instance.slot,
+                instance.origin,
+                instance.arenaRadius,
+                instance.definition.id()
+        ));
         pendingReturns.putAll(instance.returns);
         setDirty();
     }
@@ -149,6 +195,28 @@ public final class DungeonSavedData extends SavedData {
 
     public List<StaleInstance> staleInstances() {
         return new ArrayList<>(trackedInstances.values());
+    }
+
+    public ArenaSlot arenaSlot(int slot) {
+        return arenaSlots.get(slot);
+    }
+
+    public List<ArenaSlot> arenaSlots() {
+        return new ArrayList<>(arenaSlots.values());
+    }
+
+    /** 第一次给某个地图分配永久槽。建筑尚未放置时 initialized=false。 */
+    public void bindArenaSlot(int slot, String dungeonId, BlockPos origin, int radius, boolean initialized) {
+        arenaSlots.put(slot, new ArenaSlot(slot, dungeonId, origin.immutable(), Math.max(16, radius), initialized));
+        setDirty();
+    }
+
+    /** Structure NBT 成功放置以后再标记，避免半途报错却误认为地图已经存在。 */
+    public void markArenaInitialized(int slot) {
+        ArenaSlot old = arenaSlots.get(slot);
+        if (old == null || old.initialized()) return;
+        arenaSlots.put(slot, new ArenaSlot(old.slot(), old.dungeonId(), old.origin(), old.radius(), true));
+        setDirty();
     }
 
     public DungeonInstance.ReturnPoint takeReturn(UUID playerId) {
@@ -180,7 +248,6 @@ public final class DungeonSavedData extends SavedData {
         return reward;
     }
 
-    /** 保存玩家在副本真正死亡时被原版准备丢出的物品，避免掉在实例里后被清理。 */
     public void addPendingDeathItems(UUID playerId, List<ItemStack> items) {
         if (items == null || items.isEmpty()) return;
         List<ItemStack> merged = new ArrayList<>();
@@ -235,5 +302,6 @@ public final class DungeonSavedData extends SavedData {
     }
 
     public record PendingReward(List<ItemStack> items, int xp) {}
-    public record StaleInstance(UUID id, int slot, BlockPos origin, int radius) {}
+    public record StaleInstance(UUID id, int slot, BlockPos origin, int radius, String dungeonId) {}
+    public record ArenaSlot(int slot, String dungeonId, BlockPos origin, int radius, boolean initialized) {}
 }

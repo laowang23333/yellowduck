@@ -31,6 +31,8 @@ import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingDropsEvent;
 import net.minecraftforge.event.entity.living.LivingExperienceDropEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.level.ExplosionEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -156,17 +158,33 @@ public final class DungeonManager {
             leader.sendSystemMessage(Component.literal("§c副本维度 yellowduck:dungeon 未加载，请检查数据包资源。"));
             return false;
         }
-        int slot = allocateSlot();
+        DungeonSavedData savedData = DungeonSavedData.get(leader.server);
+        boolean permanentArena = DungeonArenaTemplates.has(def.id());
+        int slot = allocateSlot(def.id(), savedData, permanentArena);
         if (slot < 0) {
-            leader.sendSystemMessage(Component.literal("§c当前同时进行的副本数量已达到上限。"));
+            leader.sendSystemMessage(Component.literal(permanentArena
+                    ? "§c没有可用的该副本永久场地槽，请等待正在进行的队伍结束，或提高 max_instances。"
+                    : "§c当前同时进行的副本数量已达到上限。"));
             return false;
         }
 
-        BlockPos origin = findSafeOrigin(slot, DungeonConfig.arenaRadius());
-        if (origin == null) {
-            USED_SLOTS.remove(slot);
-            leader.sendSystemMessage(Component.literal("§c找不到安全的副本实例区域，请稍后再试。"));
-            return false;
+        DungeonSavedData.ArenaSlot storedArena = savedData.arenaSlot(slot);
+        BlockPos origin;
+        boolean initializePermanentArena = false;
+        if (permanentArena && storedArena != null) {
+            origin = storedArena.origin();
+            initializePermanentArena = !storedArena.initialized();
+        } else {
+            origin = findSafeOrigin(slot, DungeonConfig.arenaRadius(), savedData);
+            if (origin == null) {
+                USED_SLOTS.remove(slot);
+                leader.sendSystemMessage(Component.literal("§c找不到安全的副本实例区域，请稍后再试。"));
+                return false;
+            }
+            if (permanentArena) {
+                savedData.bindArenaSlot(slot, def.id(), origin, DungeonConfig.arenaRadius(), false);
+                initializePermanentArena = true;
+            }
         }
         DungeonInstance instance = new DungeonInstance(slot, party.id(), party.leader(), def, origin);
         instance.revivesRemaining = def.initialRevives(players.size());
@@ -181,10 +199,12 @@ public final class DungeonManager {
         }
 
         try {
-            DungeonArenaBuilder.prepare(level, instance);
+            DungeonArenaBuilder.prepare(level, instance, initializePermanentArena);
+            if (permanentArena && initializePermanentArena) savedData.markArenaInitialized(slot);
         } catch (Throwable t) {
             USED_SLOTS.remove(slot);
             leader.sendSystemMessage(Component.literal("§c创建副本竞技场失败：" + t.getMessage()));
+            LOGGER.error("创建副本场地失败：{} slot={}", def.id(), slot, t);
             return false;
         }
 
@@ -238,6 +258,29 @@ public final class DungeonManager {
         if (instance != null && instance.state == DungeonInstance.State.REWARD) {
             // 预览菜单是服务端只读的，允许误关后重新查看，但不会重新Roll或复制奖励。
             DungeonRewardManager.openPreview(player, instance);
+        }
+    }
+
+
+    /** 永久副本地图在战斗中不允许玩家挖坏。OP如果不在活动实例中手动进维度，仍可正常维护地图。 */
+    @SubscribeEvent
+    public static void protectDungeonBreak(BlockEvent.BreakEvent event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        if (instanceOf(player) != null) event.setCanceled(true);
+    }
+
+    /** 永久副本地图在战斗中不允许玩家放置方块，避免下一队进来看到被改过的场地。 */
+    @SubscribeEvent
+    public static void protectDungeonPlace(BlockEvent.EntityPlaceEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (instanceOf(player) != null) event.setCanceled(true);
+    }
+
+    /** 爆炸仍然可以伤害实体，但不会破坏 yellowduck:dungeon 里的永久建筑。 */
+    @SubscribeEvent
+    public static void protectDungeonExplosion(ExplosionEvent.Detonate event) {
+        if (!event.getLevel().isClientSide && event.getLevel().dimension().equals(DUNGEON_LEVEL)) {
+            event.getAffectedBlocks().clear();
         }
     }
 
@@ -696,19 +739,34 @@ public final class DungeonManager {
         if (party != null) PartyManager.clearReady(server, party);
     }
 
-    private static int allocateSlot() {
+    /**
+     * 模板副本优先复用已经绑定给同一 DungeonId 的永久场地；没有时再占用一个空槽。
+     * 没有地图模板的旧版测试副本只能使用未绑定槽，绝不会覆盖永久建筑。
+     */
+    private static int allocateSlot(String dungeonId, DungeonSavedData saved, boolean permanentArena) {
+        if (permanentArena) {
+            for (int i = 0; i < DungeonConfig.maxInstances(); i++) {
+                if (USED_SLOTS.contains(i)) continue;
+                DungeonSavedData.ArenaSlot slot = saved.arenaSlot(i);
+                if (slot != null && slot.dungeonId().equalsIgnoreCase(dungeonId) && USED_SLOTS.add(i)) return i;
+            }
+        }
         for (int i = 0; i < DungeonConfig.maxInstances(); i++) {
+            if (USED_SLOTS.contains(i) || saved.arenaSlot(i) != null) continue;
             if (USED_SLOTS.add(i)) return i;
         }
         return -1;
     }
 
-    /** /yd reload 改过实例间距后，也必须避开已经按旧间距存在的实例。 */
-    private static BlockPos findSafeOrigin(int slot, int radius) {
+    /**
+     * 新槽第一次分配坐标时，同时避开正在运行的临时实例和已经永久保存的地图。
+     * 永久槽保存实际 origin，因此以后即使 /yd reload 修改 spacing/y，也不会让旧建筑发生坐标漂移。
+     */
+    private static BlockPos findSafeOrigin(int slot, int radius, DungeonSavedData saved) {
         int spacing = DungeonConfig.instanceSpacing();
         int y = DungeonConfig.instanceY();
         int x = slot * spacing;
-        int attempts = Math.max(16, DungeonConfig.maxInstances() + ACTIVE.size() + 8);
+        int attempts = Math.max(32, DungeonConfig.maxInstances() * 2 + ACTIVE.size() + saved.arenaSlots().size() + 8);
         for (int i = 0; i < attempts; i++, x += spacing) {
             BlockPos candidate = new BlockPos(x, y, 0);
             boolean overlaps = false;
@@ -716,6 +774,15 @@ public final class DungeonManager {
                 int safeDistance = radius + other.arenaRadius + 32;
                 if (Math.abs(candidate.getX() - other.origin.getX()) <= safeDistance
                         && Math.abs(candidate.getZ() - other.origin.getZ()) <= safeDistance) {
+                    overlaps = true;
+                    break;
+                }
+            }
+            if (overlaps) continue;
+            for (DungeonSavedData.ArenaSlot other : saved.arenaSlots()) {
+                int safeDistance = radius + other.radius() + 32;
+                if (Math.abs(candidate.getX() - other.origin().getX()) <= safeDistance
+                        && Math.abs(candidate.getZ() - other.origin().getZ()) <= safeDistance) {
                     overlaps = true;
                     break;
                 }
