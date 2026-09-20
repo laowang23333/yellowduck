@@ -1,6 +1,7 @@
 package com.yourname.yellowduck;
 
 import com.yourname.yellowduck.config.EntityTuningConfig;
+import com.yourname.yellowduck.cleopatra.*;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.entity.AlpacaMountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
@@ -31,6 +32,7 @@ public class YellowDuckMod {
         com.yourname.yellowduck.registry.ModMenuTypes.MENUS.register(bus);
         com.yourname.yellowduck.registry.ModCreativeTabs.CREATIVE_TABS.register(bus);
         ModEntities.ENTITIES.register(bus);
+        CleopatraEntities.TYPES.register(bus);
         SilkContent.ENTITY_TYPES.register(bus);
         com.yourname.yellowduck.registry.ModItems.ITEMS.register(bus);
         ModParticles.PARTICLES.register(bus);
@@ -40,6 +42,7 @@ public class YellowDuckMod {
 
         // 注册自定义 MobEffect
         ModEffects.EFFECTS.register(bus);
+        CleopatraEffects.EFFECTS.register(bus);
         MountNetwork.init();
 
         // 首次启动后自动生成 config/yellowduck-entities.toml。
@@ -56,5 +59,11 @@ public class YellowDuckMod {
         event.put(ModEntities.BAMBOO_HORSE_MOUNT.get(), MountEntity.createAttributes().build());
         event.put(ModEntities.SAKURA_WITCH.get(), SakurawitchEntity.createAttributes().build());
         event.put(ModEntities.TOY_BEAR.get(), ToyBearEntity.createAttributes().build());
+        event.put(CleopatraEntities.BOSS.get(), CleopatraBoss.createAttributes().build());
+        event.put(CleopatraEntities.SANDWORM.get(), CleopatraSandworm.createAttributes().build());
+        event.put(CleopatraEntities.SCORPION.get(), CleopatraScorpion.createAttributes().build());
+        event.put(CleopatraEntities.SNAKE_POISON.get(), CleopatraVenomSnake.createAttributes().build());
+        event.put(CleopatraEntities.SNAKE_FIRE.get(), CleopatraVenomSnake.createAttributes().build());
+        event.put(CleopatraEntities.SNAKE_ICE.get(), CleopatraVenomSnake.createAttributes().build());
     }
 }
