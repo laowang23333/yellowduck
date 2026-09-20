@@ -163,13 +163,15 @@ public final class MountNetwork {
     }
 
     public record DungeonHudPacket(boolean active, String dungeonName, int remainingSeconds,
-                                   int revives, int maxRevives, List<DungeonHudMember> members) {
+                                   int revives, int maxRevives, float bossHealth, float bossMaxHealth, List<DungeonHudMember> members) {
         public static void encode(DungeonHudPacket msg, FriendlyByteBuf buf) {
             buf.writeBoolean(msg.active);
             buf.writeUtf(msg.dungeonName == null ? "" : msg.dungeonName, 128);
             buf.writeVarInt(Math.max(0, msg.remainingSeconds));
             buf.writeVarInt(Math.max(0, msg.revives));
             buf.writeVarInt(Math.max(0, msg.maxRevives));
+            buf.writeFloat(Math.max(0.0F, msg.bossHealth));
+            buf.writeFloat(Math.max(0.0F, msg.bossMaxHealth));
             int count = Math.min(16, msg.members == null ? 0 : msg.members.size());
             buf.writeVarInt(count);
             for (int i = 0; i < count; i++) {
@@ -185,10 +187,12 @@ public final class MountNetwork {
             int remaining = buf.readVarInt();
             int revives = buf.readVarInt();
             int maxRevives = buf.readVarInt();
+            float bossHealth = buf.readFloat();
+            float bossMaxHealth = buf.readFloat();
             int count = Math.min(16, Math.max(0, buf.readVarInt()));
             List<DungeonHudMember> members = new ArrayList<>(count);
             for (int i = 0; i < count; i++) members.add(new DungeonHudMember(buf.readUtf(64), buf.readByte()));
-            return new DungeonHudPacket(active, name, remaining, revives, maxRevives, members);
+            return new DungeonHudPacket(active, name, remaining, revives, maxRevives, bossHealth, bossMaxHealth, members);
         }
 
         public static void handle(DungeonHudPacket msg, Supplier<NetworkEvent.Context> ctx) {
