@@ -23,10 +23,11 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
     public MountRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
                 .scale(MODEL_SCALE)
-                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
-                .preferGpuAnimatedMeshes(false)
-                .preferGpuStaticMeshes(false)
+                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.AUTO)
+                .preferGpuAnimatedMeshes(true)
+                .preferGpuStaticMeshes(true)
                 .loopAnimation(true)
+                .animationTransitionSeconds(0.10F)
                 .build());
     }
 
@@ -39,7 +40,7 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
                 boolean walking = MountAnimationState.isWalking(entity);
                 String wanted = walking ? "run" : "idle";
                 if (!wanted.equals(controller.getAnimationName())) {
-                    controller.play(wanted, true);
+                    controller.play(wanted, true, 0.10F);
                 }
             }
         } catch (Throwable ignored) {

@@ -24,10 +24,11 @@ public class RabbitMountRenderer extends GltfEntityRenderer<RabbitMountEntity> {
     public RabbitMountRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
                 .scale(MODEL_SCALE)
-                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
-                .preferGpuAnimatedMeshes(false)
-                .preferGpuStaticMeshes(false)
+                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.AUTO)
+                .preferGpuAnimatedMeshes(true)
+                .preferGpuStaticMeshes(true)
                 .loopAnimation(true)
+                .animationTransitionSeconds(0.10F)
                 .build());
     }
 
@@ -45,7 +46,7 @@ public class RabbitMountRenderer extends GltfEntityRenderer<RabbitMountEntity> {
                 String wanted = entity.isFlying() ? (walking ? "Anim-1_fly_ride" : "Anim-1_fly_stand")
                         : (entity.isVehicle() && walking ? "Anim-1_ride" : "Anim-1_stand");
                 if (!wanted.equals(controller.getAnimationName())) {
-                    controller.play(wanted, true);
+                    controller.play(wanted, true, 0.10F);
                 }
             }
         } catch (Throwable ignored) {

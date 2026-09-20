@@ -24,10 +24,11 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
     public SakurawitchRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
                 .scale(MODEL_SCALE)
-                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
-                .preferGpuAnimatedMeshes(false)
-                .preferGpuStaticMeshes(false)
+                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.AUTO)
+                .preferGpuAnimatedMeshes(true)
+                .preferGpuStaticMeshes(true)
                 .loopAnimation(true)
+                .animationTransitionSeconds(0.10F)
                 .build());
     }
 
@@ -67,7 +68,7 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
                     boolean loop = wantAnim.equals("Anim-1_walk")
                                 || wantAnim.equals("Anim-1_stand")
                                 || wantAnim.equals("Anim-1_run");
-                    ctrl.play(wantAnim, loop);
+                    ctrl.play(wantAnim, loop, loop ? 0.10F : 0.045F);
                 }
             }
         } catch (Throwable t) {

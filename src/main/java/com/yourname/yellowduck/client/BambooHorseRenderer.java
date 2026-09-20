@@ -12,8 +12,8 @@ import net.minecraft.resources.ResourceLocation;
 public class BambooHorseRenderer extends GltfEntityRenderer<BambooHorseEntity> {
     public BambooHorseRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, new ResourceLocation("yellowduck", "bamboo_horse_embedded"), GltfRenderOptions.builder()
-                .scale(0.12F).shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
-                .preferGpuAnimatedMeshes(false).preferGpuStaticMeshes(false).loopAnimation(true).build());
+                .scale(0.12F).shaderCompatMode(GltfRenderOptions.ShaderCompatMode.AUTO)
+                .preferGpuAnimatedMeshes(true).preferGpuStaticMeshes(true).loopAnimation(true).animationTransitionSeconds(0.10F).build());
     }
     @Override public void render(BambooHorseEntity entity, float yaw, float partialTick, PoseStack pose, MultiBufferSource buffers, int light) {
         AnimationController controller = getAnimationController(entity);
@@ -21,7 +21,7 @@ public class BambooHorseRenderer extends GltfEntityRenderer<BambooHorseEntity> {
             boolean walking = MountAnimationState.isWalking(entity);
             String wanted = entity.isFlying() ? (walking ? "Anim-1_fly_ride" : "Anim-1_fly_stand")
                     : (entity.isVehicle() && walking ? "Anim-1_ride" : "Anim-1_stand");
-            if (!wanted.equals(controller.getAnimationName())) controller.play(wanted, true);
+            if (!wanted.equals(controller.getAnimationName())) controller.play(wanted, true, 0.10F);
         }
         super.render(entity, yaw, partialTick, pose, buffers, light);
     }
