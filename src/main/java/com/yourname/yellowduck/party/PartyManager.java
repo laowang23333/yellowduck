@@ -99,9 +99,28 @@ public final class PartyManager {
             leader.sendSystemMessage(Component.literal("§c队伍人数已经达到当前副本上限。"));
             return false;
         }
+        // 先在服务端登记邀请，再向被邀请玩家主动推送明确的邀请提示。
+        // INVITES 是服务端权威状态；玩家之后打开对应副本柱子的组队界面时，
+        // PartyMenu 会读取 hasPendingInvite() 并显示“接受邀请”按钮。
         INVITES.put(target.getUUID(), party.id());
+
+        String inviterName = leader.getGameProfile().getName();
         leader.sendSystemMessage(Component.literal("§a已邀请 §f" + target.getGameProfile().getName() + " §a加入队伍。"));
-        target.sendSystemMessage(Component.literal("§e" + leader.getGameProfile().getName() + " 邀请你加入冒险队伍，请到副本柱子旁右键打开组队界面接受。"));
+
+        // 聊天框邀请请求：按需求显示邀请人 ID，并额外说明接受方式。
+        target.sendSystemMessage(Component.literal(
+                "§6[副本系统]§a玩家[§4" + inviterName + "§a]§e邀请你加入队伍"
+        ));
+        target.sendSystemMessage(Component.literal(
+                "§6[副本系统]§e请右键对应副本柱子，在组队界面点击§a“接受邀请”§e。"
+        ));
+
+        // 再发一条动作栏提醒，避免玩家聊天滚动过快导致看不到邀请请求。
+        target.displayClientMessage(Component.literal(
+                "§6[副本系统] §e收到来自 §c" + inviterName + " §e的组队邀请"
+        ), true);
+
+        // 如果被邀请玩家此时正好开着组队界面，立即刷新，不必等下一次周期刷新。
         if (target.containerMenu instanceof PartyMenu menu) menu.refresh(target);
         return true;
     }
