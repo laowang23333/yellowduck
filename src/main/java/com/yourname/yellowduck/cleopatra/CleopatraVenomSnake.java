@@ -363,9 +363,23 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             poolCooldown = CleopatraConfig.snakeRingCd.get();
             placePoolRing();
         }
-        if (bombCooldown <= 0) {
-            bombCooldown = CleopatraConfig.snakeBombCd.get();
-            placeBombOnFarthest();
+        if (bombCooldown <= 0 && isBombCoordinator()) {
+            // 三蛇共享一轮炸弹：一轮只选一条活蛇作为施法者，并且只点名一个玩家。
+            // 施法蛇决定炸弹元素，因此毒/火/冰三种炸弹都会正常出现。
+            List<CleopatraVenomSnake> pack = packSnakes();
+            if (!hasActiveBombNearby()) {
+                CleopatraVenomSnake caster = pack.get(random.nextInt(pack.size()));
+                if (caster.placeBombOnFarthest()) {
+                    int nextCooldown = CleopatraConfig.snakeBombCd.get();
+                    for (CleopatraVenomSnake snake : pack) snake.bombCooldown = nextCooldown;
+                } else {
+                    // 当前没有可点名玩家时短暂重试，不直接浪费整轮冷却。
+                    bombCooldown = 20;
+                }
+            } else {
+                // 场上已有元素炸弹时不再追加第二名玩家。
+                bombCooldown = 20;
+            }
         }
         if (normalAttackCooldown <= 0 && !attackAnimPlaying) {
             performNormalAttack(target);
@@ -471,16 +485,18 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         return Double.NaN;
     }
 
-    private void placeBombOnFarthest() {
+    private boolean placeBombOnFarthest() {
         double radius = CleopatraConfig.bombCandidateRadius.get();
         AABB box = new AABB(getX() - radius, getY() - radius, getZ() - radius,
                 getX() + radius, getY() + radius, getZ() + radius);
         List<Player> all = level().getEntitiesOfClass(Player.class, box, CleopatraUtil::validPlayer);
-        if (all.isEmpty()) return;
+        if (all.isEmpty()) return false;
 
-        List<Player> noBomb = new ArrayList<>();
-        for (Player player : all) if (!hasAnyBombEffect(player)) noBomb.add(player);
-        List<Player> candidates = noBomb.isEmpty() ? new ArrayList<>(all) : noBomb;
+        List<Player> candidates = new ArrayList<>();
+        for (Player player : all) {
+            if (!hasAnyBombEffect(player)) candidates.add(player);
+        }
+        if (candidates.isEmpty()) return false;
         candidates.sort(Comparator.comparingDouble(player -> -distanceTo(player)));
 
         int topCount = Math.min(Math.max(1, CleopatraConfig.bombFarthestPoolSize.get()), candidates.size());
@@ -502,12 +518,32 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             default -> CleopatraEntities.BOMB_MARK_POISON.get();
         };
         CleopatraBombMark mark = markType.create(level());
-        if (mark == null) return;
+        if (mark == null) {
+            carrier.removeEffect(getBombEffect());
+            return false;
+        }
         mark.setCarrier(carrier);
         mark.setDamageMult(damageMult);
         mark.setPos(carrier.getX(), carrier.getY() + 2.6D, carrier.getZ());
         level().addFreshEntity(mark);
         bombMarks.add(mark.getUUID());
+        return true;
+    }
+
+    private boolean isBombCoordinator() {
+        List<CleopatraVenomSnake> pack = packSnakes();
+        if (pack.isEmpty()) return false;
+        CleopatraVenomSnake coordinator = pack.stream()
+                .min(Comparator.comparingInt(Entity::getId))
+                .orElse(this);
+        return coordinator == this;
+    }
+
+    private boolean hasActiveBombNearby() {
+        double radius = Math.max(CleopatraConfig.snakePackRange.get(), CleopatraConfig.bombCandidateRadius.get());
+        AABB box = getBoundingBox().inflate(radius);
+        return !level().getEntitiesOfClass(Player.class, box,
+                player -> CleopatraUtil.validPlayer(player) && hasAnyBombEffect(player)).isEmpty();
     }
 
     private static boolean hasAnyBombEffect(Player player) {
