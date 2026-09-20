@@ -37,10 +37,10 @@ public class ClientEvents {
                 ModBlockEntities.BIG_CHEST.get(),
                 BigChestRenderer::new);
 
-        // 副本柱子：只注册"总调度器"，解决上下重叠/覆盖问题！
+        // 副本柱子：直接渲染已经完整拼接好的单个 GLB 模型
         event.registerBlockEntityRenderer(
                 ModBlockEntities.MEET_STONE.get(),
-                MeetStoneMainRenderer::new);
+                MeetStoneRenderer::new);
 
         // Professor Silk 方块实体渲染器
         event.registerBlockEntityRenderer(
