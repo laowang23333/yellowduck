@@ -3,6 +3,7 @@ package com.yourname.yellowduck;
 import com.yourname.yellowduck.config.EntityTuningConfig;
 import com.yourname.yellowduck.cleopatra.*;
 import com.yourname.yellowduck.entity.MountEntity;
+import com.yourname.yellowduck.dungeon.DungeonConfig;
 import com.yourname.yellowduck.entity.AlpacaMountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
@@ -47,6 +48,8 @@ public class YellowDuckMod {
 
         // 首次启动后自动生成 config/yellowduck-entities.toml。
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, EntityTuningConfig.SPEC, "yellowduck-entities.toml");
+        // 独立副本配置：config/yellowduck-dungeons.toml。
+        DungeonConfig.ensureLoaded();
 
         bus.addListener(this::registerAttributes);
     }
