@@ -73,6 +73,13 @@ public final class DungeonManager {
         return id == null ? null : ACTIVE.get(id);
     }
 
+    /** Bukkit/Mohist 侧只需要 UUID 就能判断玩家是否仍属于活动副本。 */
+    public static boolean isActiveParticipant(UUID playerId) {
+        if (playerId == null) return false;
+        UUID id = PLAYER_INSTANCE.get(playerId);
+        return id != null && ACTIVE.containsKey(id);
+    }
+
     /** 即使某个队员已经主动离开实例，只要这个队伍的副本还没结束，队伍仍然锁定。 */
     public static boolean isPartyInDungeon(UUID partyId) {
         return partyId != null && PARTY_INSTANCE.containsKey(partyId);
@@ -262,18 +269,32 @@ public final class DungeonManager {
     }
 
 
-    /** 永久副本地图在战斗中不允许玩家挖坏。OP如果不在活动实例中手动进维度，仍可正常维护地图。 */
-    @SubscribeEvent
-    public static void protectDungeonBreak(BlockEvent.BreakEvent event) {
-        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
-        if (instanceOf(player) != null) event.setCanceled(true);
+    /**
+     * yellowduck:dungeon 对普通玩家永久只读，不再只保护“正在战斗的实例成员”。
+     * 这样即使第三方插件/异常传送把玩家直接送进空闲的艳后永久场地，也无法挖走建筑。
+     * OP 只有在自己不属于活动副本时才能维护地图；OP 正在打本时同样禁止修改场地。
+     */
+    private static boolean shouldProtectDungeonWorld(ServerPlayer player) {
+        return player.level().dimension().equals(DUNGEON_LEVEL)
+                && (!player.hasPermissions(2) || instanceOf(player) != null);
     }
 
-    /** 永久副本地图在战斗中不允许玩家放置方块，避免下一队进来看到被改过的场地。 */
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void protectDungeonBreak(BlockEvent.BreakEvent event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        if (shouldProtectDungeonWorld(player)) {
+            event.setCanceled(true);
+            player.displayClientMessage(Component.literal("§c副本世界禁止破坏方块。"), true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void protectDungeonPlace(BlockEvent.EntityPlaceEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        if (instanceOf(player) != null) event.setCanceled(true);
+        if (shouldProtectDungeonWorld(player)) {
+            event.setCanceled(true);
+            player.displayClientMessage(Component.literal("§c副本世界禁止放置方块。"), true);
+        }
     }
 
     /** 爆炸仍然可以伤害实体，但不会破坏 yellowduck:dungeon 里的永久建筑。 */
@@ -284,13 +305,65 @@ public final class DungeonManager {
         }
     }
 
+    private static boolean bukkitProtectionUnavailable;
+    private static boolean bukkitProtectionReady;
+    private static int bukkitProtectionRetryTicks;
+
+    private static void ensureBukkitProtection() {
+        if (bukkitProtectionUnavailable || bukkitProtectionReady) return;
+        if (++bukkitProtectionRetryTicks < 100) return;
+        bukkitProtectionRetryTicks = 0;
+        try {
+            bukkitProtectionReady = DungeonBukkitProtection.tryRegister();
+            if (bukkitProtectionReady) {
+                LOGGER.info("YellowDuck 副本 Mohist/Bukkit 传送与 Residence 圈地保护已启用。");
+            }
+        } catch (NoClassDefFoundError | ExceptionInInitializerError missingPlatform) {
+            // 纯 Forge 环境没有 Bukkit/Residence 时保持原有行为，不让可选兼容层拖垮服务端。
+            bukkitProtectionUnavailable = true;
+        } catch (Throwable t) {
+            LOGGER.warn("注册 YellowDuck 副本 Bukkit/Residence 保护失败，稍后重试：{}", t.toString());
+        }
+    }
+
     @SubscribeEvent
     public static void serverTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         MinecraftServer server = event.getServer();
+        ensureBukkitProtection();
         recoverIfNeeded(server);
+        enforceDungeonWorldIsolation(server);
         if (ACTIVE.isEmpty()) return;
         for (DungeonInstance instance : new ArrayList<>(ACTIVE.values())) tickInstance(instance, server);
+    }
+
+    /**
+     * 永久副本维度的 NMS 级兜底。
+     *
+     * Bukkit PlayerTeleportEvent 已经会取消所有“外部 -> 副本”和“副本 -> 外部/副本内”的传送，
+     * 这里再处理极少数直接改 NMS 位置、完全不触发 Bukkit 传送事件的插件/Mod。
+     * 即使当前一个副本实例都没有，未被 YellowDuck 副本系统登记的玩家也不能停留在副本世界。
+     */
+    private static void enforceDungeonWorldIsolation(MinecraftServer server) {
+        ServerLevel dungeon = server.getLevel(DUNGEON_LEVEL);
+        if (dungeon == null) return;
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (!player.level().dimension().equals(DUNGEON_LEVEL)) continue;
+            if (instanceOf(player) != null) continue;
+
+            ServerLevel overworld = server.overworld();
+            BlockPos spawn = overworld.getSharedSpawnPos();
+            DungeonTeleportGuard.runInternal(() ->
+                    player.teleportTo(overworld,
+                            spawn.getX() + 0.5D,
+                            spawn.getY() + 1.0D,
+                            spawn.getZ() + 0.5D,
+                            player.getYRot(), player.getXRot()));
+            player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+            player.displayClientMessage(
+                    Component.literal("§c副本世界只能通过 YellowDuck 副本系统进入。"), true);
+        }
     }
 
     private static void recoverIfNeeded(MinecraftServer server) {
@@ -334,6 +407,7 @@ public final class DungeonManager {
         }
         instance.ageTicks++;
         instance.stateTicks++;
+        enforceInstanceContainment(instance, server, level);
         if (instance.state == DungeonInstance.State.COUNTDOWN || instance.state == DungeonInstance.State.FIGHTING) {
             checkRevives(instance, server, level);
             if (instance.ageTicks % 10 == 0) syncHud(instance, server);
@@ -371,6 +445,24 @@ public final class DungeonManager {
                     broadcast(instance, server, Component.literal("§6[副本] §e副本将在 §f"
                             + remainingSeconds + "秒 §e后关闭并自动退出。"));
                 }
+            }
+        }
+    }
+
+    /**
+     * 最后一层服务端兜底：即使某个混合端插件/Mod 直接改 NMS 坐标、没有触发 Bukkit 传送事件，
+     * 活动副本成员也不能离开 yellowduck:dungeon 或串到别的队伍实例区域。
+     */
+    private static void enforceInstanceContainment(DungeonInstance instance, MinecraftServer server, ServerLevel level) {
+        AABB allowed = arenaBounds(instance).inflate(8.0D, 8.0D, 8.0D);
+        for (UUID uuid : instance.participants) {
+            ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+            if (player == null || !player.isAlive() || player.isDeadOrDying()) continue;
+            boolean wrongWorld = !player.level().dimension().equals(DUNGEON_LEVEL);
+            boolean wrongArena = !wrongWorld && !allowed.contains(player.position());
+            if (wrongWorld || wrongArena) {
+                teleportInto(level, instance, player);
+                player.setDeltaMovement(0.0D, 0.0D, 0.0D);
             }
         }
     }
@@ -698,7 +790,9 @@ public final class DungeonManager {
             ServerLevel overworld = player.server.overworld();
             BlockPos spawn = overworld.getSharedSpawnPos();
             player.setGameMode(GameType.SURVIVAL);
-            player.teleportTo(overworld, spawn.getX() + 0.5D, spawn.getY() + 1D, spawn.getZ() + 0.5D, 0F, 0F);
+            DungeonTeleportGuard.runInternal(() ->
+                    player.teleportTo(overworld, spawn.getX() + 0.5D, spawn.getY() + 1D,
+                            spawn.getZ() + 0.5D, 0F, 0F));
         }
         // 必须在回到正常世界以后先恢复死亡物品，再补发副本奖励；奖励背包满时才会掉在正常世界。
         restoreDeathItems(player);
@@ -941,20 +1035,24 @@ public final class DungeonManager {
             }
             target = entrances.get(Math.min(index, entrances.size() - 1));
         }
-        player.teleportTo(level, target.getX() + 0.5D, target.getY() + 1.05D, target.getZ() + 0.5D, 0F, 0F);
+        DungeonTeleportGuard.runInternal(() ->
+                player.teleportTo(level, target.getX() + 0.5D, target.getY() + 1.05D, target.getZ() + 0.5D, 0F, 0F));
     }
 
     private static void returnPlayer(ServerPlayer player, DungeonInstance.ReturnPoint point) {
         if (point == null) {
-            player.teleportTo(player.server.overworld(), player.server.overworld().getSharedSpawnPos().getX() + 0.5D,
-                    player.server.overworld().getSharedSpawnPos().getY() + 1D,
-                    player.server.overworld().getSharedSpawnPos().getZ() + 0.5D, 0F, 0F);
+            DungeonTeleportGuard.runInternal(() ->
+                    player.teleportTo(player.server.overworld(), player.server.overworld().getSharedSpawnPos().getX() + 0.5D,
+                            player.server.overworld().getSharedSpawnPos().getY() + 1D,
+                            player.server.overworld().getSharedSpawnPos().getZ() + 0.5D, 0F, 0F));
             return;
         }
         ServerLevel level = player.server.getLevel(point.level());
         if (level == null) level = player.server.overworld();
         player.setGameMode(point.gameType());
-        player.teleportTo(level, point.x(), point.y(), point.z(), point.yaw(), point.pitch());
+        ServerLevel targetLevel = level;
+        DungeonTeleportGuard.runInternal(() ->
+                player.teleportTo(targetLevel, point.x(), point.y(), point.z(), point.yaw(), point.pitch()));
     }
 
     private static void broadcast(DungeonInstance instance, MinecraftServer server, Component message) {
