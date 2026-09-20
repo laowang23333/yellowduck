@@ -16,7 +16,7 @@ public class MeetStoneRenderer extends GltfBlockEntityRenderer<MeetStoneBlockEnt
 
     public MeetStoneRenderer(BlockEntityRendererProvider.Context context) {
         super(context, MODEL, GltfRenderOptions.builder()
-                .scale(0.0625F)
+                .scale(0.1F)
                 .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
                 .build());
     }
