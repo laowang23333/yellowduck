@@ -121,7 +121,8 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
         g.pose().pushPose();
         g.pose().translate(uiX, uiY, 0);
         g.pose().scale(uiScale, uiScale, 1.0F);
-        g.blit(screenTexture(), 0, 0, s.w, s.h, 0, 0, s.w, s.h, s.w, s.h);
+        DungeonGuiStyle.tiledWindow(g, 0, 0, s.w, s.h, true);
+        g.drawCenteredString(font, pageTitle(), s.w / 2, 6, DungeonGuiStyle.TEXT);
 
         switch (page) {
             case MAIN -> renderMain(g, meta, mx, my);
@@ -140,6 +141,8 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
             }
         }
     }
+
+    private String pageTitle() { return switch (page) { case MAIN -> "组队系统"; case INFO -> "队伍信息"; case INVITE -> "邀请玩家"; case MANAGE -> "队伍管理"; case DUNGEONS -> "选择副本"; case CONFIRM -> "开始挑战确认"; }; }
 
     private void renderMain(GuiGraphics g, CompoundTag meta, float mx, float my) {
         boolean hasParty = meta.getBoolean("HasParty");

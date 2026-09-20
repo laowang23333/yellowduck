@@ -13,6 +13,8 @@ public final class DungeonHudClientState {
     private static int remainingSeconds;
     private static int revives;
     private static int maxRevives;
+    private static float bossHealth;
+    private static float bossMaxHealth;
     private static List<MountNetwork.DungeonHudMember> members = List.of();
 
     private DungeonHudClientState() {}
@@ -23,6 +25,8 @@ public final class DungeonHudClientState {
         remainingSeconds = packet.remainingSeconds();
         revives = packet.revives();
         maxRevives = packet.maxRevives();
+        bossHealth = packet.bossHealth();
+        bossMaxHealth = packet.bossMaxHealth();
         members = Collections.unmodifiableList(new ArrayList<>(packet.members()));
     }
 
@@ -32,6 +36,8 @@ public final class DungeonHudClientState {
         remainingSeconds = 0;
         revives = 0;
         maxRevives = 0;
+        bossHealth = 0;
+        bossMaxHealth = 0;
         members = List.of();
     }
 
@@ -40,5 +46,7 @@ public final class DungeonHudClientState {
     public static int remainingSeconds() { return remainingSeconds; }
     public static int revives() { return revives; }
     public static int maxRevives() { return maxRevives; }
+    public static float bossHealth() { return bossHealth; }
+    public static float bossMaxHealth() { return bossMaxHealth; }
     public static List<MountNetwork.DungeonHudMember> members() { return members; }
 }
