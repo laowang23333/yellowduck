@@ -34,9 +34,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Stargazer 1.1.3-beta 艳后二阶段三蛇。
+ * 艳后二阶段三蛇。
  *
- * 原版特点：完全站桩、三蛇共享仇恨、每 tick 给范围内玩家 +10 原始仇恨；
+ * 主要机制：完全站桩、三蛇共享仇恨、持续给范围内玩家增加原始仇恨；
  * 元素圈/炸弹是独立计时器，和普通攻击可以在同一 tick 同时触发。
  */
 public class CleopatraVenomSnake extends NetcraftBossBase {
@@ -179,7 +179,7 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         };
     }
 
-    /** 原版交叉净化关系：毒蛇->火圈，火蛇->冰圈，冰蛇->普通/毒圈。 */
+    /** 交叉净化关系：毒蛇->火圈，火蛇->冰圈，冰蛇->普通/毒圈。 */
     public EntityType<CleopatraVenomRing> getRingType() {
         return switch (getSnakeKind()) {
             case 1 -> CleopatraEntities.VENOM_RING_ICE.get();
@@ -217,7 +217,7 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             appearPlaying = true;
             appearTimer = CleopatraConfig.snakeAppearTicks.get();
             poolCooldown = CleopatraConfig.snakeRingCd.get();
-            // Stargazer 原版：出生第一 tick 立刻先生成一个元素圈。
+            // 出生第一 tick 立即生成一个元素圈。
             placePoolRing();
         }
         if (!isAlive()) return;
@@ -316,7 +316,7 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         Set<UUID> valid = new HashSet<>();
         for (Player player : players) {
             valid.add(player.getUUID());
-            // 原版每个服务器 tick 对每个范围内玩家 +10，而不是每秒一次。
+            // 每个服务器 tick 对范围内玩家增加原始仇恨。
             getHatredManager().addRawHatred(player, 10.0D);
         }
         getHatredManager().retainHatred(valid);
@@ -358,7 +358,7 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             return;
         }
 
-        // Stargazer 原版这里不是互斥 priority：圈、炸弹、普通攻击可在同一 tick 连续触发。
+        // 元素圈、炸弹和普通攻击可以在同一 tick 分别触发。
         if (poolCooldown <= 0) {
             poolCooldown = CleopatraConfig.snakeRingCd.get();
             placePoolRing();
@@ -392,9 +392,9 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         CleopatraUtil.magicHurt(player, this, damage);
 
         /*
-         * 按 Stargazer 反编译字节码保持其层数计算：
+         * 元素层数计算：
          * existing amplifier + 1 被当作“层数”，随后再次 -1 写回 amplifier。
-         * 因此默认原作实际上会刷新同层持续时间；这里不擅自修正原作的 off-by-one 行为。
+         * 因此默认行为会刷新同层持续时间；这里保持现有层数计算规则。
          */
         int layers = existing != null ? existing.getAmplifier() + 1 : 1;
         layers = Math.min(layers, maxStacks);

@@ -10,14 +10,8 @@ import net.minecraft.world.level.block.Blocks;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 艳后死亡后的三蛇召唤器。
- * 三条蛇只会生成在艳后死亡点附近最近的三个金块上，不再使用固定世界坐标或随机回退位置。
- */
+/** 艳后死亡后的三蛇召唤器。 */
 public class CleopatraSnakeSummoner extends Entity {
-    private static final int GOLD_PAD_SEARCH_RADIUS = 32;
-    private static final int GOLD_PAD_VERTICAL_RANGE = 12;
-
     private int timer;
     private boolean poisonSpawned;
     private boolean fireSpawned;
@@ -45,34 +39,36 @@ public class CleopatraSnakeSummoner extends Entity {
         timer++;
         if (pads == null) pads = findGoldPads();
 
-        if (timer >= 60 && !poisonSpawned) {
+        if (timer >= CleopatraConfig.summonPoisonTick.get() && !poisonSpawned) {
             poisonSpawned = true;
             spawnOnPad(0, CleopatraEntities.SNAKE_POISON.get());
         }
-        if (timer >= 120 && !fireSpawned) {
+        if (timer >= CleopatraConfig.summonFireTick.get() && !fireSpawned) {
             fireSpawned = true;
             spawnOnPad(1, CleopatraEntities.SNAKE_FIRE.get());
         }
-        if (timer >= 180 && !iceSpawned) {
+        if (timer >= CleopatraConfig.summonIceTick.get() && !iceSpawned) {
             iceSpawned = true;
             spawnOnPad(2, CleopatraEntities.SNAKE_ICE.get());
         }
-        if (timer >= 200) discard();
+        if (timer >= CleopatraConfig.summonerDiscardTick.get()) discard();
     }
 
     private List<BlockPos> findGoldPads() {
         BlockPos origin = blockPosition();
         List<BlockPos> found = new ArrayList<>();
-        int radiusSq = GOLD_PAD_SEARCH_RADIUS * GOLD_PAD_SEARCH_RADIUS;
+        int radius = CleopatraConfig.goldPadSearchRadius.get();
+        int verticalRange = CleopatraConfig.goldPadVerticalRange.get();
+        int radiusSq = radius * radius;
 
-        for (int x = origin.getX() - GOLD_PAD_SEARCH_RADIUS; x <= origin.getX() + GOLD_PAD_SEARCH_RADIUS; x++) {
+        for (int x = origin.getX() - radius; x <= origin.getX() + radius; x++) {
             int dx = x - origin.getX();
-            for (int z = origin.getZ() - GOLD_PAD_SEARCH_RADIUS; z <= origin.getZ() + GOLD_PAD_SEARCH_RADIUS; z++) {
+            for (int z = origin.getZ() - radius; z <= origin.getZ() + radius; z++) {
                 int dz = z - origin.getZ();
                 if (dx * dx + dz * dz > radiusSq) continue;
 
-                // 同一 X/Z 只取最高的可用金块，避免堆叠金块被当成多个出生点。
-                for (int y = origin.getY() + GOLD_PAD_VERTICAL_RANGE; y >= origin.getY() - GOLD_PAD_VERTICAL_RANGE; y--) {
+                // 同一 X/Z 只取最高的可用金块，避免堆叠金块被识别成多个出生点。
+                for (int y = origin.getY() + verticalRange; y >= origin.getY() - verticalRange; y--) {
                     BlockPos pos = new BlockPos(x, y, z);
                     if (level().getBlockState(pos).is(Blocks.GOLD_BLOCK)
                             && level().getBlockState(pos.above()).isAir()) {
@@ -95,9 +91,7 @@ public class CleopatraSnakeSummoner extends Entity {
             return Integer.compare(a.getY(), b.getY());
         });
 
-        if (found.size() > 3) {
-            return new ArrayList<>(found.subList(0, 3));
-        }
+        if (found.size() > 3) return new ArrayList<>(found.subList(0, 3));
         return found;
     }
 
@@ -109,7 +103,6 @@ public class CleopatraSnakeSummoner extends Entity {
     }
 
     private void spawnOnPad(int index, EntityType<CleopatraVenomSnake> type) {
-        // 明确禁止随机/临时位置：没有对应金块就不生成该蛇。
         if (pads == null || index < 0 || index >= pads.size()) return;
 
         CleopatraVenomSnake snake = type.create(level());

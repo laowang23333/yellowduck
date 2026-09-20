@@ -23,7 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/** Stargazer 1.1.3-beta 精英艳后战斗逻辑移植。 */
+/** 精英艳后战斗逻辑。 */
 public class CleopatraBoss extends NetcraftBossBase {
     public static final int ANIM_IDLE = 0;
     public static final int ANIM_ATTACK1 = 2;
@@ -305,7 +305,7 @@ public class CleopatraBoss extends NetcraftBossBase {
         List<Player> pool = new ArrayList<>(playersInHatredRange());
         if (pool.isEmpty()) return;
         if (primary != null) faceTargetSmooth(primary);
-        // 原版普通攻击和毒弹齐射共用 Attack1 动画。
+        // 普通攻击和毒弹齐射共用 Attack1 动画。
         playAnimation(ANIM_ATTACK1, CleopatraConfig.volleyAnimTicks.get());
 
         int max = Math.min(CleopatraConfig.volleyTargets.get(), pool.size());
@@ -359,6 +359,7 @@ public class CleopatraBoss extends NetcraftBossBase {
         if (worm == null) return;
         worm.setPos(getX() + Math.cos(yaw) * offset * sign,
                 getY(), getZ() + Math.sin(yaw) * offset * sign);
+        worm.setPreferredTarget(primary);
         level().addFreshEntity(worm);
     }
 
