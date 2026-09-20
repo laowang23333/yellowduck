@@ -858,9 +858,18 @@ public final class DungeonManager {
             }
             members.add(new MountNetwork.DungeonHudMember(name, status));
         }
+        float bossHealth = 0.0F;
+        float bossMaxHealth = 0.0F;
+        if (instance.mainBossId != null) {
+            ServerLevel bossLevel = server.getLevel(instance.origin.dimension());
+            if (bossLevel != null && bossLevel.getEntity(instance.mainBossId) instanceof net.minecraft.world.entity.LivingEntity living) {
+                bossHealth = Math.max(0.0F, living.getHealth());
+                bossMaxHealth = Math.max(1.0F, living.getMaxHealth());
+            }
+        }
         MountNetwork.DungeonHudPacket packet = new MountNetwork.DungeonHudPacket(active,
                 instance.definition.displayName(), remaining, instance.revivesRemaining,
-                instance.initialRevives, members);
+                instance.initialRevives, bossHealth, bossMaxHealth, members);
         for (UUID uuid : instance.participants) {
             ServerPlayer player = server.getPlayerList().getPlayer(uuid);
             if (player != null) MountNetwork.sendDungeonHud(player, packet);
@@ -868,7 +877,7 @@ public final class DungeonManager {
     }
 
     private static void clearHud(ServerPlayer player) {
-        MountNetwork.sendDungeonHud(player, new MountNetwork.DungeonHudPacket(false, "", 0, 0, 0, List.of()));
+        MountNetwork.sendDungeonHud(player, new MountNetwork.DungeonHudPacket(false, "", 0, 0, 0, 0.0F, 0.0F, List.of()));
     }
 
     private static String resolvePlayerName(MinecraftServer server, UUID uuid) {
