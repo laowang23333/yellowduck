@@ -44,5 +44,18 @@
   "entity.yellowduck.silk_plague_bear": "疫病转移之熊",
   "entity.yellowduck.silk_boss": "疯狂教授斯尔克",
   "entity.yellowduck.silk_shadow_bat": "暗影蝙蝠",
-  "entity.yellowduck.silk_meteor": "追踪陨石"
+  "entity.yellowduck.silk_meteor": "追踪陨石",
+  "entity.yellowduck.cleopatra": "艳后",
+  "entity.yellowduck.cleopatra_sandworm": "艳后沙虫",
+  "entity.yellowduck.cleopatra_scorpion": "艳后蝎子",
+  "entity.yellowduck.cleopatra_snake_poison": "毒蛇",
+  "entity.yellowduck.cleopatra_snake_fire": "火蛇",
+  "entity.yellowduck.cleopatra_snake_ice": "冰蛇",
+  "effect.yellowduck.venom_poison": "毒素层数",
+  "effect.yellowduck.venom_burning": "燃烧层数",
+  "effect.yellowduck.venom_frozen": "冰冻层数",
+  "effect.yellowduck.venom_bomb_poison": "毒炸弹",
+  "effect.yellowduck.venom_bomb_burning": "燃烧炸弹",
+  "effect.yellowduck.venom_bomb_frozen": "冰冻炸弹",
+  "effect.yellowduck.venom_sickness": "毒病"
 }
