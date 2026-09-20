@@ -71,7 +71,8 @@ public class CleopatraSnakeSummoner extends Entity {
                 for (int y = origin.getY() + verticalRange; y >= origin.getY() - verticalRange; y--) {
                     BlockPos pos = new BlockPos(x, y, z);
                     if (level().getBlockState(pos).is(Blocks.GOLD_BLOCK)
-                            && level().getBlockState(pos.above()).isAir()) {
+                            && level().getBlockState(pos.above()).isAir()
+                            && isGreenSnakePad(pos)) {
                         found.add(pos);
                         break;
                     }
@@ -93,6 +94,19 @@ public class CleopatraSnakeSummoner extends Entity {
 
         if (found.size() > 3) return new ArrayList<>(found.subList(0, 3));
         return found;
+    }
+
+    /**
+     * 只有被绿色混凝土区域包围的金块才允许作为三蛇出生点。
+     * 这是第二层保险：以后地图里即使又加了装饰金块，也不会把蛇刷到外面。
+     */
+    private boolean isGreenSnakePad(BlockPos pos) {
+        int limeNeighbors = 0;
+        if (level().getBlockState(pos.north()).is(Blocks.LIME_CONCRETE)) limeNeighbors++;
+        if (level().getBlockState(pos.south()).is(Blocks.LIME_CONCRETE)) limeNeighbors++;
+        if (level().getBlockState(pos.east()).is(Blocks.LIME_CONCRETE)) limeNeighbors++;
+        if (level().getBlockState(pos.west()).is(Blocks.LIME_CONCRETE)) limeNeighbors++;
+        return limeNeighbors >= 3;
     }
 
     private static long distanceSq(BlockPos a, BlockPos b) {
