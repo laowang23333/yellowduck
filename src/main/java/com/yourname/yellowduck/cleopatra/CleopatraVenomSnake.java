@@ -403,20 +403,39 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     }
 
     private void placePoolRing() {
-        int attempts = CleopatraConfig.snakeRingAttempts.get();
-        double diameter = CleopatraConfig.snakeRingRandomDiameter.get();
+        int attempts = Math.max(1, CleopatraConfig.snakeRingAttempts.get());
+        double diameter = Math.max(0.0D, CleopatraConfig.snakeRingRandomDiameter.get());
+
+        // 优先在竞技场随机位置寻找可站立地面。
         for (int i = 0; i < attempts; i++) {
             double x = getX() + (random.nextDouble() - 0.5D) * diameter;
             double z = getZ() + (random.nextDouble() - 0.5D) * diameter;
             double y = findGroundYWithin((int) Math.floor(x), (int) Math.floor(z));
-            if (y >= 0.0D) {
+            if (!Double.isNaN(y)) {
                 spawnPoolRing(x, y, z);
                 return;
             }
         }
 
-        double y = findGroundYWithin((int) Math.floor(getX()), (int) Math.floor(getZ()));
-        if (y >= 0.0D) spawnPoolRing(getX(), y, getZ());
+        // 随机点全部失败时，从蛇周围逐圈寻找合法地面，避免某种元素圈整轮缺失。
+        int maxRadius = Math.max(4, Math.min(16, (int) Math.ceil(diameter * 0.25D)));
+        int baseX = (int) Math.floor(getX());
+        int baseZ = (int) Math.floor(getZ());
+        for (int radius = 0; radius <= maxRadius; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (radius > 0 && Math.abs(dx) != radius && Math.abs(dz) != radius) continue;
+                    double y = findGroundYWithin(baseX + dx, baseZ + dz);
+                    if (!Double.isNaN(y)) {
+                        spawnPoolRing(baseX + dx + 0.5D, y, baseZ + dz + 0.5D);
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 极端情况下也保证技能实体生成，不再直接放弃。
+        spawnPoolRing(getX(), getY(), getZ());
     }
 
     private void spawnPoolRing(double x, double y, double z) {
@@ -430,29 +449,26 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     private double findGroundYWithin(int x, int z) {
         int baseY = (int) Math.floor(getY());
         int yRange = Math.max(0, (int) Math.round(CleopatraConfig.snakeRingGroundYRange.get()));
-        int solidCount = 0;
-        int minY = baseY - yRange;
-        int maxY = baseY + yRange;
+        int minY = Math.max(level().getMinBuildHeight(), baseY - yRange);
+        int maxY = Math.min(level().getMaxBuildHeight() - 2, baseY + yRange);
 
-        for (int y = minY; y <= maxY; y++) {
-            BlockPos pos = new BlockPos(x, y, z);
-            BlockState state = level().getBlockState(pos);
-            if (!state.getFluidState().isEmpty()) return -1.0D;
+        // 从高往低寻找“有碰撞地面 + 上方可站立空间”。
+        for (int y = maxY; y >= minY; y--) {
+            BlockPos groundPos = new BlockPos(x, y, z);
+            BlockPos abovePos = groundPos.above();
+            BlockState ground = level().getBlockState(groundPos);
+            BlockState above = level().getBlockState(abovePos);
 
-            if (!state.isAir()) {
-                solidCount++;
-                continue;
+            boolean solidGround = ground.getFluidState().isEmpty()
+                    && !ground.getCollisionShape(level(), groundPos).isEmpty();
+            boolean clearAbove = above.getFluidState().isEmpty()
+                    && above.getCollisionShape(level(), abovePos).isEmpty();
+
+            if (solidGround && clearAbove) {
+                return y + 1.0D;
             }
-
-            if (solidCount >= 2) {
-                double ringY = y;
-                boolean headroom = y + 1 > maxY || level().getBlockState(new BlockPos(x, y + 1, z)).isAir();
-                if (headroom && Math.abs(ringY - getY()) <= 2.0D) return ringY;
-                return -1.0D;
-            }
-            solidCount = 0;
         }
-        return -1.0D;
+        return Double.NaN;
     }
 
     private void placeBombOnFarthest() {
