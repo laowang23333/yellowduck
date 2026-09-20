@@ -454,7 +454,7 @@ public final class DungeonManager {
      * 活动副本成员也不能离开 yellowduck:dungeon 或串到别的队伍实例区域。
      */
     private static void enforceInstanceContainment(DungeonInstance instance, MinecraftServer server, ServerLevel level) {
-        AABB allowed = arenaBounds(instance).inflate(8.0D, 8.0D, 8.0D);
+        AABB allowed = arenaBox(instance, instance.arenaRadius + 16, 64).inflate(8.0D, 8.0D, 8.0D);
         for (UUID uuid : instance.participants) {
             ServerPlayer player = server.getPlayerList().getPlayer(uuid);
             if (player == null || !player.isAlive() || player.isDeadOrDying()) continue;
