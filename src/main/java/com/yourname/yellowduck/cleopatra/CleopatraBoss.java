@@ -110,9 +110,11 @@ public class CleopatraBoss extends NetcraftBossBase {
     @Override public int getRangedDefense() { return CleopatraConfig.bossRangedDefense.get().intValue(); }
     @Override public int getMagicDefense() { return CleopatraConfig.bossMagicDefense.get().intValue(); }
     @Override public float getDamageReductionRatio() { return CleopatraConfig.bossReduction.get().floatValue(); }
-    @Override public ResourceLocation getBossHudStandaloneIcon() {
-        return new ResourceLocation("yellowduck", "textures/gui/boss_head/cleopatra.png");
-    }
+    // boss_map_icon.png 左下区域第二行第三个黄色艳后图标。
+    @Override public int getIconAtlasU() { return 218; }
+    @Override public int getIconAtlasV() { return 821; }
+    @Override public int getIconWidth() { return 106; }
+    @Override public int getIconHeight() { return 95; }
 
     @Override
     public void tick() {

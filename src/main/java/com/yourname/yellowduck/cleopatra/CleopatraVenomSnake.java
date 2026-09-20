@@ -134,15 +134,27 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     @Override public int getMagicDefense() { return CleopatraConfig.snakeMagicDefense.get().intValue(); }
     @Override public float getDamageReductionRatio() { return CleopatraConfig.snakeReduction.get().floatValue(); }
 
+    // boss_map_icon.png：毒蛇=左上第一行第二个绿图标；火蛇=左上第二行第二个红图标；
+    // 寒冰蛇=左下第二行第二个蓝图标。
     @Override
-    public ResourceLocation getBossHudStandaloneIcon() {
-        String file = switch (getSnakeKind()) {
-            case 1 -> "fire.png";
-            case 2 -> "ice.png";
-            default -> "poison.png";
+    public int getIconAtlasU() {
+        return switch (getSnakeKind()) {
+            case 2 -> 109;
+            default -> 180;
         };
-        return new ResourceLocation("yellowduck", "textures/gui/boss_head/" + file);
     }
+
+    @Override
+    public int getIconAtlasV() {
+        return switch (getSnakeKind()) {
+            case 1 -> 99;
+            case 2 -> 827;
+            default -> 2;
+        };
+    }
+
+    @Override public int getIconWidth() { return 106; }
+    @Override public int getIconHeight() { return 95; }
 
     /** 0=毒，1=火，2=冰。 */
     public int getSnakeKind() {

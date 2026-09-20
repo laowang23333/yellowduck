@@ -7,7 +7,7 @@ import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 
-/** 艳后战斗系统的全部实体注册。尺寸/追踪频率按 Stargazer 原版。 */
+/** 艳后战斗系统的全部实体注册。蛇的碰撞箱按实际 GLB 尺寸放大，便于命中弯曲蛇身。 */
 public final class CleopatraEntities {
     public static final DeferredRegister<EntityType<?>> TYPES =
             DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, YellowDuckMod.MOD_ID);
@@ -60,7 +60,7 @@ public final class CleopatraEntities {
 
     private static RegistryObject<EntityType<CleopatraVenomSnake>> snake(String id) {
         return TYPES.register(id, () -> EntityType.Builder.<CleopatraVenomSnake>of(CleopatraVenomSnake::new, MobCategory.MONSTER)
-                .sized(1.0F, 10.0F).clientTrackingRange(64).updateInterval(1).build(id));
+                .sized(6.7F, 11.5F).clientTrackingRange(64).updateInterval(1).build(id));
     }
 
     private CleopatraEntities() {}
