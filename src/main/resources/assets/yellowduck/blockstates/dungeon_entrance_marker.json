@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "yellowduck:block/dungeon_entrance_marker" }
+  }
+}
