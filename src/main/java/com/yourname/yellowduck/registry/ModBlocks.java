@@ -4,6 +4,7 @@ import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.block.BigChestBlock;
 import com.yourname.yellowduck.block.IndStatueBlock;
 import com.yourname.yellowduck.block.MeetStoneBlock;
+import com.yourname.yellowduck.item.MeetStoneItem;
 import com.yourname.yellowduck.block.ProfessorSilkBlock;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -54,7 +55,7 @@ public class ModBlocks {
                     .noOcclusion()));
 
     public static final RegistryObject<Item> MEET_STONE_ITEM = ITEMS.register("meet_stone",
-            () -> new BlockItem(MEET_STONE.get(), new Item.Properties()));
+            () -> new MeetStoneItem(MEET_STONE.get(), new Item.Properties()));
 
     // =========================
     // Professor Silk 两格高模型方块
