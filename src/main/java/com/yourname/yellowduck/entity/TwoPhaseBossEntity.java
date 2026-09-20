@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.entity;
 
 import com.yourname.yellowduck.registry.ModSounds;
+import com.yourname.yellowduck.dungeon.DungeonTeleportGuard;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -659,7 +660,8 @@ public class TwoPhaseBossEntity extends PathfinderMob implements GeoEntity {
 
                 if (this.grabTimer <= 20) {
                     for (Player p : grabbedPlayers) {
-                        p.teleportTo(this.getX(), this.getY(), this.getZ());
+                        DungeonTeleportGuard.runInternal(() ->
+                                p.teleportTo(this.getX(), this.getY(), this.getZ()));
                         p.setDeltaMovement(Vec3.ZERO);
                         p.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 20, 10, false, false));
                     }
