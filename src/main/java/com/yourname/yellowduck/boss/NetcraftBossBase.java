@@ -35,10 +35,9 @@ import java.util.UUID;
 /**
  * YellowDuck 通用 NetCraft 风格 Boss 基类。
  *
- * 目标是把 NetCraft 1.4.18 BossBase + HatredManager 中与 Boss 战斗本身有关的
- * 通用机制集中到一个可复用基类，后续 Boss 只需要继承此类并覆写数值/技能。
+ * 将 Boss 战斗常用机制集中到一个可复用基类，后续 Boss 只需要继承此类并覆写数值/技能。
  *
- * 已移植的通用机制：
+ * 通用机制：
  * - 出生点记录、NBT 持久化、回出生点；
  * - NetCraft 风格仇恨管理；
  * - 脱战判定与回满血；
@@ -49,8 +48,7 @@ import java.util.UUID;
  * - “造成伤害但不击退目标”的统一攻击接口；
  * - Boss HUD 图集坐标接口。
  *
- * NetCraft 自己的炼金系统、玩家职业/装备 Tier、伤害统计网络包等属于其余模块，
- * 本类保留扩展钩子但不硬依赖 NetCraft 本体。
+ * 其余系统通过扩展钩子接入，本类只负责 Boss 战斗相关能力。
  */
 public abstract class NetcraftBossBase extends Monster {
 
@@ -108,7 +106,7 @@ public abstract class NetcraftBossBase extends Monster {
         return false;
     }
 
-    /** 完整移植的特殊 Boss 可关闭通用仇恨 tick，改用原作自己的算法。 */
+    /** 特殊 Boss 可关闭通用仇恨 tick，使用自己的仇恨算法。 */
     public boolean useAutomaticHatredManagerTick() {
         return true;
     }

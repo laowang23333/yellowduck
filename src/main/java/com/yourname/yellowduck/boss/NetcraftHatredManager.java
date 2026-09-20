@@ -111,7 +111,7 @@ public final class NetcraftHatredManager {
     }
 
 
-    /** 原作专用 Boss 使用：直接累加原始仇恨，不套 YellowDuck 的伤害倍率/衰减。 */
+    /** 特殊 Boss 使用：直接累加原始仇恨，不套 YellowDuck 的伤害倍率/衰减。 */
     public void addRawHatred(Player player, double amount) {
         if (!boss.isValidHatredPlayer(player) || amount <= 0.0D) return;
         HateEntry entry = hatred.computeIfAbsent(player.getUUID(), ignored -> new HateEntry());
@@ -119,14 +119,14 @@ public final class NetcraftHatredManager {
         entry.lastBaseHatredTick = boss.level().getGameTime();
     }
 
-    /** 原作专用 Boss 使用：读取某 UUID 当前总仇恨。 */
+    /** 特殊 Boss 使用：读取某 UUID 当前总仇恨。 */
     public double getHatred(UUID playerId) {
         if (playerId == null) return 0.0D;
         HateEntry entry = hatred.get(playerId);
         return entry == null ? 0.0D : entry.total();
     }
 
-    /** 原作专用 Boss 使用：清空单个玩家仇恨。 */
+    /** 特殊 Boss 使用：清空单个玩家仇恨。 */
     public void clearHatred(UUID playerId) {
         if (playerId == null) return;
         hatred.remove(playerId);
@@ -134,14 +134,14 @@ public final class NetcraftHatredManager {
         if (playerId.equals(pendingTarget)) pendingTarget = null;
     }
 
-    /** 原作专用 Boss 使用：只保留给定玩家的仇恨条目。 */
+    /** 特殊 Boss 使用：只保留给定玩家的仇恨条目。 */
     public void retainHatred(Set<UUID> keep) {
         hatred.keySet().removeIf(id -> !keep.contains(id));
         if (currentTarget != null && !hatred.containsKey(currentTarget)) currentTarget = null;
         if (pendingTarget != null && !hatred.containsKey(pendingTarget)) pendingTarget = null;
     }
 
-    /** 原作专用 Boss 使用：只清仇恨，不触发回出生点/回血流程。 */
+    /** 特殊 Boss 使用：只清仇恨，不触发回出生点/回血流程。 */
     public void resetRawHatred() {
         clearHatredOnly();
         boss.setTarget(null);
