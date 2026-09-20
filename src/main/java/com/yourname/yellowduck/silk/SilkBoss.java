@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.silk;
 
 import com.yourname.yellowduck.boss.NetcraftBossBase;
+import com.yourname.yellowduck.dungeon.DungeonTeleportGuard;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -469,7 +470,9 @@ public class SilkBoss extends NetcraftBossBase {
             if (p == null) { fighters.remove(entry.getKey()); continue; }
             if (f.rootUntil > tickCount && f.rootPoint != null) {
                 if (p.isPassenger()) p.stopRiding();
-                p.teleportTo(f.rootPoint.x, f.rootPoint.y, f.rootPoint.z); p.setDeltaMovement(Vec3.ZERO);
+                DungeonTeleportGuard.runInternal(() ->
+                        p.teleportTo(f.rootPoint.x, f.rootPoint.y, f.rootPoint.z));
+                p.setDeltaMovement(Vec3.ZERO);
             }
             if (f.plagueDue > 0 && tickCount >= f.plagueDue) {
                 f.plagueDue = 0;
