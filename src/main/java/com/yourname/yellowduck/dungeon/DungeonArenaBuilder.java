@@ -24,6 +24,7 @@ public final class DungeonArenaBuilder {
         DungeonArenaTemplates.ArenaTemplate arena = DungeonArenaTemplates.get(instance.definition.id());
         if (arena != null) {
             if (initializePermanentArena) placePermanentTemplate(level, instance, arena);
+            migratePermanentArena(level, instance, arena);
             return;
         }
         prepareLegacyArena(level, instance);
@@ -46,6 +47,57 @@ public final class DungeonArenaBuilder {
                 2
         );
         if (!placed) throw new IllegalStateException("副本结构模板放置失败：" + arena.structureId());
+    }
+
+    /**
+     * 永久副本地图的兼容迁移。
+     * 艳后旧地图里有大量装饰金块，三蛇召唤器会误把它们当作出生点。
+     * 现在只保留绿色区域里的 3 个金块，其余金块一次性替换成海晶灯。
+     *
+     * 已经迁移过的永久槽用一个固定装饰位作为哨兵判断，后续开本只检查几个方块，
+     * 不会每次都扫描整栋建筑。
+     */
+    private static void migratePermanentArena(ServerLevel level, DungeonInstance instance,
+                                              DungeonArenaTemplates.ArenaTemplate arena) {
+        if (!"cleopatra".equalsIgnoreCase(instance.definition.id())) return;
+
+        BlockPos corner = instance.origin.offset(arena.placementOffset());
+
+        BlockPos poisonPad = corner.offset(42, 0, 20);
+        BlockPos firePad = corner.offset(42, 0, 29);
+        BlockPos icePad = corner.offset(42, 0, 38);
+
+        // 三个真正的蛇出生点始终保持为金块。
+        ensureGoldPad(level, poisonPad);
+        ensureGoldPad(level, firePad);
+        ensureGoldPad(level, icePad);
+
+        // 这个位置在旧模板中是装饰金块；已经变成海晶灯就说明迁移做过了。
+        BlockPos sentinel = corner.offset(29, 0, 11);
+        if (!level.getBlockState(sentinel).is(Blocks.GOLD_BLOCK)) return;
+
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int x = 0; x < 59; x++) {
+            for (int y = 0; y < 39; y++) {
+                for (int z = 0; z < 59; z++) {
+                    if (isCleopatraSnakePadLocal(x, y, z)) continue;
+                    pos.set(corner.getX() + x, corner.getY() + y, corner.getZ() + z);
+                    if (level.getBlockState(pos).is(Blocks.GOLD_BLOCK)) {
+                        level.setBlock(pos, Blocks.SEA_LANTERN.defaultBlockState(), 2);
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean isCleopatraSnakePadLocal(int x, int y, int z) {
+        return y == 0 && x == 42 && (z == 20 || z == 29 || z == 38);
+    }
+
+    private static void ensureGoldPad(ServerLevel level, BlockPos pos) {
+        if (!level.getBlockState(pos).is(Blocks.GOLD_BLOCK)) {
+            level.setBlock(pos, Blocks.GOLD_BLOCK.defaultBlockState(), 2);
+        }
     }
 
     /** 没有独立地图模板的副本继续使用旧版测试场地，方便后续逐个替换。 */

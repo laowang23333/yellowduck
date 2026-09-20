@@ -356,8 +356,21 @@ public final class DungeonManager {
             return;
         }
         if (instance.state == DungeonInstance.State.REWARD) {
-            if (instance.stateTicks >= instance.definition.rewardPreviewSeconds() * 20) {
+            int totalSeconds = instance.definition.rewardPreviewSeconds();
+            int totalTicks = totalSeconds * 20;
+            if (instance.stateTicks >= totalTicks) {
                 close(instance, server, true, "奖励阶段结束");
+                return;
+            }
+
+            // 通关后的离本倒计时只在关键时间点提示，避免聊天栏每秒刷屏。
+            if (instance.stateTicks > 0 && instance.stateTicks % 20 == 0) {
+                int remainingSeconds = Math.max(0, totalSeconds - instance.stateTicks / 20);
+                if (remainingSeconds == 30 || remainingSeconds == 10 || remainingSeconds == 5
+                        || remainingSeconds == 3 || remainingSeconds == 2 || remainingSeconds == 1) {
+                    broadcast(instance, server, Component.literal("§6[副本] §e副本将在 §f"
+                            + remainingSeconds + "秒 §e后关闭并自动退出。"));
+                }
             }
         }
     }
@@ -534,7 +547,11 @@ public final class DungeonManager {
         instance.rolledRewards.clear();
         instance.rolledRewards.addAll(DungeonRewardManager.roll(instance));
         DungeonRewardManager.stage(instance, server);
-        broadcast(instance, server, Component.literal("§6[副本] §a挑战成功！正在展示本次副本奖励。"));
+        broadcast(instance, server, Component.literal("§6[副本] §a挑战成功！副本已完成，正在展示本次副本奖励。"));
+        int exitSeconds = instance.definition.rewardPreviewSeconds();
+        broadcast(instance, server, Component.literal(exitSeconds > 0
+                ? "§6[副本] §e你将在 §f" + exitSeconds + "秒 §e后自动退出副本并返回原位置。"
+                : "§6[副本] §e奖励展示结束后将立即退出副本并返回原位置。"));
         for (UUID uuid : instance.participants) {
             ServerPlayer player = server.getPlayerList().getPlayer(uuid);
             if (player != null && player.isAlive()) DungeonRewardManager.openPreview(player, instance);
