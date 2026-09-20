@@ -57,5 +57,9 @@
   "effect.yellowduck.venom_bomb_poison": "毒炸弹",
   "effect.yellowduck.venom_bomb_burning": "燃烧炸弹",
   "effect.yellowduck.venom_bomb_frozen": "冰冻炸弹",
-  "effect.yellowduck.venom_sickness": "毒病"
+  "effect.yellowduck.venom_sickness": "毒病",
+  "block.yellowduck.dungeon_entrance_marker": "副本入口方块",
+  "item.yellowduck.dungeon_entrance_marker": "副本入口方块",
+  "block.yellowduck.dungeon_boss_spawn_marker": "Boss出生点方块",
+  "item.yellowduck.dungeon_boss_spawn_marker": "Boss出生点方块"
 }
