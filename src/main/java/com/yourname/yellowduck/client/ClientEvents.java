@@ -1,5 +1,7 @@
 package com.yourname.yellowduck.client;
 
+import com.yourname.yellowduck.client.dungeon.PartyScreen;
+import com.yourname.yellowduck.client.dungeon.RewardScreen;
 import com.yourname.yellowduck.registry.ModBlockEntities;
 import com.yourname.yellowduck.registry.ModEntities;
 import com.yourname.yellowduck.registry.ModMenuTypes;
@@ -53,6 +55,10 @@ public class ClientEvents {
         event.enqueueWork(() -> {
             // 大箱子 GUI
             MenuScreens.register(ModMenuTypes.BIG_CHEST.get(), BigChestScreen::new);
+            // 冒险队伍 / 副本选择 GUI
+            MenuScreens.register(ModMenuTypes.PARTY.get(), PartyScreen::new);
+            // 副本结算奖励 GUI（纯展示，无真实物品槽）
+            MenuScreens.register(ModMenuTypes.DUNGEON_REWARD.get(), RewardScreen::new);
         });
     }
 }
