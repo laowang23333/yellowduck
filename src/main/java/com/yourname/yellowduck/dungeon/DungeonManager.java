@@ -861,7 +861,9 @@ public final class DungeonManager {
         float bossHealth = 0.0F;
         float bossMaxHealth = 0.0F;
         if (instance.mainBossId != null) {
-            ServerLevel bossLevel = server.getLevel(instance.origin.dimension());
+            // Boss 固定生成在 yellowduck:dungeon 维度。
+            // instance.origin 是 BlockPos，不能调用 dimension()。
+            ServerLevel bossLevel = server.getLevel(DUNGEON_LEVEL);
             if (bossLevel != null && bossLevel.getEntity(instance.mainBossId) instanceof net.minecraft.world.entity.LivingEntity living) {
                 bossHealth = Math.max(0.0F, living.getHealth());
                 bossMaxHealth = Math.max(1.0F, living.getMaxHealth());
