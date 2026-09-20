@@ -861,7 +861,7 @@ public final class DungeonManager {
         float bossHealth = 0.0F;
         float bossMaxHealth = 0.0F;
         if (instance.mainBossId != null) {
-            ServerLevel bossLevel = server.getLevel(instance.origin.dimension());
+            ServerLevel bossLevel = server.getLevel(DUNGEON_LEVEL);
             if (bossLevel != null && bossLevel.getEntity(instance.mainBossId) instanceof net.minecraft.world.entity.LivingEntity living) {
                 bossHealth = Math.max(0.0F, living.getHealth());
                 bossMaxHealth = Math.max(1.0F, living.getMaxHealth());
