@@ -139,4 +139,26 @@ public class ModBlocks {
 
     public static final RegistryObject<Item> MUSIC_DISC_5 = ITEMS.register("music_disc_5",
             () -> new RecordItem(5, ModSounds.MUSIC_DISC_5, new Item.Properties().stacksTo(1), 5234));
+
+    // =========================
+    // 副本定位方块（创造模式管理用）
+    // =========================
+
+    public static final RegistryObject<Block> DUNGEON_ENTRANCE_MARKER = BLOCKS.register("dungeon_entrance_marker",
+            () -> new Block(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.STONE)
+                    .strength(-1.0F, 3600000.0F)
+                    .lightLevel(state -> 8)));
+
+    public static final RegistryObject<Item> DUNGEON_ENTRANCE_MARKER_ITEM = ITEMS.register("dungeon_entrance_marker",
+            () -> new BlockItem(DUNGEON_ENTRANCE_MARKER.get(), new Item.Properties()));
+
+    public static final RegistryObject<Block> DUNGEON_BOSS_SPAWN_MARKER = BLOCKS.register("dungeon_boss_spawn_marker",
+            () -> new Block(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.STONE)
+                    .strength(-1.0F, 3600000.0F)
+                    .lightLevel(state -> 8)));
+
+    public static final RegistryObject<Item> DUNGEON_BOSS_SPAWN_MARKER_ITEM = ITEMS.register("dungeon_boss_spawn_marker",
+            () -> new BlockItem(DUNGEON_BOSS_SPAWN_MARKER.get(), new Item.Properties()));
 }

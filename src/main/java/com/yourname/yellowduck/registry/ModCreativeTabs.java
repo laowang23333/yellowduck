@@ -22,6 +22,10 @@ public class ModCreativeTabs {
                         output.accept(ModBlocks.JINYUANQUAN.get());
                         output.accept(ModBlocks.MEET_STONE_ITEM.get());
 
+                        // 副本管理定位方块
+                        output.accept(ModBlocks.DUNGEON_ENTRANCE_MARKER_ITEM.get());
+                        output.accept(ModBlocks.DUNGEON_BOSS_SPAWN_MARKER_ITEM.get());
+
                         // 新增：两个方块
                         output.accept(ModBlocks.YIN_SHEN_XIANG_ITEM.get());
                         output.accept(ModBlocks.XIAOHUANGYA_ITEM.get());
