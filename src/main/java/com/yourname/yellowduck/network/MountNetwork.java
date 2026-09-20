@@ -19,7 +19,7 @@ import java.util.function.Supplier;
 
 /** 坐骑 GUI 与服务端之间的 C2S/S2C 通讯。 */
 public final class MountNetwork {
-    private static final String PROTOCOL = "4";
+    private static final String PROTOCOL = "5";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation("yellowduck", "mount"),
             () -> PROTOCOL, PROTOCOL::equals, PROTOCOL::equals);
@@ -43,6 +43,8 @@ public final class MountNetwork {
         CHANNEL.registerMessage(id++, SilkReviveLockPacket.class, SilkReviveLockPacket::encode, SilkReviveLockPacket::decode, SilkReviveLockPacket::handle);
         CHANNEL.registerMessage(id++, MountSyncPacket.class,
                 MountSyncPacket::encode, MountSyncPacket::decode, MountSyncPacket::handle);
+        CHANNEL.registerMessage(id++, DungeonHudPacket.class,
+                DungeonHudPacket::encode, DungeonHudPacket::decode, DungeonHudPacket::handle);
     }
 
     public static void syncTo(ServerPlayer player) {
@@ -155,4 +157,51 @@ public final class MountNetwork {
             c.setPacketHandled(true);
         }
     }
+    /** 副本战斗HUD同步。仅服务端发送给处于对应实例中的玩家。 */
+    public record DungeonHudMember(String name, int status) {
+        // status: 0=存活，1=死亡/旁观，2=离线
+    }
+
+    public record DungeonHudPacket(boolean active, String dungeonName, int remainingSeconds,
+                                   int revives, int maxRevives, List<DungeonHudMember> members) {
+        public static void encode(DungeonHudPacket msg, FriendlyByteBuf buf) {
+            buf.writeBoolean(msg.active);
+            buf.writeUtf(msg.dungeonName == null ? "" : msg.dungeonName, 128);
+            buf.writeVarInt(Math.max(0, msg.remainingSeconds));
+            buf.writeVarInt(Math.max(0, msg.revives));
+            buf.writeVarInt(Math.max(0, msg.maxRevives));
+            int count = Math.min(16, msg.members == null ? 0 : msg.members.size());
+            buf.writeVarInt(count);
+            for (int i = 0; i < count; i++) {
+                DungeonHudMember member = msg.members.get(i);
+                buf.writeUtf(member.name == null ? "" : member.name, 64);
+                buf.writeByte(Math.max(0, Math.min(2, member.status)));
+            }
+        }
+
+        public static DungeonHudPacket decode(FriendlyByteBuf buf) {
+            boolean active = buf.readBoolean();
+            String name = buf.readUtf(128);
+            int remaining = buf.readVarInt();
+            int revives = buf.readVarInt();
+            int maxRevives = buf.readVarInt();
+            int count = Math.min(16, Math.max(0, buf.readVarInt()));
+            List<DungeonHudMember> members = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) members.add(new DungeonHudMember(buf.readUtf(64), buf.readByte()));
+            return new DungeonHudPacket(active, name, remaining, revives, maxRevives, members);
+        }
+
+        public static void handle(DungeonHudPacket msg, Supplier<NetworkEvent.Context> ctx) {
+            NetworkEvent.Context c = ctx.get();
+            c.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
+                    () -> () -> com.yourname.yellowduck.client.dungeon.DungeonHudClientState.apply(msg)));
+            c.setPacketHandled(true);
+        }
+    }
+
+    public static void sendDungeonHud(ServerPlayer player, DungeonHudPacket packet) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
+    }
+
+
 }
