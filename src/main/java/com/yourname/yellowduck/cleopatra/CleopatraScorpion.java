@@ -141,9 +141,9 @@ public class CleopatraScorpion extends Monster implements GeoEntity {
                 getX() + r, getY() + 2.0D, getZ() + r);
         for (Player player : level().getEntitiesOfClass(Player.class, area, CleopatraUtil::validPlayer)) {
             boolean sick = player.hasEffect(CleopatraEffects.VENOM_SICKNESS.get());
-            float damage = player.getMaxHealth() * (float) (sick
-                    ? CleopatraConfig.poolSicknessRatio.get()
-                    : CleopatraConfig.poolNormalRatio.get());
+            float damage = player.getMaxHealth() * (sick
+                    ? CleopatraConfig.poolSicknessRatio.get().floatValue()
+                    : CleopatraConfig.poolNormalRatio.get().floatValue());
             CleopatraUtil.magicHurt(player, player, damage);
         }
         spawnPoolAtFeet();
