@@ -3,6 +3,7 @@ package com.yourname.yellowduck.config;
 import com.mojang.logging.LogUtils;
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.boss.NetcraftBossBase;
+import com.yourname.yellowduck.cleopatra.CleopatraConfig;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
@@ -67,6 +68,8 @@ public final class EntityTuningConfig {
         add(builder, "silk_plague_bear", "疯狂教授斯尔克召唤物：疫病转移之熊（复用小樱布偶熊模型）");
         add(builder, "silk_summoned_slime", "疯狂教授斯尔克召唤物：不稳定史莱姆（实体ID仍为 minecraft:slime）");
 
+        CleopatraConfig.build(builder);
+
         SPEC = builder.build();
     }
 
@@ -126,6 +129,11 @@ public final class EntityTuningConfig {
         ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
         if (id == null || !YellowDuckMod.MOD_ID.equals(id.getNamespace())) return null;
         return ENTRIES.get(id.getPath());
+    }
+
+    public static void reapply(LivingEntity entity) {
+        Entry entry = entryFor(entity);
+        if (entry != null) applyAttributes(entity, entry);
     }
 
     private static void applyAttributes(LivingEntity entity, Entry entry) {
