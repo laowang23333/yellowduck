@@ -58,9 +58,14 @@ public class PartyMenu extends AbstractContainerMenu {
     public static final int ACTION_SELECT_CLEOPATRA = 10;
     public static final int ACTION_SELECT_SAKURA = 11;
     public static final int ACTION_REFRESH = 90;
-    public static final int ACTION_INVITE_BASE = 1000;
-    public static final int ACTION_KICK_BASE = 2000;
-    public static final int ACTION_LEADER_BASE = 3000;
+
+    // 动态按钮统一使用低位 ID。
+    // 一些 Forge + Bukkit/Mohist 混合端对过大的 container button id 兼容并不稳定，
+    // 原来的 1000/2000/3000 可能导致客户端看起来点了“邀请”，服务端却没有进入邀请分支。
+    // 这些区间彼此不重叠，并且与上面的固定按钮 ID 保持分离。
+    public static final int ACTION_INVITE_BASE = 20;  // 20 ~ 39
+    public static final int ACTION_KICK_BASE = 40;    // 40 ~ 51
+    public static final int ACTION_LEADER_BASE = 60;  // 60 ~ 71
 
     private final SimpleContainer state = new SimpleContainer(STATE_SIZE);
     private final BlockPos stationPos;
@@ -194,12 +199,33 @@ public class PartyMenu extends AbstractContainerMenu {
             case ACTION_REFRESH -> { }
             default -> {
                 if (id >= ACTION_INVITE_BASE && id < ACTION_INVITE_BASE + INVITE_COUNT) {
-                    UUID targetId = inviteTargets.get(id - ACTION_INVITE_BASE);
-                    ServerPlayer target = targetId == null ? null : serverPlayer.server.getPlayerList().getPlayer(targetId);
-                    if (target != null && isWithinInviteRange(target)) {
-                        PartyManager.invite(serverPlayer, target);
-                    } else if (targetId != null) {
-                        serverPlayer.sendSystemMessage(Component.literal("§c该玩家已经离开副本柱子20格范围，无法邀请。"));
+                    int inviteIndex = id - ACTION_INVITE_BASE;
+                    UUID targetId = inviteTargets.get(inviteIndex);
+
+                    if (targetId == null) {
+                        // 客户端列表与服务端列表刚好发生刷新时，旧版本会直接什么都不做，
+                        // 玩家就会误以为已经邀请成功。现在明确提示并立即刷新列表。
+                        serverPlayer.sendSystemMessage(Component.literal(
+                                "§6[副本系统]§e邀请列表刚刚发生变化，已自动刷新，请重新点击一次目标玩家。"
+                        ));
+                        refresh(serverPlayer);
+                    } else {
+                        ServerPlayer target = serverPlayer.server.getPlayerList().getPlayer(targetId);
+                        if (target == null) {
+                            serverPlayer.sendSystemMessage(Component.literal(
+                                    "§6[副本系统]§c该玩家已经离线，无法发送邀请。"
+                            ));
+                            refresh(serverPlayer);
+                        } else if (!isWithinInviteRange(target)) {
+                            serverPlayer.sendSystemMessage(Component.literal(
+                                    "§6[副本系统]§c该玩家已经离开副本柱子20格范围，无法邀请。"
+                            ));
+                            refresh(serverPlayer);
+                        } else {
+                            // PartyManager.invite() 会登记服务端待处理邀请，
+                            // 并立即向目标玩家发送聊天栏 + 动作栏提示。
+                            PartyManager.invite(serverPlayer, target);
+                        }
                     }
                 } else if (id >= ACTION_KICK_BASE && id < ACTION_KICK_BASE + MEMBER_COUNT) {
                     UUID targetId = memberTargets.get(id - ACTION_KICK_BASE);
