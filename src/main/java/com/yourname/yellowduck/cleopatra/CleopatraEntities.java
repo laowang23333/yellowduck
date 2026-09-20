@@ -14,7 +14,7 @@ public final class CleopatraEntities {
 
     public static final RegistryObject<EntityType<CleopatraBoss>> BOSS = TYPES.register("cleopatra", () ->
             EntityType.Builder.<CleopatraBoss>of(CleopatraBoss::new, MobCategory.MONSTER)
-                    .sized(0.8F, 2.0F).clientTrackingRange(64).updateInterval(3).build("cleopatra"));
+                    .sized(0.8F, 2.0F).clientTrackingRange(64).updateInterval(1).build("cleopatra"));
 
     public static final RegistryObject<EntityType<CleopatraSandworm>> SANDWORM = TYPES.register("cleopatra_sandworm", () ->
             EntityType.Builder.<CleopatraSandworm>of(CleopatraSandworm::new, MobCategory.MONSTER)
@@ -60,7 +60,7 @@ public final class CleopatraEntities {
 
     private static RegistryObject<EntityType<CleopatraVenomSnake>> snake(String id) {
         return TYPES.register(id, () -> EntityType.Builder.<CleopatraVenomSnake>of(CleopatraVenomSnake::new, MobCategory.MONSTER)
-                .sized(1.0F, 10.0F).clientTrackingRange(64).updateInterval(3).build(id));
+                .sized(1.0F, 10.0F).clientTrackingRange(64).updateInterval(1).build(id));
     }
 
     private CleopatraEntities() {}

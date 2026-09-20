@@ -12,7 +12,7 @@ public final class CleopatraConfig {
 
     // Cleopatra body
     public static ForgeConfigSpec.DoubleValue bossHealth, bossAttack, bossMeleeDefense, bossRangedDefense, bossMagicDefense, bossReduction;
-    public static ForgeConfigSpec.DoubleValue hatredRange, hatredPerScan, autoDeathRatio, meleeRange;
+    public static ForgeConfigSpec.DoubleValue hatredRange, hatredPerScan, autoDeathRatio, meleeRange, bossTurnSpeed;
     public static ForgeConfigSpec.IntValue hatredScanInterval, hatredLostTicks, normalCd, normalDamageDelay, normalAnimTicks;
     public static ForgeConfigSpec.IntValue volleyFirstCd, volleyCd, volleyTargets, volleyAnimTicks;
     public static ForgeConfigSpec.DoubleValue volleyDamage;
@@ -57,7 +57,7 @@ public final class CleopatraConfig {
         bossMagicDefense=d(b,"boss_magic_defense",10,0,1e9); bossReduction=d(b,"boss_fixed_reduction",0.5,0,0.99);
         hatredRange=d(b,"boss_hatred_range",3,0,500); hatredPerScan=d(b,"boss_hatred_per_scan",10,0,1e9);
         hatredScanInterval=i(b,"boss_hatred_scan_interval_ticks",4,1,120000); hatredLostTicks=i(b,"boss_hatred_lost_ticks",40,1,120000);
-        autoDeathRatio=d(b,"boss_auto_death_health_ratio",0.10,0,1); meleeRange=d(b,"boss_melee_range",3,0,100);
+        autoDeathRatio=d(b,"boss_auto_death_health_ratio",0.10,0,1); meleeRange=d(b,"boss_melee_range",3,0,100); bossTurnSpeed=d(b,"boss_turn_speed_degrees_per_tick",12.0,0.1,180.0);
         normalCd=i(b,"normal_attack_cooldown_ticks",40,1,120000); normalDamageDelay=i(b,"normal_attack_damage_delay_ticks",10,0,120000);
         normalAnimTicks=i(b,"normal_attack_animation_ticks",22,1,120000);
         volleyFirstCd=i(b,"volley_first_cooldown_ticks",200,0,120000); volleyCd=i(b,"volley_cooldown_ticks",400,1,120000);

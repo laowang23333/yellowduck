@@ -60,6 +60,9 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     private float damageMult = 1.0F;
     private final List<UUID> bombMarks = new ArrayList<>();
     private boolean initialized;
+    private boolean stationaryAnchorSet;
+    private double stationaryX;
+    private double stationaryZ;
 
     public CleopatraVenomSnake(EntityType<? extends Monster> type, Level level) {
         super(type, level);
@@ -111,6 +114,9 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     }
 
     @Override public boolean isPushable() { return false; }
+    @Override public void knockback(double strength, double x, double z) {
+        // 三蛇是固定炮台，禁止任何伤害击退。
+    }
     @Override public boolean useAutomaticHatredManagerTick() { return false; }
     @Override public boolean isHatredLocked() { return true; }
     @Override public boolean shouldIgnoreSpawnDistanceLimit() { return true; }
@@ -178,6 +184,19 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     public void tick() {
         super.tick();
         if (level().isClientSide) return;
+
+        if (!stationaryAnchorSet) {
+            stationaryAnchorSet = true;
+            stationaryX = getX();
+            stationaryZ = getZ();
+        }
+        // 强制站桩：允许 Y 方向受重力落地，但 X/Z 永远锁在出生点。
+        getNavigation().stop();
+        Vec3 motion = getDeltaMovement();
+        setDeltaMovement(0.0D, motion.y, 0.0D);
+        if (Math.abs(getX() - stationaryX) > 1.0E-6D || Math.abs(getZ() - stationaryZ) > 1.0E-6D) {
+            setPos(stationaryX, getY(), stationaryZ);
+        }
 
         if (!initialized && tickCount >= 1) {
             initialized = true;
@@ -509,6 +528,10 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
+        if (stationaryAnchorSet) {
+            tag.putDouble("StationaryX", stationaryX);
+            tag.putDouble("StationaryZ", stationaryZ);
+        }
         tag.putInt("NormalAttackCD", normalAttackCooldown);
         tag.putInt("PoolCD", poolCooldown);
         tag.putInt("BombCD", bombCooldown);
@@ -528,6 +551,11 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
+        if (tag.contains("StationaryX") && tag.contains("StationaryZ")) {
+            stationaryX = tag.getDouble("StationaryX");
+            stationaryZ = tag.getDouble("StationaryZ");
+            stationaryAnchorSet = true;
+        }
         normalAttackCooldown = tag.getInt("NormalAttackCD");
         poolCooldown = tag.getInt("PoolCD");
         bombCooldown = tag.getInt("BombCD");

@@ -8,13 +8,16 @@ import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,6 +50,8 @@ public class CleopatraBoss extends NetcraftBossBase {
     private boolean autoDeathTriggered;
     private boolean deathSummoned;
     private boolean initialized;
+    private float desiredBodyYaw;
+    private boolean hasDesiredBodyYaw;
 
     public CleopatraBoss(EntityType<? extends Monster> type, Level level) {
         super(type, level);
@@ -126,6 +131,14 @@ public class CleopatraBoss extends NetcraftBossBase {
             lastSeenPlayerTick = tickCount;
         }
         if (!isAlive()) return;
+
+        // 艳后原地战斗：任何水平速度都清零，避免碰撞/技能导致实体中心漂移。
+        getNavigation().stop();
+        Vec3 motion = getDeltaMovement();
+        if (motion.x != 0.0D || motion.z != 0.0D) {
+            setDeltaMovement(0.0D, motion.y, 0.0D);
+        }
+        tickSmoothFacing();
 
         if (!autoDeathTriggered && getHealth() <= getMaxHealth() * CleopatraConfig.autoDeathRatio.get()) {
             autoDeathTriggered = true;
@@ -243,10 +256,43 @@ public class CleopatraBoss extends NetcraftBossBase {
         else setAttackState(ANIM_IDLE);
     }
 
+    /**
+     * 不再像旧版一样一帧瞬间把 yRot/yBodyRot/yBodyRotO 全改成目标角度。
+     * 只记录目标朝向，由 tickSmoothFacing 每 tick 渐进转身；这样 PolyMesh 模型不会瞬移式甩动。
+     */
+    private void faceTargetSmooth(LivingEntity target) {
+        if (target == null || !target.isAlive()) return;
+        notifyAttackAction();
+        double dx = target.getX() - getX();
+        double dz = target.getZ() - getZ();
+        if (dx * dx + dz * dz < 1.0E-6D) return;
+        desiredBodyYaw = (float) (Mth.atan2(dz, dx) * (180.0D / Math.PI)) - 90.0F;
+        hasDesiredBodyYaw = true;
+    }
+
+    private void tickSmoothFacing() {
+        if (!hasDesiredBodyYaw) return;
+        float current = getYRot();
+        float maxStep = CleopatraConfig.bossTurnSpeed.get().floatValue();
+        float delta = Mth.wrapDegrees(desiredBodyYaw - current);
+        float step = Mth.clamp(delta, -maxStep, maxStep);
+        float next = current + step;
+
+        // 保留上一 tick 的 bodyRot，客户端 GltfEntityRenderer 会自动 partialTick 插值。
+        yBodyRotO = yBodyRot;
+        yBodyRot = next;
+        setYRot(next);
+        setYHeadRot(next);
+
+        if (Math.abs(Mth.wrapDegrees(desiredBodyYaw - next)) < 0.25F) {
+            hasDesiredBodyYaw = false;
+        }
+    }
+
     private void performNormalAttack(Player target) {
         double range = CleopatraConfig.meleeRange.get();
         if (distanceToSqr(target) > range * range) return;
-        faceTargetForAttack(target);
+        faceTargetSmooth(target);
         playAnimation(ANIM_ATTACK1, CleopatraConfig.normalAnimTicks.get());
         normalAttackCooldown = CleopatraConfig.normalCd.get();
         pendingDamageTarget = target.getUUID();
@@ -256,7 +302,7 @@ public class CleopatraBoss extends NetcraftBossBase {
     private void performVenomVolley(Player primary) {
         List<Player> pool = new ArrayList<>(playersInHatredRange());
         if (pool.isEmpty()) return;
-        if (primary != null) faceTargetForAttack(primary);
+        if (primary != null) faceTargetSmooth(primary);
         // 原版普通攻击和毒弹齐射共用 Attack1 动画。
         playAnimation(ANIM_ATTACK1, CleopatraConfig.volleyAnimTicks.get());
 
@@ -269,7 +315,7 @@ public class CleopatraBoss extends NetcraftBossBase {
     }
 
     private void summonScorpions(Player primary) {
-        if (primary != null) faceTargetForAttack(primary);
+        if (primary != null) faceTargetSmooth(primary);
         playAnimation(ANIM_ATTACK2, CleopatraConfig.scorpionAnimTicks.get());
 
         double yaw = Math.toRadians(getYRot());
@@ -301,7 +347,7 @@ public class CleopatraBoss extends NetcraftBossBase {
     }
 
     private void summonSandworm(boolean firstThreshold, Player primary) {
-        if (primary != null) faceTargetForAttack(primary);
+        if (primary != null) faceTargetSmooth(primary);
         playAnimation(ANIM_ATTACK3, CleopatraConfig.sandwormSummonAnimTicks.get());
 
         double yaw = Math.toRadians(getYRot());
