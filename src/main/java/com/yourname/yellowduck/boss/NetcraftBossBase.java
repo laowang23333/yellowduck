@@ -86,7 +86,9 @@ public abstract class NetcraftBossBase extends Monster {
                 setSpawnPosition(position());
             }
             if (isAlive()) {
-                hatredManager.tick();
+                if (useAutomaticHatredManagerTick()) {
+                    hatredManager.tick();
+                }
                 tickRampageTargeting();
                 if (rampageActive && tickCount % 200 == 0) {
                     cleanupRampageAllies();
@@ -104,6 +106,11 @@ public abstract class NetcraftBossBase extends Monster {
     /** 子类在攻击/施法动画期间返回 true，可沿用 NetCraft 的身体朝向锁定。 */
     public boolean isPlayingAttackAnimation() {
         return false;
+    }
+
+    /** 完整移植的特殊 Boss 可关闭通用仇恨 tick，改用原作自己的算法。 */
+    public boolean useAutomaticHatredManagerTick() {
+        return true;
     }
 
     /** NetCraft BossBase 同款水平朝向角检测。 */
@@ -620,6 +627,11 @@ public abstract class NetcraftBossBase extends Monster {
     }
 
     /* ---------------- HUD atlas hooks ---------------- */
+
+    /** 可选：返回独立 Boss 头像纹理；null 时仍使用 NetCraft 图集裁剪。 */
+    public ResourceLocation getBossHudStandaloneIcon() {
+        return null;
+    }
 
     public int getIconAtlasU() {
         return 110;
