@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.entity;
 
 import com.yourname.yellowduck.registry.ModItems;
+import com.yourname.yellowduck.util.MountManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -213,6 +214,11 @@ public class MountEntity extends PathfinderMob {
         super.tick();
 
         if (!this.level().isClientSide) {
+            // 每秒核对一次服务端唯一坐骑 UUID。旧版残留/跨维度重复实体加载后会自动清理。
+            if (this.tickCount % 20 == 0 && !MountManager.validateActiveMount(this)) {
+                return;
+            }
+
             Entity controller = getControllingPassenger();
             if (controller instanceof Player player) {
                 // 玩家视角驱动坐骑转向，但不要把 yRotO 强行改成当前值；
@@ -287,6 +293,14 @@ public class MountEntity extends PathfinderMob {
         if (tag.hasUUID("OwnerUUID")) {
             ownerUUID = tag.getUUID("OwnerUUID");
         }
+    }
+
+    @Override
+    public void remove(RemovalReason reason) {
+        if (!this.level().isClientSide) {
+            MountManager.onMountRemoved(this);
+        }
+        super.remove(reason);
     }
 
     @Override
