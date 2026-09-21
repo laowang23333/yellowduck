@@ -100,11 +100,16 @@ public final class EntityTuningConfig {
 
         try {
             if (Files.notExists(PATH)) {
-                Files.createDirectories(PATH.getParent());
                 try {
+                    Files.createDirectories(PATH.getParent());
                     Files.writeString(PATH, defaultText(), StandardCharsets.UTF_8,
                             StandardOpenOption.CREATE_NEW);
                 } catch (java.nio.file.FileAlreadyExistsException ignored) {
+                    // 面板或另一个启动流程刚好已经创建了文件，直接继续读取即可。
+                } catch (java.io.IOException ex) {
+                    LOGGER.error("创建 {} 失败；本次继续使用源码默认/上一份有效配置。",
+                            PATH.getFileName(), ex);
+                    return;
                 }
             }
 
