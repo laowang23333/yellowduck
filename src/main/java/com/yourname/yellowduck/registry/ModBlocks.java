@@ -6,13 +6,13 @@ import com.yourname.yellowduck.block.IndStatueBlock;
 import com.yourname.yellowduck.block.MeetStoneBlock;
 import com.yourname.yellowduck.item.MeetStoneItem;
 import com.yourname.yellowduck.block.ProfessorSilkBlock;
+import com.yourname.yellowduck.block.SakuraEruptionMarkerBlock;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
-import net.minecraft.world.level.material.PushReaction;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
@@ -33,7 +33,6 @@ public class ModBlocks {
             () -> new BigChestBlock(BlockBehaviour.Properties.of()
                     .mapColor(MapColor.WOOD)
                     .strength(2.5F)
-                    .pushReaction(PushReaction.BLOCK)
                     .noOcclusion()));
 
     public static final RegistryObject<Item> BIG_CHEST_ITEM = ITEMS.register("big_chest",
@@ -142,6 +141,18 @@ public class ModBlocks {
 
     public static final RegistryObject<Item> MUSIC_DISC_5 = ITEMS.register("music_disc_5",
             () -> new RecordItem(5, ModSounds.MUSIC_DISC_5, new Item.Properties().stacksTo(1), 5234));
+
+    // =========================
+    // Stargazer 小樱火焰喷发 PNG 地面标记（无物品，仅 Boss 临时生成）
+    // =========================
+
+    public static final RegistryObject<Block> SAKURA_ERUPTION_MARKER = BLOCKS.register("sakura_eruption_marker",
+            () -> new SakuraEruptionMarkerBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.NONE)
+                    .strength(-1.0F, 3600000.0F)
+                    .noCollission()
+                    .noOcclusion()
+                    .isViewBlocking((state, level, pos) -> false)));
 
     // =========================
     // 副本定位方块（创造模式管理用）
