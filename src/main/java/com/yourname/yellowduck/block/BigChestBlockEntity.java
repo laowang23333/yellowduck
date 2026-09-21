@@ -64,6 +64,10 @@ public class BigChestBlockEntity extends BlockEntity implements Container {
         if (current.isEmpty()) {
             items.set(slot, ItemStack.EMPTY);
         }
+
+        // 即使调用方使用“不触发更新”的取出 API，容器内容已经真实发生变化，
+        // 仍必须标记 BlockEntity 需要保存，避免区块卸载/异常停止后从旧 NBT 回档出物品。
+        setChanged();
         return result;
     }
 
@@ -94,7 +98,12 @@ public class BigChestBlockEntity extends BlockEntity implements Container {
         return cur.getCount() < MAX_STACK;
     }
 
-    @Override public void clearContent() { items.clear(); }
+    @Override
+    public void clearContent() {
+        items.clear();
+        // clearContent 同样属于真实内容修改，必须落盘。
+        setChanged();
+    }
 
     @Override
     protected void saveAdditional(CompoundTag tag) {
