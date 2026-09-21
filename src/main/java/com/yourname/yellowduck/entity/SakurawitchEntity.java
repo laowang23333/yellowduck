@@ -2,6 +2,7 @@ package com.yourname.yellowduck.entity;
 
 import com.yourname.yellowduck.particle.ModParticles;
 import com.yourname.yellowduck.registry.ModEffects;
+import com.yourname.yellowduck.registry.ModBlocks;
 import com.yourname.yellowduck.registry.ModEntities;
 import com.yourname.yellowduck.registry.ModSounds;
 import net.minecraft.core.BlockPos;
@@ -26,6 +27,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -102,6 +104,13 @@ public class SakurawitchEntity extends PathfinderMob {
             SynchedEntityData.defineId(
                     SakurawitchEntity.class,
                     EntityDataSerializers.INT
+            );
+
+    /** 布偶熊被击败后，小樱进入伙伴死亡狂暴。 */
+    public static final EntityDataAccessor<Boolean> PARTNER_RAGE =
+            SynchedEntityData.defineId(
+                    SakurawitchEntity.class,
+                    EntityDataSerializers.BOOLEAN
             );
 
     // =========================================================
@@ -193,6 +202,21 @@ public class SakurawitchEntity extends PathfinderMob {
 
     private static final float ERUPTION_DAMAGE = 60.0F;
 
+    // NetCraft 风格三类防御 + 固定减伤。
+    // T2 Boss 近战额外减 5%，随后减去对应防御，最后再做固定减伤。
+    private static final float MELEE_DEFENSE = 60.0F;
+    private static final float RANGED_DEFENSE = 10.0F;
+    private static final float MAGIC_DEFENSE = 10.0F;
+    private static final float FIXED_DAMAGE_REDUCTION = 0.50F;
+    private static final float T2_MELEE_REDUCTION = 0.05F;
+
+    // 布偶熊先倒下后，小樱进入永久强化。
+    private static final float PARTNER_RAGE_DAMAGE_MULTIPLIER = 1.25F;
+    private static final int PARTNER_RAGE_NORMAL_ATTACK_INTERVAL = 30;
+    private static final int PARTNER_RAGE_SPRAY_CD = 450;
+    private static final int PARTNER_RAGE_FIRE_CHARGE_INTERVAL = 30;
+    private static final int PARTNER_RAGE_ERUPTION_INTERVAL = 120;
+
     // =========================================================
     // 技能运行变量
     // =========================================================
@@ -247,6 +271,9 @@ public class SakurawitchEntity extends PathfinderMob {
      */
     private Player eruptionTarget;
 
+    /** Stargazer 原版地火 PNG 标记实际放置的位置。 */
+    private BlockPos eruptionMarkerPos;
+
     /**
      * 死亡动画计时
      */
@@ -259,6 +286,7 @@ public class SakurawitchEntity extends PathfinderMob {
     // 布偶熊：第二阶段召唤一次，之后独立战斗。
     private boolean toyBearSummoned = false;
     private UUID toyBearUUID;
+    private boolean partnerRage = false;
 
     // NetCraft 1.4.18：仇恨、出生点限制、脱战回位和回血。
     private final SakuraHatredManager hatredManager = new SakuraHatredManager(this);
@@ -377,6 +405,11 @@ public class SakurawitchEntity extends PathfinderMob {
                 SKILL_STATE,
                 IDLE
         );
+
+        entityData.define(
+                PARTNER_RAGE,
+                false
+        );
     }
 
     // =========================================================
@@ -476,6 +509,7 @@ public class SakurawitchEntity extends PathfinderMob {
 
         sprayTarget = null;
         eruptionTarget = null;
+        removeEruptionMarker();
         eruptionPos = null;
         eruptionTimer = 0;
         pendingNormalAttackTargetUUID = null;
@@ -491,8 +525,10 @@ public class SakurawitchEntity extends PathfinderMob {
         fireChargeTimer = 0;
         sprayCD = 200;
         normalAttackTimer = 20;
-        eruptionCD = ERUPTION_INTERVAL;
+        eruptionCD = currentEruptionInterval();
         playedPhaseTwoSound = false;
+        partnerRage = false;
+        entityData.set(PARTNER_RAGE, false);
 
         removeToyBear();
         toyBearSummoned = false;
@@ -684,7 +720,7 @@ public class SakurawitchEntity extends PathfinderMob {
         }
 
         if (nextPhase == 3) {
-            eruptionCD = ERUPTION_INTERVAL;
+            eruptionCD = currentEruptionInterval();
         }
     }
 
@@ -728,6 +764,67 @@ public class SakurawitchEntity extends PathfinderMob {
                 0.7D,
                 0.06D
         );
+    }
+
+    /** 供布偶熊继承小樱当前仇恨目标。 */
+    public Player getBearCombatTarget() {
+        Player target = hatredManager.getCurrentTarget();
+        return valid(target) ? target : null;
+    }
+
+    /** 布偶熊先被击败：小樱进入永久伙伴死亡狂暴。 */
+    public void onToyBearDefeated() {
+        if (level().isClientSide || partnerRage || entityData.get(IS_DYING)) return;
+
+        partnerRage = true;
+        entityData.set(PARTNER_RAGE, true);
+        toyBearUUID = null;
+
+        // 让下一轮技能更快到来，但不强行打断当前技能。
+        normalAttackTimer = Math.min(normalAttackTimer, 10);
+        sprayCD = Math.min(sprayCD, 120);
+        eruptionCD = Math.min(eruptionCD, 60);
+
+        announce("§4⚠ 布偶熊被击败，小樱陷入狂暴！");
+        if (level() instanceof ServerLevel serverLevel) {
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_EXPLOSION.get(),
+                    getX(), getY() + 1.0D, getZ(),
+                    40, 1.4D, 1.0D, 1.4D, 0.08D
+            );
+            serverLevel.sendParticles(
+                    ModParticles.SAKURA_MAGIC.get(),
+                    getX(), getY() + 1.2D, getZ(),
+                    45, 1.7D, 1.1D, 1.7D, 0.10D
+            );
+        }
+        level().playSound(null, blockPosition(), SoundEvents.WITHER_SPAWN,
+                SoundSource.HOSTILE, 1.8F, 1.25F);
+    }
+
+    /** 小樱死亡时不删除熊；让熊进入最终狂暴，副本需两者都结束才结算。 */
+    private void notifyToyBearOwnerDeath() {
+        if (toyBearUUID == null || !(level() instanceof ServerLevel serverLevel)) return;
+        Entity entity = serverLevel.getEntity(toyBearUUID);
+        if (entity instanceof ToyBearEntity bear && !bear.isRemoved() && bear.isAlive()) {
+            bear.onOwnerSakuraDeath();
+        }
+    }
+
+    private int currentNormalAttackInterval() {
+        return partnerRage ? PARTNER_RAGE_NORMAL_ATTACK_INTERVAL : NORMAL_ATTACK_INTERVAL;
+    }
+
+    private int currentSprayCooldown() {
+        return partnerRage ? PARTNER_RAGE_SPRAY_CD : SPRAY_CD;
+    }
+
+    private int currentFireChargeInterval() {
+        return partnerRage ? PARTNER_RAGE_FIRE_CHARGE_INTERVAL : FIRE_CHARGE_INTERVAL;
+    }
+
+    private int currentEruptionInterval() {
+        return partnerRage ? PARTNER_RAGE_ERUPTION_INTERVAL : ERUPTION_INTERVAL;
     }
 
     private void removeToyBear() {
@@ -780,7 +877,7 @@ public class SakurawitchEntity extends PathfinderMob {
         entityData.set(ATTACK_TIMER, ATTACK_LENGTH);
         setDeltaMovement(Vec3.ZERO);
 
-        normalAttackTimer = NORMAL_ATTACK_INTERVAL;
+        normalAttackTimer = currentNormalAttackInterval();
         pendingNormalAttackTargetUUID = target.getUUID();
         pendingNormalAttackDamageTicks = NORMAL_DAMAGE_DELAY;
 
@@ -1161,7 +1258,7 @@ public class SakurawitchEntity extends PathfinderMob {
             /*
              * 从一次喷射结束后开始重新计算 30 秒。
              */
-            sprayCD = SPRAY_CD;
+            sprayCD = currentSprayCooldown();
         }
     }
 
@@ -1415,7 +1512,7 @@ public class SakurawitchEntity extends PathfinderMob {
         /*
          * 每 2 秒增加一层。
          */
-        if (fireChargeTimer < FIRE_CHARGE_INTERVAL) {
+        if (fireChargeTimer < currentFireChargeInterval()) {
             return;
         }
 
@@ -1629,6 +1726,9 @@ public class SakurawitchEntity extends PathfinderMob {
         eruptionTimer =
                 ERUPTION_DELAY;
 
+        // Stargazer 原版：在点名位置铺一张地火 PNG 标记。
+        placeEruptionMarker();
+
         entityData.set(
                 SKILL_STATE,
                 ERUPTION
@@ -1662,7 +1762,7 @@ public class SakurawitchEntity extends PathfinderMob {
          * 而不是爆炸以后再等 8 秒。
          */
         eruptionCD =
-                ERUPTION_INTERVAL;
+                currentEruptionInterval();
 
         tell(
                 eruptionTarget,
@@ -1775,6 +1875,8 @@ public class SakurawitchEntity extends PathfinderMob {
          */
         if (eruptionTimer <= 0) {
 
+            // 原版先清除地面 PNG 标记，再结算爆炸。
+            removeEruptionMarker();
             explodeEruption();
 
             eruptionPos = null;
@@ -1783,6 +1885,46 @@ public class SakurawitchEntity extends PathfinderMob {
 
             cancelCurrentSkill();
         }
+    }
+
+    /**
+     * Stargazer 原版地火预警不是纯粒子，而是 1/16 格高的透明 PNG 地面标记。
+     * 只占用空气位置，绝不覆盖副本建筑方块；若脚下位置不可用则尝试上一格。
+     */
+    private void placeEruptionMarker() {
+        removeEruptionMarker();
+
+        if (eruptionPos == null || level().isClientSide) {
+            return;
+        }
+
+        BlockPos candidate = eruptionPos;
+        if (!level().getBlockState(candidate).isAir()) {
+            candidate = candidate.above();
+        }
+        if (!level().getBlockState(candidate).isAir()) {
+            return;
+        }
+
+        level().setBlock(
+                candidate,
+                ModBlocks.SAKURA_ERUPTION_MARKER.get().defaultBlockState(),
+                3
+        );
+        eruptionMarkerPos = candidate.immutable();
+    }
+
+    private void removeEruptionMarker() {
+        if (eruptionMarkerPos == null || level().isClientSide) {
+            eruptionMarkerPos = null;
+            return;
+        }
+
+        if (level().getBlockState(eruptionMarkerPos)
+                .is(ModBlocks.SAKURA_ERUPTION_MARKER.get())) {
+            level().removeBlock(eruptionMarkerPos, false);
+        }
+        eruptionMarkerPos = null;
     }
 
     // =========================================================
@@ -1904,6 +2046,7 @@ public class SakurawitchEntity extends PathfinderMob {
         );
 
         sprayTimer = 0;
+        removeEruptionMarker();
         pendingNormalAttackTargetUUID = null;
         pendingNormalAttackDamageTicks = 0;
     }
@@ -1946,7 +2089,8 @@ public class SakurawitchEntity extends PathfinderMob {
                         1.0F
                                 + 0.05F
                                 * stacks
-                );
+                )
+                        * (partnerRage ? PARTNER_RAGE_DAMAGE_MULTIPLIER : 1.0F);
 
         /*
          * NetCraft 小樱：hurt() 前保存目标速度，伤害后立即恢复。
@@ -2148,20 +2292,58 @@ public class SakurawitchEntity extends PathfinderMob {
             return false;
         }
 
-        boolean damaged = super.hurt(
-                source,
-                amount
-        );
+        float before = getHealth();
+        float adjusted = applyNetcraftIncomingDamage(source, amount);
+        boolean damaged = super.hurt(source, adjusted);
 
-        if (damaged
-                && !level().isClientSide
-                && source.getEntity() instanceof Player player) {
-            // NetCraft LivingHurtEvent：实际伤害 × 玩家仇恨倍率。
-            hatredManager.addDamageHatred(player, amount);
+        if (damaged && !level().isClientSide) {
+            float dealt = Math.max(0.0F, before - getHealth());
+            Player player = resolvePlayerAttacker(source);
+            if (player != null && dealt > 0.0F) {
+                hatredManager.addDamageHatred(player, dealt);
+            }
         }
 
         return damaged;
     }
+
+    /** NetCraft 风格：近战/远程/魔法分别减防，再进行 T2 / 固定减伤。 */
+    private float applyNetcraftIncomingDamage(DamageSource source, float amount) {
+        float damage = Math.max(0.0F, amount);
+        DamageClass type = classifyIncomingDamage(source);
+
+        if (type == DamageClass.MELEE) {
+            damage *= 1.0F - T2_MELEE_REDUCTION;
+            damage -= MELEE_DEFENSE;
+        } else if (type == DamageClass.RANGED) {
+            damage -= RANGED_DEFENSE;
+        } else {
+            damage -= MAGIC_DEFENSE;
+        }
+
+        damage = Math.max(0.0F, damage);
+        damage *= 1.0F - FIXED_DAMAGE_REDUCTION;
+        return Math.max(0.1F, damage);
+    }
+
+    private DamageClass classifyIncomingDamage(DamageSource source) {
+        if (source.getDirectEntity() instanceof Projectile) return DamageClass.RANGED;
+        String id = source.getMsgId().toLowerCase(java.util.Locale.ROOT);
+        if (id.contains("magic") || id.contains("wither") || id.contains("dragonbreath")
+                || id.contains("dragon_breath") || id.contains("sonic")) {
+            return DamageClass.MAGIC;
+        }
+        return DamageClass.MELEE;
+    }
+
+    private Player resolvePlayerAttacker(DamageSource source) {
+        if (source.getEntity() instanceof Player player) return player;
+        if (source.getDirectEntity() instanceof Projectile projectile
+                && projectile.getOwner() instanceof Player player) return player;
+        return null;
+    }
+
+    private enum DamageClass { MELEE, RANGED, MAGIC }
 
     // =========================================================
     // 死亡
@@ -2212,9 +2394,10 @@ public class SakurawitchEntity extends PathfinderMob {
         );
 
         deathTimer = 0;
+        removeEruptionMarker();
 
         hatredManager.clearAll();
-        removeToyBear();
+        notifyToyBearOwnerDeath();
 
         bossEvent.removeAllPlayers();
 
@@ -2355,6 +2538,7 @@ public class SakurawitchEntity extends PathfinderMob {
         tag.putBoolean("PlayedPhaseTwoSound", playedPhaseTwoSound);
         tag.putBoolean("PlayedDeathSound", playedDeathSound);
         tag.putBoolean("ToyBearSummoned", toyBearSummoned);
+        tag.putBoolean("PartnerRage", partnerRage);
         if (toyBearUUID != null) {
             tag.putUUID("ToyBearUUID", toyBearUUID);
         }
@@ -2429,6 +2613,8 @@ public class SakurawitchEntity extends PathfinderMob {
         playedPhaseTwoSound = tag.getBoolean("PlayedPhaseTwoSound");
         playedDeathSound = tag.getBoolean("PlayedDeathSound");
         toyBearSummoned = tag.getBoolean("ToyBearSummoned");
+        partnerRage = tag.getBoolean("PartnerRage");
+        entityData.set(PARTNER_RAGE, partnerRage);
         toyBearUUID = tag.hasUUID("ToyBearUUID") ? tag.getUUID("ToyBearUUID") : null;
     }
 
@@ -2442,7 +2628,7 @@ public class SakurawitchEntity extends PathfinderMob {
 
                 .add(
                         Attributes.MAX_HEALTH,
-                        28000.0D
+                        200000.0D
                 )
 
                 .add(
