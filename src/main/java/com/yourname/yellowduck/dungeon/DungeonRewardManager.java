@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.dungeon;
 
 import com.mojang.logging.LogUtils;
+import com.yourname.yellowduck.util.SafePlayerDelivery;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -12,6 +13,7 @@ import net.minecraftforge.network.NetworkHooks;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.slf4j.Logger;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -69,17 +71,21 @@ public final class DungeonRewardManager {
         int each = eligible.isEmpty() ? 0 : totalXp / eligible.size();
         int remainder = eligible.isEmpty() ? 0 : totalXp % eligible.size();
 
-        for (int i = 0; i < eligible.size(); i++) {
-            int xp = each + (i < remainder ? 1 : 0);
-            data.addPendingReward(eligible.get(i), List.of(), xp);
-        }
-
         // 物品优先给仍有奖励资格的开本队长；队长中途主动离本后已经失去资格，
-        // 此时顺延给仍有资格的第一位参与者，避免“提示无奖励但最后仍拿走全部物品”。
+        // 此时顺延给仍有资格的第一位参与者。
         UUID itemRecipient = instance.rewardEligible.contains(instance.leaderId)
                 ? instance.leaderId
                 : (eligible.isEmpty() ? null : eligible.get(0));
-        if (itemRecipient != null) data.addPendingReward(itemRecipient, copy(instance.rolledRewards), 0);
+
+        for (int i = 0; i < eligible.size(); i++) {
+            UUID playerId = eligible.get(i);
+            int xp = each + (i < remainder ? 1 : 0);
+            List<ItemStack> items = playerId.equals(itemRecipient)
+                    ? copy(instance.rolledRewards)
+                    : List.of();
+            UUID batchId = rewardBatchId(instance.id, playerId);
+            data.addPendingReward(playerId, batchId, items, xp);
+        }
     }
 
     public static void openPreview(ServerPlayer player, DungeonInstance instance) {
@@ -136,26 +142,50 @@ public final class DungeonRewardManager {
     }
 
     public static void deliverPending(ServerPlayer player) {
-        DungeonSavedData.PendingReward pending = DungeonSavedData.get(player.server).takePendingReward(player.getUUID());
-        if (pending == null) return;
-        if (pending.xp() > 0) player.giveExperiencePoints(pending.xp());
-        giveItems(player, pending.items());
-        player.sendSystemMessage(Component.literal("§a已发放你的副本奖励。"));
+        DungeonSavedData data = DungeonSavedData.get(player.server);
+        List<DungeonSavedData.PendingReward> batches = data.pendingRewards(player.getUUID());
+        if (batches.isEmpty()) return;
+
+        boolean granted = false;
+        boolean waitingForSpace = false;
+
+        for (DungeonSavedData.PendingReward pending : batches) {
+            SafePlayerDelivery.DeliveryResult result = SafePlayerDelivery.deliver(
+                    player,
+                    "dungeon_reward",
+                    pending.batchId(),
+                    pending.items(),
+                    pending.xp()
+            );
+
+            if (result == SafePlayerDelivery.DeliveryResult.GRANTED) {
+                granted = true;
+            } else if (result == SafePlayerDelivery.DeliveryResult.NO_SPACE) {
+                waitingForSpace = true;
+            } else if (SafePlayerDelivery.canAcknowledge(
+                    player, "dungeon_reward", pending.batchId())) {
+                data.acknowledgePendingReward(player.getUUID(), pending.batchId());
+            }
+        }
+
+        if (granted) {
+            player.sendSystemMessage(Component.literal("§a已安全发放你的副本奖励。"));
+        }
+        if (waitingForSpace) {
+            player.sendSystemMessage(Component.literal(
+                    "§e背包空间不足，未能放下的副本奖励仍安全保存在服务器中；整理背包后重新登录或正常离开副本即可再次尝试。"));
+        }
+    }
+
+    private static UUID rewardBatchId(UUID instanceId, UUID playerId) {
+        String source = "yellowduck:dungeon_reward:" + instanceId + ":" + playerId;
+        return UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8));
     }
 
     private static List<ItemStack> copy(List<ItemStack> list) {
         List<ItemStack> out = new ArrayList<>();
         for (ItemStack stack : list) out.add(stack.copy());
         return out;
-    }
-
-    private static void giveItems(ServerPlayer player, List<ItemStack> items) {
-        for (ItemStack original : items) {
-            ItemStack stack = original.copy();
-            boolean allAdded = player.getInventory().add(stack);
-            if (!allAdded || !stack.isEmpty()) player.drop(stack, false);
-        }
-        player.containerMenu.broadcastChanges();
     }
 
 

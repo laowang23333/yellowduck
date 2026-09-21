@@ -13,6 +13,7 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,8 +29,10 @@ public final class DungeonSavedData extends SavedData {
     private static final String ID = "yellowduck_dungeon_state";
 
     private final Map<UUID, DungeonInstance.ReturnPoint> pendingReturns = new LinkedHashMap<>();
-    private final Map<UUID, PendingReward> pendingRewards = new LinkedHashMap<>();
-    private final Map<UUID, List<ItemStack>> pendingDeathItems = new LinkedHashMap<>();
+    /** 每名玩家可同时存在多批待发奖励；batchId 用于崩服后的幂等确认。 */
+    private final Map<UUID, List<PendingReward>> pendingRewards = new LinkedHashMap<>();
+    /** 每次副本死亡单独保存为一批，避免背包不足/再次死亡时把旧批次合并后重复发放。 */
+    private final Map<UUID, List<PendingDeathItems>> pendingDeathItems = new LinkedHashMap<>();
     /** player -> (dungeon id -> epoch millis). 成功通关冷却跨重启保存。 */
     private final Map<UUID, Map<String, Long>> dungeonCooldowns = new LinkedHashMap<>();
     private final Map<UUID, StaleInstance> trackedInstances = new LinkedHashMap<>();
@@ -55,26 +58,43 @@ public final class DungeonSavedData extends SavedData {
         for (int i = 0; i < rewards.size(); i++) {
             CompoundTag entry = rewards.getCompound(i);
             if (!entry.hasUUID("Player")) continue;
+            UUID playerId = entry.getUUID("Player");
+            UUID batchId = entry.hasUUID("Batch")
+                    ? entry.getUUID("Batch")
+                    : legacyBatch("reward", playerId, i);
             List<ItemStack> items = new ArrayList<>();
             ListTag itemList = entry.getList("Items", Tag.TAG_COMPOUND);
             for (int j = 0; j < itemList.size(); j++) {
                 ItemStack stack = ItemStack.of(itemList.getCompound(j));
                 if (!stack.isEmpty()) items.add(stack);
             }
-            data.pendingRewards.put(entry.getUUID("Player"), new PendingReward(items, Math.max(0, entry.getInt("Xp"))));
+            int xp = Math.max(0, entry.getInt("Xp"));
+            if (!items.isEmpty() || xp > 0) {
+                data.pendingRewards
+                        .computeIfAbsent(playerId, k -> new ArrayList<>())
+                        .add(new PendingReward(batchId, items, xp));
+            }
         }
 
         ListTag deathItems = tag.getList("DeathItems", Tag.TAG_COMPOUND);
         for (int i = 0; i < deathItems.size(); i++) {
             CompoundTag entry = deathItems.getCompound(i);
             if (!entry.hasUUID("Player")) continue;
+            UUID playerId = entry.getUUID("Player");
+            UUID batchId = entry.hasUUID("Batch")
+                    ? entry.getUUID("Batch")
+                    : legacyBatch("death", playerId, i);
             List<ItemStack> items = new ArrayList<>();
             ListTag itemList = entry.getList("Items", Tag.TAG_COMPOUND);
             for (int j = 0; j < itemList.size(); j++) {
                 ItemStack stack = ItemStack.of(itemList.getCompound(j));
                 if (!stack.isEmpty()) items.add(stack);
             }
-            if (!items.isEmpty()) data.pendingDeathItems.put(entry.getUUID("Player"), items);
+            if (!items.isEmpty()) {
+                data.pendingDeathItems
+                        .computeIfAbsent(playerId, k -> new ArrayList<>())
+                        .add(new PendingDeathItems(batchId, items));
+            }
         }
 
         ListTag cooldowns = tag.getList("Cooldowns", Tag.TAG_COMPOUND);
@@ -137,29 +157,35 @@ public final class DungeonSavedData extends SavedData {
 
         ListTag rewards = new ListTag();
         for (var entry : pendingRewards.entrySet()) {
-            CompoundTag row = new CompoundTag();
-            row.putUUID("Player", entry.getKey());
-            row.putInt("Xp", entry.getValue().xp());
-            ListTag itemList = new ListTag();
-            for (ItemStack stack : entry.getValue().items()) {
-                if (stack.isEmpty()) continue;
-                itemList.add(stack.copy().save(new CompoundTag()));
+            for (PendingReward pending : entry.getValue()) {
+                CompoundTag row = new CompoundTag();
+                row.putUUID("Player", entry.getKey());
+                row.putUUID("Batch", pending.batchId());
+                row.putInt("Xp", pending.xp());
+                ListTag itemList = new ListTag();
+                for (ItemStack stack : pending.items()) {
+                    if (stack.isEmpty()) continue;
+                    itemList.add(stack.copy().save(new CompoundTag()));
+                }
+                row.put("Items", itemList);
+                rewards.add(row);
             }
-            row.put("Items", itemList);
-            rewards.add(row);
         }
         tag.put("Rewards", rewards);
 
         ListTag deathItems = new ListTag();
         for (var entry : pendingDeathItems.entrySet()) {
-            CompoundTag row = new CompoundTag();
-            row.putUUID("Player", entry.getKey());
-            ListTag itemList = new ListTag();
-            for (ItemStack stack : entry.getValue()) {
-                if (!stack.isEmpty()) itemList.add(stack.copy().save(new CompoundTag()));
+            for (PendingDeathItems pending : entry.getValue()) {
+                CompoundTag row = new CompoundTag();
+                row.putUUID("Player", entry.getKey());
+                row.putUUID("Batch", pending.batchId());
+                ListTag itemList = new ListTag();
+                for (ItemStack stack : pending.items()) {
+                    if (!stack.isEmpty()) itemList.add(stack.copy().save(new CompoundTag()));
+                }
+                row.put("Items", itemList);
+                deathItems.add(row);
             }
-            row.put("Items", itemList);
-            deathItems.add(row);
         }
         tag.put("DeathItems", deathItems);
 
@@ -260,23 +286,51 @@ public final class DungeonSavedData extends SavedData {
         if (pendingReturns.remove(playerId) != null) setDirty();
     }
 
-    public void addPendingReward(UUID playerId, List<ItemStack> items, int xp) {
-        PendingReward old = pendingRewards.get(playerId);
-        List<ItemStack> merged = new ArrayList<>();
-        int totalXp = Math.max(0, xp);
-        if (old != null) {
-            for (ItemStack stack : old.items()) merged.add(stack.copy());
-            totalXp += old.xp();
+    public void addPendingReward(UUID playerId, UUID batchId, List<ItemStack> items, int xp) {
+        if (playerId == null || batchId == null) return;
+        List<ItemStack> copied = copyItems(items);
+        int safeXp = Math.max(0, xp);
+        if (copied.isEmpty() && safeXp <= 0) return;
+
+        List<PendingReward> list = pendingRewards.computeIfAbsent(playerId, k -> new ArrayList<>());
+        for (PendingReward existing : list) {
+            if (existing.batchId().equals(batchId)) return;
         }
-        if (items != null) for (ItemStack stack : items) if (!stack.isEmpty()) merged.add(stack.copy());
-        pendingRewards.put(playerId, new PendingReward(merged, totalXp));
+        list.add(new PendingReward(batchId, copied, safeXp));
         setDirty();
     }
 
+    public void addPendingReward(UUID playerId, List<ItemStack> items, int xp) {
+        addPendingReward(playerId, UUID.randomUUID(), items, xp);
+    }
+
+    public List<PendingReward> pendingRewards(UUID playerId) {
+        List<PendingReward> list = pendingRewards.get(playerId);
+        if (list == null || list.isEmpty()) return List.of();
+        List<PendingReward> copy = new ArrayList<>(list.size());
+        for (PendingReward pending : list) {
+            copy.add(new PendingReward(pending.batchId(), copyItems(pending.items()), pending.xp()));
+        }
+        return copy;
+    }
+
+    public void acknowledgePendingReward(UUID playerId, UUID batchId) {
+        List<PendingReward> list = pendingRewards.get(playerId);
+        if (list == null || batchId == null) return;
+        if (list.removeIf(pending -> batchId.equals(pending.batchId()))) {
+            if (list.isEmpty()) pendingRewards.remove(playerId);
+            setDirty();
+        }
+    }
+
+    @Deprecated
     public PendingReward takePendingReward(UUID playerId) {
-        PendingReward reward = pendingRewards.remove(playerId);
-        if (reward != null) setDirty();
-        return reward;
+        List<PendingReward> list = pendingRewards.get(playerId);
+        if (list == null || list.isEmpty()) return null;
+        PendingReward reward = list.remove(0);
+        if (list.isEmpty()) pendingRewards.remove(playerId);
+        setDirty();
+        return new PendingReward(reward.batchId(), copyItems(reward.items()), reward.xp());
     }
 
     /** 成功通关后开始该玩家对指定副本的冷却。seconds=0 表示不启用。 */
@@ -316,25 +370,67 @@ public final class DungeonSavedData extends SavedData {
         return dungeonId == null ? "" : dungeonId.trim().toLowerCase(Locale.ROOT);
     }
 
-    public void addPendingDeathItems(UUID playerId, List<ItemStack> items) {
-        if (items == null || items.isEmpty()) return;
-        List<ItemStack> merged = new ArrayList<>();
-        List<ItemStack> old = pendingDeathItems.get(playerId);
-        if (old != null) for (ItemStack stack : old) if (!stack.isEmpty()) merged.add(stack.copy());
-        for (ItemStack stack : items) if (!stack.isEmpty()) merged.add(stack.copy());
-        if (!merged.isEmpty()) {
-            pendingDeathItems.put(playerId, merged);
+    public UUID addPendingDeathItems(UUID playerId, List<ItemStack> items) {
+        UUID batchId = UUID.randomUUID();
+        addPendingDeathItems(playerId, batchId, items);
+        return batchId;
+    }
+
+    public void addPendingDeathItems(UUID playerId, UUID batchId, List<ItemStack> items) {
+        if (playerId == null || batchId == null) return;
+        List<ItemStack> copied = copyItems(items);
+        if (copied.isEmpty()) return;
+
+        List<PendingDeathItems> list = pendingDeathItems.computeIfAbsent(playerId, k -> new ArrayList<>());
+        for (PendingDeathItems existing : list) {
+            if (existing.batchId().equals(batchId)) return;
+        }
+        list.add(new PendingDeathItems(batchId, copied));
+        setDirty();
+    }
+
+    public List<PendingDeathItems> pendingDeathItems(UUID playerId) {
+        List<PendingDeathItems> list = pendingDeathItems.get(playerId);
+        if (list == null || list.isEmpty()) return List.of();
+        List<PendingDeathItems> copy = new ArrayList<>(list.size());
+        for (PendingDeathItems pending : list) {
+            copy.add(new PendingDeathItems(pending.batchId(), copyItems(pending.items())));
+        }
+        return copy;
+    }
+
+    public void acknowledgePendingDeathItems(UUID playerId, UUID batchId) {
+        List<PendingDeathItems> list = pendingDeathItems.get(playerId);
+        if (list == null || batchId == null) return;
+        if (list.removeIf(pending -> batchId.equals(pending.batchId()))) {
+            if (list.isEmpty()) pendingDeathItems.remove(playerId);
             setDirty();
         }
     }
 
+    @Deprecated
     public List<ItemStack> takePendingDeathItems(UUID playerId) {
-        List<ItemStack> items = pendingDeathItems.remove(playerId);
-        if (items != null) setDirty();
-        if (items == null) return List.of();
+        List<PendingDeathItems> list = pendingDeathItems.remove(playerId);
+        if (list == null || list.isEmpty()) return List.of();
+        setDirty();
         List<ItemStack> copy = new ArrayList<>();
-        for (ItemStack stack : items) if (!stack.isEmpty()) copy.add(stack.copy());
+        for (PendingDeathItems pending : list) copy.addAll(copyItems(pending.items()));
         return copy;
+    }
+
+    private static List<ItemStack> copyItems(List<ItemStack> items) {
+        List<ItemStack> copy = new ArrayList<>();
+        if (items != null) {
+            for (ItemStack stack : items) {
+                if (stack != null && !stack.isEmpty()) copy.add(stack.copy());
+            }
+        }
+        return copy;
+    }
+
+    private static UUID legacyBatch(String kind, UUID playerId, int rowIndex) {
+        String source = "yellowduck:" + kind + ":" + playerId + ":" + rowIndex;
+        return UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8));
     }
 
     private static CompoundTag writeReturn(DungeonInstance.ReturnPoint point) {
@@ -369,7 +465,8 @@ public final class DungeonSavedData extends SavedData {
         }
     }
 
-    public record PendingReward(List<ItemStack> items, int xp) {}
+    public record PendingReward(UUID batchId, List<ItemStack> items, int xp) {}
+    public record PendingDeathItems(UUID batchId, List<ItemStack> items) {}
     public record StaleInstance(UUID id, int slot, BlockPos origin, int radius, String dungeonId) {}
     public record ArenaSlot(int slot, String dungeonId, BlockPos origin, int radius, boolean initialized) {}
 }

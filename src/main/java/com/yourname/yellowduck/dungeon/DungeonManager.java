@@ -7,6 +7,7 @@ import com.yourname.yellowduck.party.PartyManager;
 import com.yourname.yellowduck.block.MeetStoneBlockEntity;
 import com.yourname.yellowduck.registry.ModBlocks;
 import com.yourname.yellowduck.network.MountNetwork;
+import com.yourname.yellowduck.util.SafePlayerDelivery;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -985,21 +986,38 @@ public final class DungeonManager {
      */
     private static void restoreDeathItems(ServerPlayer player) {
         DungeonSavedData data = DungeonSavedData.get(player.server);
-        List<ItemStack> stored = data.takePendingDeathItems(player.getUUID());
-        if (stored.isEmpty()) return;
+        List<DungeonSavedData.PendingDeathItems> batches = data.pendingDeathItems(player.getUUID());
+        if (batches.isEmpty()) return;
 
-        List<ItemStack> leftovers = new ArrayList<>();
-        int restoredStacks = 0;
-        for (ItemStack original : stored) {
-            ItemStack stack = original.copy();
-            player.getInventory().add(stack);
-            if (stack.isEmpty()) restoredStacks++;
-            else leftovers.add(stack.copy());
+        boolean restored = false;
+        boolean waitingForSpace = false;
+
+        for (DungeonSavedData.PendingDeathItems pending : batches) {
+            SafePlayerDelivery.DeliveryResult result = SafePlayerDelivery.deliver(
+                    player,
+                    "dungeon_death_items",
+                    pending.batchId(),
+                    pending.items(),
+                    0
+            );
+
+            if (result == SafePlayerDelivery.DeliveryResult.GRANTED) {
+                restored = true;
+            } else if (result == SafePlayerDelivery.DeliveryResult.NO_SPACE) {
+                waitingForSpace = true;
+            } else if (SafePlayerDelivery.canAcknowledge(
+                    player, "dungeon_death_items", pending.batchId())) {
+                data.acknowledgePendingDeathItems(player.getUUID(), pending.batchId());
+            }
         }
-        if (!leftovers.isEmpty()) data.addPendingDeathItems(player.getUUID(), leftovers);
-        player.containerMenu.broadcastChanges();
-        if (restoredStacks > 0) player.sendSystemMessage(Component.literal("§a已恢复本次副本死亡时的物品。"));
-        if (!leftovers.isEmpty()) player.sendSystemMessage(Component.literal("§e背包空间不足，剩余死亡物品已安全保存，稍后会继续恢复。"));
+
+        if (restored) {
+            player.sendSystemMessage(Component.literal("§a已安全恢复本次副本死亡时的物品。"));
+        }
+        if (waitingForSpace) {
+            player.sendSystemMessage(Component.literal(
+                    "§e背包空间不足，剩余死亡物品仍安全保存在服务器中；整理背包后会继续恢复。"));
+        }
     }
 
     private static void syncHud(DungeonInstance instance, MinecraftServer server) {
