@@ -2,6 +2,7 @@ package com.yourname.yellowduck.client.event;
 
 import com.yourname.yellowduck.client.NetcraftBossHud;
 import com.yourname.yellowduck.client.SakuraNetcraftHud;
+import com.yourname.yellowduck.client.ToyBearNetcraftHud;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -21,6 +22,7 @@ public final class BossHealthBarMixin {
     @SubscribeEvent
     public static void yellowduck$renderBossHud(RenderGuiEvent.Post event) {
         SakuraNetcraftHud.render(event);
+        ToyBearNetcraftHud.render(event);
         NetcraftBossHud.render(event);
     }
 }
