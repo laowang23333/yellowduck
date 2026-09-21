@@ -1,39 +1,80 @@
 package com.yourname.yellowduck.silk;
 
+import com.yourname.yellowduck.particle.ModParticles;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraftforge.network.NetworkHooks;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.MoverType;
-import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
-import java.util.Comparator;
+
 import java.util.UUID;
 
-/** 40生命，可被近战/远程摧毁。追踪最近参与者，接触或20秒后爆炸；摧毁则不爆炸。 */
-public class SilkMeteor extends PathfinderMob {
+/**
+ * 奶块黑暗流星：10 秒紫圈/禁锢结束后从上方落下；命中时在 5 格内分摊伤害并给分摊者 +5 黑暗能量。
+ */
+public class SilkMeteor extends Entity {
     private UUID owner;
+    private Vec3 impact = Vec3.ZERO;
+    private int life;
+
     public SilkMeteor(EntityType<? extends SilkMeteor> type, Level level) {
-        super(type, level); setNoGravity(true); setCustomName(Component.literal("追踪陨石")); setCustomNameVisible(true);
+        super(type, level);
+        noPhysics = true;
     }
-    public void setOwner(SilkBoss boss) { owner = boss.getUUID(); }
-    @Override protected void registerGoals() {}
-    @Override public void travel(Vec3 input) {}
-    @Override public boolean removeWhenFarAway(double distance) { return false; }
-    @Override public void tick() {
+
+    public void configure(SilkBoss boss, Vec3 impact) {
+        this.owner = boss.getUUID();
+        this.impact = impact;
+        moveTo(impact.x, impact.y + 14.0D, impact.z, 0.0F, 0.0F);
+    }
+
+    @Override
+    public Packet<ClientGamePacketListener> getAddEntityPacket() {
+        return NetworkHooks.getEntitySpawningPacket(this);
+    }
+
+    @Override
+    protected void defineSynchedData() {
+    }
+
+    @Override
+    protected void readAdditionalSaveData(CompoundTag tag) {
+        discard();
+    }
+
+    @Override
+    protected void addAdditionalSaveData(CompoundTag tag) {
+        if (owner != null) tag.putUUID("SilkOwner", owner);
+    }
+
+    @Override
+    public void tick() {
         super.tick();
-        if (level().isClientSide || !isAlive()) return;
-        if (!(level() instanceof ServerLevel sl) || owner == null || !(sl.getEntity(owner) instanceof SilkBoss boss) || !boss.isAlive()) { discard(); return; }
-        var target = boss.targets().stream().min(Comparator.comparingDouble(p -> distanceToSqr(p))).orElse(null);
-        if (target == null) { discard(); return; }
-        if (distanceToSqr(target) < 6.25 || tickCount >= 400) {
-            boss.aoe(position(), 5, SilkBalance.METEOR_DAMAGE, 10); discard(); return;
+        if (level().isClientSide) return;
+        if (!(level() instanceof ServerLevel serverLevel)
+                || owner == null
+                || !(serverLevel.getEntity(owner) instanceof SilkBoss boss)
+                || !boss.isAlive()) {
+            discard();
+            return;
         }
-        Vec3 movement = target.position().add(0, 0.8, 0).subtract(position()).normalize().scale(0.16);
-        setNoGravity(true); move(MoverType.SELF, movement);
-        sl.sendParticles(net.minecraft.core.particles.ParticleTypes.DRAGON_BREATH, getX(), getY() + 0.5, getZ(), 4, 0.5, 0.5, 0.5, 0);
+
+        life++;
+        double remaining = getY() - impact.y;
+        double drop = Math.max(0.55D, remaining * 0.18D);
+        setPos(impact.x, Math.max(impact.y, getY() - drop), impact.z);
+        serverLevel.sendParticles(ModParticles.SILK_DARK_FIRE.get(), getX(), getY(), getZ(),
+                8, 0.35D, 0.35D, 0.35D, 0.02D);
+        serverLevel.sendParticles(ModParticles.SILK_SMOKE.get(), getX(), getY(), getZ(),
+                4, 0.25D, 0.25D, 0.25D, 0.01D);
+
+        if (getY() <= impact.y + 0.15D || life >= 40) {
+            boss.resolveMeteorImpact(impact);
+            discard();
+        }
     }
-    @Override public void addAdditionalSaveData(CompoundTag tag) { super.addAdditionalSaveData(tag); }
-    @Override public void readAdditionalSaveData(CompoundTag tag) { super.readAdditionalSaveData(tag); discard(); }
 }
