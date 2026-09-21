@@ -13,6 +13,7 @@ import com.yourname.yellowduck.particle.ModParticles;
 import com.yourname.yellowduck.registry.ModEffects;
 import com.yourname.yellowduck.registry.ModEntities;
 import com.yourname.yellowduck.registry.ModSounds;
+import com.yourname.yellowduck.silk.SilkConfig;
 import com.yourname.yellowduck.silk.SilkContent;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -52,6 +53,9 @@ public class YellowDuckMod {
 
         // 独立副本配置：config/yellowduck-dungeons.toml。
         DungeonConfig.ensureLoaded();
+
+        // 教授战斗配置也写入 config/yellowduck-entities.toml，同样不经过 ForgeConfigSpec。
+        SilkConfig.ensureLoaded();
 
         bus.addListener(this::registerAttributes);
     }
