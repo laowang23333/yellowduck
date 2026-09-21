@@ -12,6 +12,7 @@ public record DungeonDefinition(
         int timeLimitSeconds,
         int bossSpawnDelaySeconds,
         int rewardPreviewSeconds,
+        int cooldownSeconds,
         int wipeCloseSeconds,
         String reviveMode,
         int fixedRevives,

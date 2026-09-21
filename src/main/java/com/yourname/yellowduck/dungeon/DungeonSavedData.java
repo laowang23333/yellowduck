@@ -16,6 +16,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,6 +30,8 @@ public final class DungeonSavedData extends SavedData {
     private final Map<UUID, DungeonInstance.ReturnPoint> pendingReturns = new LinkedHashMap<>();
     private final Map<UUID, PendingReward> pendingRewards = new LinkedHashMap<>();
     private final Map<UUID, List<ItemStack>> pendingDeathItems = new LinkedHashMap<>();
+    /** player -> (dungeon id -> epoch millis). 成功通关冷却跨重启保存。 */
+    private final Map<UUID, Map<String, Long>> dungeonCooldowns = new LinkedHashMap<>();
     private final Map<UUID, StaleInstance> trackedInstances = new LinkedHashMap<>();
     /** slot -> 永久地图槽。只给拥有 Structure NBT 模板的副本使用。 */
     private final Map<Integer, ArenaSlot> arenaSlots = new LinkedHashMap<>();
@@ -72,6 +75,19 @@ public final class DungeonSavedData extends SavedData {
                 if (!stack.isEmpty()) items.add(stack);
             }
             if (!items.isEmpty()) data.pendingDeathItems.put(entry.getUUID("Player"), items);
+        }
+
+        ListTag cooldowns = tag.getList("Cooldowns", Tag.TAG_COMPOUND);
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < cooldowns.size(); i++) {
+            CompoundTag entry = cooldowns.getCompound(i);
+            if (!entry.hasUUID("Player")) continue;
+            String dungeonId = normalizeDungeonId(entry.getString("Dungeon"));
+            long until = entry.getLong("Until");
+            if (dungeonId.isEmpty() || until <= now) continue;
+            data.dungeonCooldowns
+                    .computeIfAbsent(entry.getUUID("Player"), k -> new LinkedHashMap<>())
+                    .put(dungeonId, until);
         }
 
         ListTag instances = tag.getList("Instances", Tag.TAG_COMPOUND);
@@ -146,6 +162,21 @@ public final class DungeonSavedData extends SavedData {
             deathItems.add(row);
         }
         tag.put("DeathItems", deathItems);
+
+        ListTag cooldowns = new ListTag();
+        long now = System.currentTimeMillis();
+        for (var playerEntry : dungeonCooldowns.entrySet()) {
+            for (var dungeonEntry : playerEntry.getValue().entrySet()) {
+                long until = dungeonEntry.getValue() == null ? 0L : dungeonEntry.getValue();
+                if (until <= now) continue;
+                CompoundTag row = new CompoundTag();
+                row.putUUID("Player", playerEntry.getKey());
+                row.putString("Dungeon", dungeonEntry.getKey());
+                row.putLong("Until", until);
+                cooldowns.add(row);
+            }
+        }
+        tag.put("Cooldowns", cooldowns);
 
         ListTag instances = new ListTag();
         for (StaleInstance instance : trackedInstances.values()) {
@@ -246,6 +277,43 @@ public final class DungeonSavedData extends SavedData {
         PendingReward reward = pendingRewards.remove(playerId);
         if (reward != null) setDirty();
         return reward;
+    }
+
+    /** 成功通关后开始该玩家对指定副本的冷却。seconds=0 表示不启用。 */
+    public void startCooldown(UUID playerId, String dungeonId, int seconds) {
+        if (playerId == null || seconds <= 0) return;
+        String id = normalizeDungeonId(dungeonId);
+        if (id.isEmpty()) return;
+        long until = System.currentTimeMillis() + Math.max(0L, (long) seconds) * 1000L;
+        Map<String, Long> perDungeon = dungeonCooldowns.computeIfAbsent(playerId, k -> new LinkedHashMap<>());
+        Long old = perDungeon.get(id);
+        if (old == null || until > old) {
+            perDungeon.put(id, until);
+            setDirty();
+        }
+    }
+
+    /** 返回剩余冷却秒数；已过期会顺手清理。 */
+    public long cooldownRemainingSeconds(UUID playerId, String dungeonId) {
+        if (playerId == null) return 0L;
+        String id = normalizeDungeonId(dungeonId);
+        if (id.isEmpty()) return 0L;
+        Map<String, Long> perDungeon = dungeonCooldowns.get(playerId);
+        if (perDungeon == null) return 0L;
+        Long until = perDungeon.get(id);
+        if (until == null) return 0L;
+        long remainingMs = until - System.currentTimeMillis();
+        if (remainingMs <= 0L) {
+            perDungeon.remove(id);
+            if (perDungeon.isEmpty()) dungeonCooldowns.remove(playerId);
+            setDirty();
+            return 0L;
+        }
+        return (remainingMs + 999L) / 1000L;
+    }
+
+    private static String normalizeDungeonId(String dungeonId) {
+        return dungeonId == null ? "" : dungeonId.trim().toLowerCase(Locale.ROOT);
     }
 
     public void addPendingDeathItems(UUID playerId, List<ItemStack> items) {

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -36,7 +37,12 @@ public final class DungeonConfig {
         try {
             if (Files.notExists(PATH)) {
                 Files.createDirectories(PATH.getParent());
-                Files.writeString(PATH, defaultText(), StandardCharsets.UTF_8);
+                try {
+                    // 仅在第一次生成时创建。已有配置永远不走覆盖写入，避免手改数值被默认模板顶回去。
+                    Files.writeString(PATH, defaultText(), StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
+                } catch (java.nio.file.FileAlreadyExistsException ignored) {
+                    // 并发启动/面板刚好已创建：直接读取现有文件。
+                }
             }
             parse(Files.readAllLines(PATH, StandardCharsets.UTF_8));
             loaded = true;
@@ -127,6 +133,7 @@ public final class DungeonConfig {
                     intValue(v, "time_limit_seconds", 1500, 30, 86400),
                     intValue(v, "boss_spawn_delay_seconds", 5, 0, 300),
                     intValue(v, "reward_preview_seconds", 60, 0, 3600),
+                    intValue(v, "cooldown_seconds", 0, 0, 31536000),
                     intValue(v, "wipe_close_seconds", 30, 1, 600),
                     v.getOrDefault("revive_mode", "players"),
                     intValue(v, "fixed_revives", 3, 0, 1000),
@@ -205,6 +212,8 @@ public final class DungeonConfig {
                 boss_spawn_delay_seconds = 5
                 # 通关后奖励预览GUI保留多久，随后全员离开副本，单位：秒。
                 reward_preview_seconds = 60
+                # 成功通关后的再次挑战冷却，单位：秒。0=关闭冷却。按玩家+副本分别记录，重启服务器仍保留。
+                cooldown_seconds = 0
                 # 全队死亡后自动关闭副本的倒计时，单位：秒。
                 wipe_close_seconds = 30
                 # 复活次数模式：players=进入几个人就有几次；fixed=使用 fixed_revives。
@@ -236,6 +245,8 @@ public final class DungeonConfig {
                 boss_spawn_delay_seconds = 5
                 # 通关后奖励预览GUI保留多久，单位：秒。默认：60。
                 reward_preview_seconds = 60
+                # 成功通关后的再次挑战冷却，单位：秒。0=关闭冷却。按玩家+副本分别记录，重启服务器仍保留。
+                cooldown_seconds = 0
                 # 全队死亡后自动关闭副本的倒计时，单位：秒。默认：30。
                 wipe_close_seconds = 30
                 # 复活次数模式：players=进入几个人就有几次；fixed=使用 fixed_revives。

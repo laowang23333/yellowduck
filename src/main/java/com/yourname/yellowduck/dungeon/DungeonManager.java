@@ -160,12 +160,29 @@ public final class DungeonManager {
             players.add(player);
         }
 
+        // 冷却按“玩家 + 副本 ID”持久化。只要队伍中有一人还在该副本冷却，整队不能绕过重开。
+        DungeonSavedData savedData = DungeonSavedData.get(leader.server);
+        if (def.cooldownSeconds() > 0) {
+            for (ServerPlayer player : players) {
+                long remaining = savedData.cooldownRemainingSeconds(player.getUUID(), def.id());
+                if (remaining <= 0L) continue;
+                String name = player.getGameProfile().getName();
+                leader.sendSystemMessage(Component.literal("§c无法开始副本：§f" + name
+                        + " §c仍在 §e" + def.displayName() + " §c冷却中，剩余 §f"
+                        + formatCooldown(remaining) + "§c。"));
+                if (player != leader) {
+                    player.sendSystemMessage(Component.literal("§e你的 §f" + def.displayName()
+                            + " §e挑战冷却还剩 §f" + formatCooldown(remaining) + "§e。"));
+                }
+                return false;
+            }
+        }
+
         ServerLevel level = leader.server.getLevel(DUNGEON_LEVEL);
         if (level == null) {
             leader.sendSystemMessage(Component.literal("§c副本维度 yellowduck:dungeon 未加载，请检查数据包资源。"));
             return false;
         }
-        DungeonSavedData savedData = DungeonSavedData.get(leader.server);
         boolean permanentArena = DungeonArenaTemplates.has(def.id());
         int slot = allocateSlot(def.id(), savedData, permanentArena);
         if (slot < 0) {
@@ -600,20 +617,19 @@ public final class DungeonManager {
     }
 
     static void tickCleopatraCompletion(DungeonInstance instance, MinecraftServer server, ServerLevel level) {
-        if (instance.cleopatraBodyDeadAge < 0 || instance.ageTicks - instance.cleopatraBodyDeadAge < 220) return;
-        int searchRadius = instance.arenaRadius + 16;
-        AABB box = arenaBox(instance, searchRadius, 40);
-        boolean hasSnakeOrSummoner = false;
-        for (Entity entity : level.getEntities((Entity) null, box, e -> e.isAlive() && belongsToInstance(e, instance))) {
-            ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
-            if (id == null || !YellowDuckMod.MOD_ID.equals(id.getNamespace())) continue;
-            String path = id.getPath();
-            if (path.startsWith("cleopatra_snake_") || path.equals("cleopatra_snake_summoner")) {
-                hasSnakeOrSummoner = true;
-                break;
-            }
+        if (!instance.mainBossDead || !instance.waitingCleopatraSnakes) return;
+
+        // 扫描仍在场的蛇只是自愈记录；真正的通关依据是“至少三条蛇曾生成，并且三条都触发真实死亡事件”。
+        // 旧逻辑只判断场上已经没有蛇/召唤器：如果金块出生点没找到、三蛇压根没刷出，也会误判通关发奖励。
+        AABB box = arenaBox(instance, instance.arenaRadius + 16, 40);
+        for (Entity entity : level.getEntities((Entity) null, box, e -> belongsToInstance(e, instance))) {
+            if (isCleopatraCombatSnake(entity)) instance.cleopatraSnakeSpawned.add(entity.getUUID());
         }
-        if (!hasSnakeOrSummoner) complete(instance, server);
+
+        if (instance.cleopatraSnakeSpawned.size() < 3) return;
+        if (instance.cleopatraSnakeDead.size() < 3) return;
+        if (!instance.cleopatraSnakeDead.containsAll(instance.cleopatraSnakeSpawned)) return;
+        complete(instance, server);
     }
 
     static void completeFromController(DungeonInstance instance, MinecraftServer server) {
@@ -622,6 +638,19 @@ public final class DungeonManager {
 
     private static void complete(DungeonInstance instance, MinecraftServer server) {
         if (instance.state == DungeonInstance.State.REWARD || instance.state == DungeonInstance.State.CLOSING) return;
+
+        // 艳后专用防误发：配置为 cleopatra_snakes 时，任何代码路径都必须满足“本体已死 + 三蛇至少3条真实生成 + 全部真实死亡”。
+        if ("cleopatra_snakes".equalsIgnoreCase(instance.definition.completionType())) {
+            if (!instance.mainBossDead
+                    || instance.cleopatraSnakeSpawned.size() < 3
+                    || instance.cleopatraSnakeDead.size() < 3
+                    || !instance.cleopatraSnakeDead.containsAll(instance.cleopatraSnakeSpawned)) {
+                LOGGER.warn("拒绝提前完成艳后副本：instance={} bossDead={} snakesSpawned={} snakesDead={}",
+                        instance.id, instance.mainBossDead, instance.cleopatraSnakeSpawned.size(), instance.cleopatraSnakeDead.size());
+                return;
+            }
+        }
+
         instance.state = DungeonInstance.State.REWARD;
         instance.stateTicks = 0;
         for (UUID uuid : instance.participants) {
@@ -639,6 +668,14 @@ public final class DungeonManager {
         instance.rolledRewards.clear();
         instance.rolledRewards.addAll(DungeonRewardManager.roll(instance));
         DungeonRewardManager.stage(instance, server);
+
+        // 成功通关才开始冷却；失败、超时、主动离本都不会错误进入冷却。
+        if (instance.definition.cooldownSeconds() > 0) {
+            DungeonSavedData data = DungeonSavedData.get(server);
+            for (UUID uuid : instance.rewardEligible) {
+                data.startCooldown(uuid, instance.definition.id(), instance.definition.cooldownSeconds());
+            }
+        }
         broadcast(instance, server, Component.literal("§6[副本] §a挑战成功！副本已完成，正在展示本次副本奖励。"));
         int exitSeconds = instance.definition.rewardPreviewSeconds();
         broadcast(instance, server, Component.literal(exitSeconds > 0
@@ -688,10 +725,30 @@ public final class DungeonManager {
         if (!(entity.level() instanceof ServerLevel level) || !level.dimension().equals(DUNGEON_LEVEL)) return;
         DungeonInstance instance = findForEntity(entity);
         if (instance == null || instance.state != DungeonInstance.State.FIGHTING) return;
+
+        if (isCleopatraCombatSnake(entity)) {
+            instance.cleopatraSnakeSpawned.add(entity.getUUID());
+            instance.cleopatraSnakeDead.add(entity.getUUID());
+            if (instance.waitingCleopatraSnakes) tickCleopatraCompletion(instance, level.getServer(), level);
+            return;
+        }
+
         if (entity.getUUID().equals(instance.mainBossId)) {
             instance.mainBossDead = true;
             DungeonCompletionControllers.forInstance(instance).onMainBossDeath(instance, level.getServer(), level);
         }
+    }
+
+    /**
+     * 艳后三蛇只有在 Level#addFreshEntity 真正返回 true 后才能登记为“已生成”。
+     * 这样其它 Mod/插件取消 EntityJoinLevelEvent 时，不会留下永远等不到死亡事件的幽灵 UUID。
+     */
+    public static void recordCleopatraSnakeSpawned(Entity entity) {
+        if (entity == null || !isCleopatraCombatSnake(entity)) return;
+        if (!(entity.level() instanceof ServerLevel level) || !level.dimension().equals(DUNGEON_LEVEL)) return;
+        DungeonInstance instance = findForEntity(entity);
+        if (instance == null || instance.state != DungeonInstance.State.FIGHTING) return;
+        instance.cleopatraSnakeSpawned.add(entity.getUUID());
     }
 
     /** 给副本内后续召唤出来的蛇、毒池、投射物等自动继承实例ID，减少多队并发串实例。 */
@@ -700,9 +757,18 @@ public final class DungeonManager {
         if (event.getLevel().isClientSide()) return;
         if (!(event.getLevel() instanceof ServerLevel level) || !level.dimension().equals(DUNGEON_LEVEL)) return;
         Entity entity = event.getEntity();
-        if (entity instanceof Player || entity.getPersistentData().hasUUID("YellowDuckDungeon")) return;
-        DungeonInstance instance = findByPosition(entity.getX(), entity.getY(), entity.getZ());
-        if (instance != null) entity.getPersistentData().putUUID("YellowDuckDungeon", instance.id);
+        if (entity instanceof Player) return;
+
+        DungeonInstance instance = null;
+        if (entity.getPersistentData().hasUUID("YellowDuckDungeon")) {
+            instance = ACTIVE.get(entity.getPersistentData().getUUID("YellowDuckDungeon"));
+        }
+        if (instance == null) {
+            instance = findByPosition(entity.getX(), entity.getY(), entity.getZ());
+            if (instance != null) entity.getPersistentData().putUUID("YellowDuckDungeon", instance.id);
+        }
+        // 不在 EntityJoinLevelEvent 中登记三蛇“已生成”。
+        // 这个事件之后仍可能被其它 Mod/插件取消；真正登记由召唤器在 addFreshEntity 返回 true 后完成。
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
@@ -982,6 +1048,30 @@ public final class DungeonManager {
             if (profile.isPresent() && profile.get().getName() != null) return profile.get().getName();
         }
         return uuid.toString().substring(0, 8);
+    }
+
+    private static boolean isCleopatraCombatSnake(Entity entity) {
+        if (entity == null) return false;
+        ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+        if (id == null || !YellowDuckMod.MOD_ID.equals(id.getNamespace())) return false;
+        String path = id.getPath();
+        return path.equals("cleopatra_snake_poison")
+                || path.equals("cleopatra_snake_fire")
+                || path.equals("cleopatra_snake_ice");
+    }
+
+    private static String formatCooldown(long seconds) {
+        long value = Math.max(0L, seconds);
+        long days = value / 86400L;
+        value %= 86400L;
+        long hours = value / 3600L;
+        value %= 3600L;
+        long minutes = value / 60L;
+        long secs = value % 60L;
+        if (days > 0L) return days + "天" + hours + "小时";
+        if (hours > 0L) return hours + "小时" + minutes + "分";
+        if (minutes > 0L) return minutes + "分" + secs + "秒";
+        return secs + "秒";
     }
 
     private static DungeonInstance findForEntity(Entity entity) {

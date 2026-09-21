@@ -44,6 +44,10 @@ public final class DungeonInstance {
     public boolean mainBossDead;
     public boolean waitingCleopatraSnakes;
     public int cleopatraBodyDeadAge = -1;
+    /** 艳后第二阶段实际生成过的三蛇 UUID。通关必须至少记录到三条。 */
+    public final Set<UUID> cleopatraSnakeSpawned = new LinkedHashSet<>();
+    /** 已确认通过 LivingDeathEvent 真正死亡的三蛇 UUID。 */
+    public final Set<UUID> cleopatraSnakeDead = new LinkedHashSet<>();
     public boolean rewardStaged;
     public boolean rewardDelivered;
 
