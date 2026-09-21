@@ -37,6 +37,8 @@ import java.util.UUID;
 public class ToyBearEntity extends PathfinderMob {
     public static final EntityDataAccessor<Boolean> RAGING =
             SynchedEntityData.defineId(ToyBearEntity.class, EntityDataSerializers.BOOLEAN);
+    public static final EntityDataAccessor<Boolean> ATTACKING =
+            SynchedEntityData.defineId(ToyBearEntity.class, EntityDataSerializers.BOOLEAN);
 
     private static final double NORMAL_ATTACK_DAMAGE = 18.0D;
     private static final double RAGE_ATTACK_DAMAGE = 21.0D;
@@ -44,10 +46,12 @@ public class ToyBearEntity extends PathfinderMob {
     private static final double RAGE_ATTACK_SPEED = 1.40D;
 
     private static final int RAGE_PARTICLE_INTERVAL = 3;
+    private static final int ATTACK_ANIMATION_HOLD_TICKS = 30;
 
     private UUID ownerSakura;
     private boolean rageBurstPlayed;
     private int rageParticleTimer;
+    private int attackAnimationTimer;
 
     private final ServerBossEvent bossEvent =
             new ServerBossEvent(
@@ -100,6 +104,7 @@ public class ToyBearEntity extends PathfinderMob {
     protected void defineSynchedData() {
         super.defineSynchedData();
         entityData.define(RAGING, false);
+        entityData.define(ATTACKING, false);
     }
 
     @Override
@@ -115,9 +120,21 @@ public class ToyBearEntity extends PathfinderMob {
             return;
         }
 
+        tickAttackAnimationState();
         updateRageState();
         updateBossBar();
         tickRageParticles();
+    }
+
+    private void tickAttackAnimationState() {
+        if (attackAnimationTimer > 0) {
+            attackAnimationTimer--;
+            if (!entityData.get(ATTACKING)) {
+                entityData.set(ATTACKING, true);
+            }
+        } else if (entityData.get(ATTACKING)) {
+            entityData.set(ATTACKING, false);
+        }
     }
 
     private boolean hasLivingOwner() {
@@ -219,6 +236,11 @@ public class ToyBearEntity extends PathfinderMob {
 
     @Override
     public boolean doHurtTarget(Entity target) {
+        if (!level().isClientSide) {
+            attackAnimationTimer = ATTACK_ANIMATION_HOLD_TICKS;
+            entityData.set(ATTACKING, true);
+        }
+
         boolean hit = super.doHurtTarget(target);
         if (!hit || level().isClientSide || !(level() instanceof ServerLevel serverLevel)) {
             return hit;
