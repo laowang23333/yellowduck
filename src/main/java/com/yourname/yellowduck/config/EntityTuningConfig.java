@@ -79,30 +79,18 @@ public final class EntityTuningConfig {
         builder.comment("", title).push(key);
 
         Entry entry = new Entry(
-                builder.comment("最大生命值：实体可拥有的最大生命。留空=源码默认值。")
-                        .define("max_health", ""),
-                builder.comment("攻击力：实体普通攻击/基础攻击使用的攻击伤害。留空=源码默认值。")
-                        .define("attack_damage", ""),
-                builder.comment("移动速度：地面移动速度。数值越大跑得越快。留空=源码默认值。")
-                        .define("movement_speed", ""),
-                builder.comment("攻击速度：拥有该属性的实体普通攻击速度。留空=源码默认值。")
-                        .define("attack_speed", ""),
-                builder.comment("护甲值：原版护甲减伤属性。留空=源码默认值。")
-                        .define("armor", ""),
-                builder.comment("护甲韧性：降低高额伤害穿透护甲的程度。留空=源码默认值。")
-                        .define("armor_toughness", ""),
-                builder.comment("击退抗性：0=无抗性，1=完全抗击退。留空=源码默认值。")
-                        .define("knockback_resistance", ""),
-                builder.comment("跟随范围：AI可持续追踪目标的基础距离。留空=源码默认值。")
-                        .define("follow_range", ""),
-                builder.comment("攻击击退：实体普通近战命中时附加的击退强度。留空=源码默认值。")
-                        .define("attack_knockback", ""),
-                builder.comment("飞行速度：仅对拥有飞行速度属性的实体有效。留空=源码默认值。")
-                        .define("flying_speed", ""),
-                builder.comment("跳跃强度：仅对拥有跳跃强度属性的坐骑/生物有效。留空=源码默认值。")
-                        .define("jump_strength", ""),
-                builder.comment("NetCraft T级：仅对继承通用 NetcraftBossBase 的BOSS有效，例如斯尔克填5就是T5。")
-                        .define("netcraft_tier", ""),
+                numeric(builder, "最大生命值：实体可拥有的最大生命。留空=源码默认值。", "max_health"),
+                numeric(builder, "攻击力：实体普通攻击/基础攻击使用的攻击伤害。留空=源码默认值。", "attack_damage"),
+                numeric(builder, "移动速度：地面移动速度。数值越大跑得越快。留空=源码默认值。", "movement_speed"),
+                numeric(builder, "攻击速度：拥有该属性的实体普通攻击速度。留空=源码默认值。", "attack_speed"),
+                numeric(builder, "护甲值：原版护甲减伤属性。留空=源码默认值。", "armor"),
+                numeric(builder, "护甲韧性：降低高额伤害穿透护甲的程度。留空=源码默认值。", "armor_toughness"),
+                numeric(builder, "击退抗性：0=无抗性，1=完全抗击退。留空=源码默认值。", "knockback_resistance"),
+                numeric(builder, "跟随范围：AI可持续追踪目标的基础距离。留空=源码默认值。", "follow_range"),
+                numeric(builder, "攻击击退：实体普通近战命中时附加的击退强度。留空=源码默认值。", "attack_knockback"),
+                numeric(builder, "飞行速度：仅对拥有飞行速度属性的实体有效。留空=源码默认值。", "flying_speed"),
+                numeric(builder, "跳跃强度：仅对拥有跳跃强度属性的坐骑/生物有效。留空=源码默认值。", "jump_strength"),
+                numeric(builder, "NetCraft T级：仅对继承通用 NetcraftBossBase 的BOSS有效，例如斯尔克填5就是T5。", "netcraft_tier"),
                 builder.comment(
                         "掉落物：留空=保留原掉落；非空=完全使用本配置掉落。",
                         "格式：[物品ID|最小数量|最大数量|概率]",
@@ -112,6 +100,28 @@ public final class EntityTuningConfig {
         );
         ENTRIES.put(key, entry);
         builder.pop();
+    }
+
+    /**
+     * 数值覆盖字段同时接受 TOML 数字和字符串。
+     * 旧版只接受 String，所以 max_health = 50000 会被 Forge 当作类型错误并在启动校验时恢复成默认 ""。
+     * 现在 max_health = 50000 与 max_health = "50000" 都合法。
+     */
+    private static ForgeConfigSpec.ConfigValue<Object> numeric(ForgeConfigSpec.Builder builder, String comment, String key) {
+        return builder.comment(comment, "支持：" + key + " = 50000 或 " + key + " = \"50000\"")
+                .define(key, (Object) "", EntityTuningConfig::validNumericOverride);
+    }
+
+    private static boolean validNumericOverride(Object value) {
+        if (value instanceof Number) return true;
+        if (!(value instanceof String text)) return false;
+        if (text.isBlank()) return true;
+        try {
+            Double.parseDouble(text.trim());
+            return true;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     @SubscribeEvent
@@ -153,7 +163,7 @@ public final class EntityTuningConfig {
         setAttribute(entity, Attributes.FLYING_SPEED, entry.flyingSpeed());
         setAttribute(entity, Attributes.JUMP_STRENGTH, entry.jumpStrength());
 
-        if (!entry.maxHealth().get().isBlank() && entity.getMaxHealth() > 0.0F) {
+        if (!isBlankOverride(entry.maxHealth().get()) && entity.getMaxHealth() > 0.0F) {
             entity.setHealth((float) Math.max(0.1D, Math.min(entity.getMaxHealth(), entity.getMaxHealth() * healthRatio)));
         }
 
@@ -165,28 +175,33 @@ public final class EntityTuningConfig {
         }
     }
 
-    private static void setAttribute(LivingEntity entity, Attribute attribute, ForgeConfigSpec.ConfigValue<String> value) {
-        String text = value.get();
-        if (text == null || text.isBlank()) return;
-        Double parsed = parseDouble(text, attribute.getDescriptionId());
+    private static void setAttribute(LivingEntity entity, Attribute attribute, ForgeConfigSpec.ConfigValue<Object> value) {
+        Object raw = value.get();
+        if (isBlankOverride(raw)) return;
+        Double parsed = parseDouble(raw, attribute.getDescriptionId());
         if (parsed == null) return;
         var instance = entity.getAttribute(attribute);
         if (instance != null) instance.setBaseValue(parsed);
     }
 
-    private static Double parseDouble(String text, String field) {
-        if (text == null || text.isBlank()) return null;
+    private static boolean isBlankOverride(Object value) {
+        return value == null || (value instanceof String text && text.isBlank());
+    }
+
+    private static Double parseDouble(Object value, String field) {
+        if (isBlankOverride(value)) return null;
+        if (value instanceof Number number) return number.doubleValue();
         try {
-            return Double.parseDouble(text.trim());
+            return Double.parseDouble(String.valueOf(value).trim());
         } catch (NumberFormatException ex) {
-            LOGGER.warn("YellowDuck entity config: {} 不是有效数字: {}", field, text);
+            LOGGER.warn("YellowDuck entity config: {} 不是有效数字: {}", field, value);
             return null;
         }
     }
 
-    private static Integer parseInt(String text, String field) {
-        Double value = parseDouble(text, field);
-        return value == null ? null : (int) Math.round(value);
+    private static Integer parseInt(Object value, String field) {
+        Double parsed = parseDouble(value, field);
+        return parsed == null ? null : (int) Math.round(parsed);
     }
 
     @SubscribeEvent
@@ -250,18 +265,18 @@ public final class EntityTuningConfig {
     private record DropRule(Item item, int min, int max, double chance) {}
 
     private record Entry(
-            ForgeConfigSpec.ConfigValue<String> maxHealth,
-            ForgeConfigSpec.ConfigValue<String> attackDamage,
-            ForgeConfigSpec.ConfigValue<String> movementSpeed,
-            ForgeConfigSpec.ConfigValue<String> attackSpeed,
-            ForgeConfigSpec.ConfigValue<String> armor,
-            ForgeConfigSpec.ConfigValue<String> armorToughness,
-            ForgeConfigSpec.ConfigValue<String> knockbackResistance,
-            ForgeConfigSpec.ConfigValue<String> followRange,
-            ForgeConfigSpec.ConfigValue<String> attackKnockback,
-            ForgeConfigSpec.ConfigValue<String> flyingSpeed,
-            ForgeConfigSpec.ConfigValue<String> jumpStrength,
-            ForgeConfigSpec.ConfigValue<String> netcraftTier,
+            ForgeConfigSpec.ConfigValue<Object> maxHealth,
+            ForgeConfigSpec.ConfigValue<Object> attackDamage,
+            ForgeConfigSpec.ConfigValue<Object> movementSpeed,
+            ForgeConfigSpec.ConfigValue<Object> attackSpeed,
+            ForgeConfigSpec.ConfigValue<Object> armor,
+            ForgeConfigSpec.ConfigValue<Object> armorToughness,
+            ForgeConfigSpec.ConfigValue<Object> knockbackResistance,
+            ForgeConfigSpec.ConfigValue<Object> followRange,
+            ForgeConfigSpec.ConfigValue<Object> attackKnockback,
+            ForgeConfigSpec.ConfigValue<Object> flyingSpeed,
+            ForgeConfigSpec.ConfigValue<Object> jumpStrength,
+            ForgeConfigSpec.ConfigValue<Object> netcraftTier,
             ForgeConfigSpec.ConfigValue<String> items
     ) {}
 }
