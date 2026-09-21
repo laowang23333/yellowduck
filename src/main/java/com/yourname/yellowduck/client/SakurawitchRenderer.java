@@ -20,6 +20,7 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
             new ResourceLocation("yellowduck", "entity_boss_t2_sakurawitch");
 
     private static final float MODEL_SCALE = 0.15F;
+    private static final int MOVE_GRACE_TICKS = 4;
 
     public SakurawitchRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
@@ -45,11 +46,15 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
                     int idx = entity.getEntityData().get(SakurawitchEntity.ATTACK_INDEX);
 
                     if (idx > 0) {
+                        // 攻击状态仍由服务端决定；客户端收到一次后让 PolyMesh 自己连续播放。
                         wantAnim = "Anim-1_attack_" + String.format("%02d", idx);
-                    } else if (entity.getEntityData().get(SakurawitchEntity.IS_WALKING)) {
-                        wantAnim = "Anim-1_walk";
                     } else {
-                        wantAnim = "Anim-1_stand";
+                        boolean walking = ClientEntityMotionState.isMoving(
+                                entity,
+                                entity.getEntityData().get(SakurawitchEntity.IS_WALKING),
+                                MOVE_GRACE_TICKS
+                        );
+                        wantAnim = walking ? "Anim-1_walk" : "Anim-1_stand";
                     }
                 }
 
@@ -58,13 +63,15 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
                     boolean loop = wantAnim.equals("Anim-1_walk")
                             || wantAnim.equals("Anim-1_stand")
                             || wantAnim.equals("Anim-1_run");
-                    // 只在动画名改变时切换，避免每帧重启动画。
+
+                    // 只在状态真正变化时切换。之后由客户端渲染帧连续推进动画时间。
                     ctrl.play(wantAnim, loop);
                 }
             }
-        } catch (Throwable t) {
-            // 动画失败不影响模型渲染。
+        } catch (Throwable ignored) {
+            // 动画异常不影响模型主体渲染。
         }
+
         super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
     }
 
