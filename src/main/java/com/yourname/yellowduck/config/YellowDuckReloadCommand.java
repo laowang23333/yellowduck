@@ -4,24 +4,25 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.yourname.yellowduck.YellowDuckMod;
+import com.yourname.yellowduck.block.MeetStoneBlockEntity;
 import com.yourname.yellowduck.cleopatra.CleopatraBoss;
 import com.yourname.yellowduck.cleopatra.CleopatraConfig;
 import com.yourname.yellowduck.cleopatra.CleopatraSandworm;
 import com.yourname.yellowduck.cleopatra.CleopatraScorpion;
 import com.yourname.yellowduck.cleopatra.CleopatraVenomSnake;
 import com.yourname.yellowduck.dungeon.DungeonConfig;
-import com.yourname.yellowduck.dungeon.DungeonManager;
 import com.yourname.yellowduck.dungeon.DungeonDefinition;
-import com.yourname.yellowduck.block.MeetStoneBlockEntity;
+import com.yourname.yellowduck.dungeon.DungeonManager;
+import com.yourname.yellowduck.silk.SilkConfig;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -127,31 +128,36 @@ public final class YellowDuckReloadCommand {
     private static int reload(CommandSourceStack source) {
         try {
             /*
-             * yellowduck-entities.toml 已经不走 Forge ConfigTracker。
-             * 先完整解析并验证，只有成功才原子切换；失败时保留上一份有效配置。
+             * 三份 YellowDuck 配置均自行解析，不经过 ForgeConfigSpec。
+             * 任一文件解析失败时，该文件继续使用上一份有效值，不会被自动改回默认。
              */
             boolean entityOk = EntityTuningConfig.reload();
             boolean dungeonOk = DungeonConfig.reload();
+            boolean silkOk = SilkConfig.reload();
 
             int count = 0;
-            if (entityOk) {
+            if (entityOk || silkOk) {
                 for (ServerLevel level : source.getServer().getAllLevels()) {
                     for (var entity : level.getAllEntities()) {
                         if (!(entity instanceof LivingEntity living)) continue;
 
-                        EntityTuningConfig.reapply(living);
+                        if (entityOk) {
+                            EntityTuningConfig.reapply(living);
 
-                        // 艳后的战斗配置仍在同一个 yellowduck-entities.toml 中。
-                        // 这些实体的基础属性在 reload 后同步刷新。
-                        if (living instanceof CleopatraBoss) {
-                            apply(living, CleopatraConfig.bossHealth.get(), CleopatraConfig.bossAttack.get());
-                        } else if (living instanceof CleopatraSandworm) {
-                            apply(living, CleopatraConfig.sandwormHealth.get(), null);
-                        } else if (living instanceof CleopatraScorpion) {
-                            apply(living, CleopatraConfig.scorpionHealth.get(), null);
-                        } else if (living instanceof CleopatraVenomSnake) {
-                            apply(living, CleopatraConfig.snakeHealth.get(), CleopatraConfig.snakeAttack.get());
+                            // 艳后的战斗配置仍在 yellowduck-entities.toml 中。
+                            if (living instanceof CleopatraBoss) {
+                                apply(living, CleopatraConfig.bossHealth.get(), CleopatraConfig.bossAttack.get());
+                            } else if (living instanceof CleopatraSandworm) {
+                                apply(living, CleopatraConfig.sandwormHealth.get(), null);
+                            } else if (living instanceof CleopatraScorpion) {
+                                apply(living, CleopatraConfig.scorpionHealth.get(), null);
+                            } else if (living instanceof CleopatraVenomSnake) {
+                                apply(living, CleopatraConfig.snakeHealth.get(), CleopatraConfig.snakeAttack.get());
+                            }
                         }
+
+                        // 教授战斗配置与生物属性共用 yellowduck-entities.toml；最后同步教授及新召唤物属性。
+                        if (silkOk) SilkConfig.reapply(living);
                         count++;
                     }
                 }
@@ -161,15 +167,21 @@ public final class YellowDuckReloadCommand {
                 source.sendFailure(Component.literal(
                         "yellowduck-entities.toml 读取失败：已保留上一份有效生物/艳后配置，文件没有被自动改回默认。请查看日志。"));
             }
+            if (!silkOk) {
+                source.sendFailure(Component.literal(
+                        "yellowduck-entities.toml 读取失败：已保留上一份有效教授配置，文件没有被自动改回默认。请查看日志。"));
+            }
 
             source.sendSuccess(() -> Component.literal(
                     "YellowDuck 重载完成："
                             + (entityOk ? "生物/艳后配置已更新" : "生物/艳后配置保持上一份有效值")
                             + "；"
+                            + (silkOk ? "教授配置已更新" : "教授配置保持上一份有效值")
+                            + "；"
                             + (dungeonOk ? "副本配置已更新" : "副本配置读取失败")
                             + "。"), true);
 
-            return entityOk || dungeonOk ? Math.max(1, count) : 0;
+            return entityOk || dungeonOk || silkOk ? Math.max(1, count) : 0;
         } catch (Throwable t) {
             source.sendFailure(Component.literal("YellowDuck reload 失败: " + t.getMessage()));
             return 0;
