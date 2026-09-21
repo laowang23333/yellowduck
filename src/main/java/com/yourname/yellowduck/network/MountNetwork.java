@@ -115,8 +115,10 @@ public final class MountNetwork {
                 ServerPlayer player = c.getSender();
                 if (player == null) return;
                 syncTo(player);
-                if (!MountData.hasMount(player, "ghost_wolf_stars") && !MountData.hasMount(player, "alpaca")
-                        && !MountData.hasMount(player, "rabbit")) {
+                if (!MountData.hasMount(player, "ghost_wolf_stars")
+                        && !MountData.hasMount(player, "alpaca")
+                        && !MountData.hasMount(player, "rabbit")
+                        && !MountData.hasMount(player, "bamboo_horse")) {
                     player.displayClientMessage(
                             Component.literal("§e还没有绑定坐骑。"), true);
                 }
@@ -206,6 +208,4 @@ public final class MountNetwork {
     public static void sendDungeonHud(ServerPlayer player, DungeonHudPacket packet) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
     }
-
-
 }
