@@ -12,6 +12,7 @@ import net.minecraft.world.item.RecordItem;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.material.PushReaction;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
@@ -32,6 +33,7 @@ public class ModBlocks {
             () -> new BigChestBlock(BlockBehaviour.Properties.of()
                     .mapColor(MapColor.WOOD)
                     .strength(2.5F)
+                    .pushReaction(PushReaction.BLOCK)
                     .noOcclusion()));
 
     public static final RegistryObject<Item> BIG_CHEST_ITEM = ITEMS.register("big_chest",
