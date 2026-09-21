@@ -9,7 +9,6 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.EntityRenderersEvent;
@@ -23,11 +22,10 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
     public MountRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
                 .scale(MODEL_SCALE)
-                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.AUTO)
-                .preferGpuAnimatedMeshes(true)
-                .preferGpuStaticMeshes(true)
+                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
+                .preferGpuAnimatedMeshes(false)
+                .preferGpuStaticMeshes(false)
                 .loopAnimation(true)
-                .animationTransitionSeconds(0.10F)
                 .build());
     }
 
@@ -40,12 +38,13 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
                 boolean walking = MountAnimationState.isWalking(entity);
                 String wanted = walking ? "run" : "idle";
                 if (!wanted.equals(controller.getAnimationName())) {
-                    controller.play(wanted, true, 0.10F);
+                    controller.play(wanted, true);
                 }
             }
         } catch (Throwable ignored) {
             // 动画异常不影响模型主体渲染。
         }
+
         // Polymesh 会按整个 GLB 的包围盒居中。这个模型的原始骨架原点偏向尾部，
         // 所以需要把模型沿自身前进方向后移约 2.3 格，让身体/碰撞箱重合。
         double yaw = Math.toRadians(entityYaw);
@@ -54,8 +53,7 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
         poseStack.pushPose();
         poseStack.translate(-2.30D * forwardX, 0.0D, -2.30D * forwardZ);
 
-        // GUI 预览共用真实 MountRenderer，但 GLB 的原始包围盒远大于实体碰撞箱，
-        // 不缩小的话 InventoryScreen 的镜头会被模型高度/尾巴撑爆，默认只剩脚。
+        // GUI 预览共用真实 MountRenderer，但 GLB 的原始包围盒远大于实体碰撞箱。
         if (entity.isGuiPreview()) {
             poseStack.scale(0.50F, 0.50F, 0.50F);
             poseStack.translate(0.0D, 0.18D, 0.0D);
@@ -69,7 +67,7 @@ public class MountRenderer extends GltfEntityRenderer<MountEntity> {
     }
 
     public static void register(EntityRenderersEvent.RegisterRenderers event,
-                                 EntityType<? extends MountEntity> type) {
+                                EntityType<? extends MountEntity> type) {
         event.registerEntityRenderer(type, MountRenderer::new);
     }
 }

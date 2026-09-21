@@ -24,11 +24,10 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
     public SakurawitchRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
                 .scale(MODEL_SCALE)
-                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.AUTO)
-                .preferGpuAnimatedMeshes(true)
-                .preferGpuStaticMeshes(true)
+                .shaderCompatMode(GltfRenderOptions.ShaderCompatMode.FORCE_CPU)
+                .preferGpuAnimatedMeshes(false)
+                .preferGpuStaticMeshes(false)
                 .loopAnimation(true)
-                .animationTransitionSeconds(0.10F)
                 .build());
     }
 
@@ -45,15 +44,6 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
                 } else {
                     int idx = entity.getEntityData().get(SakurawitchEntity.ATTACK_INDEX);
 
-                    /*
-                     * 小樱动画对应：
-                     * 1~4  = 普通攻击动作
-                     * 5    = 火焰喷射（8.25 秒蓄力/施法动作，最适合这个技能）
-                     * 4    = 火焰喷发/地火技能动作
-                     *
-                     * SakurawitchEntity 会在技能开始时同步 ATTACK_INDEX，
-                     * 所以这里不再把所有技能强制成 attack_01。
-                     */
                     if (idx > 0) {
                         wantAnim = "Anim-1_attack_" + String.format("%02d", idx);
                     } else if (entity.getEntityData().get(SakurawitchEntity.IS_WALKING)) {
@@ -66,13 +56,14 @@ public class SakurawitchRenderer extends GltfEntityRenderer<SakurawitchEntity> {
                 String current = ctrl.getAnimationName();
                 if (current == null || !current.equals(wantAnim)) {
                     boolean loop = wantAnim.equals("Anim-1_walk")
-                                || wantAnim.equals("Anim-1_stand")
-                                || wantAnim.equals("Anim-1_run");
-                    ctrl.play(wantAnim, loop, loop ? 0.10F : 0.045F);
+                            || wantAnim.equals("Anim-1_stand")
+                            || wantAnim.equals("Anim-1_run");
+                    // 只在动画名改变时切换，避免每帧重启动画。
+                    ctrl.play(wantAnim, loop);
                 }
             }
         } catch (Throwable t) {
-            // 动画失败不影响模型渲染
+            // 动画失败不影响模型渲染。
         }
         super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
     }
