@@ -28,6 +28,8 @@ public class ModEntities {
             ENTITIES.register("mount", () ->
                     EntityType.Builder.<MountEntity>of(MountEntity::new, MobCategory.CREATURE)
                             .sized(2.4F, 2.2F)
+                            .clientTrackingRange(10)
+                            .updateInterval(1)
                             .build("mount"));
 
     public static final RegistryObject<EntityType<AlpacaMountEntity>> ALPACA_MOUNT =
@@ -35,18 +37,23 @@ public class ModEntities {
                     EntityType.Builder.<AlpacaMountEntity>of(AlpacaMountEntity::new, MobCategory.CREATURE)
                             .sized(1.4F, 2.2F)
                             .clientTrackingRange(10)
+                            .updateInterval(1)
                             .build("alpaca_mount"));
 
     public static final RegistryObject<EntityType<RabbitMountEntity>> RABBIT_MOUNT =
             ENTITIES.register("rabbit_mount", () ->
                     EntityType.Builder.<RabbitMountEntity>of(RabbitMountEntity::new, MobCategory.CREATURE)
-                            .sized(1.4F, 1.25F).clientTrackingRange(10).updateInterval(2)
+                            .sized(1.4F, 1.25F)
+                            .clientTrackingRange(10)
+                            .updateInterval(1)
                             .build("rabbit_mount"));
 
     public static final RegistryObject<EntityType<BambooHorseEntity>> BAMBOO_HORSE_MOUNT =
             ENTITIES.register("bamboo_horse_mount", () ->
                     EntityType.Builder.<BambooHorseEntity>of(BambooHorseEntity::new, MobCategory.CREATURE)
-                            .sized(1.5F, 1.45F).clientTrackingRange(10).updateInterval(2)
+                            .sized(1.5F, 1.45F)
+                            .clientTrackingRange(10)
+                            .updateInterval(1)
                             .build("bamboo_horse_mount"));
 
     // ==========================================
@@ -57,6 +64,7 @@ public class ModEntities {
                     EntityType.Builder.<SakurawitchEntity>of(SakurawitchEntity::new, MobCategory.MONSTER)
                             .sized(1.3F, 2.8F)
                             .clientTrackingRange(10)
+                            .updateInterval(1)
                             .build("sakurawitch"));
 
     // ==========================================
@@ -67,5 +75,6 @@ public class ModEntities {
                     EntityType.Builder.<ToyBearEntity>of(ToyBearEntity::new, MobCategory.MONSTER)
                             .sized(1.15F, 1.75F)
                             .clientTrackingRange(10)
+                            .updateInterval(1)
                             .build("toy_bear"));
 }
