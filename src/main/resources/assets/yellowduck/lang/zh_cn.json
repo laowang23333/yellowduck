@@ -41,10 +41,12 @@
   "item.yellowduck.music_disc_5.desc": "唱片5",
   "item.yellowduck.mount_egg_bamboo_horse": "竹马坐骑蛋",
   "entity.yellowduck.bamboo_horse_mount": "竹马",
-  "entity.yellowduck.silk_plague_bear": "疫病转移之熊",
+  "entity.yellowduck.silk_plague_bear": "疫病转移之熊（旧）",
   "entity.yellowduck.silk_boss": "疯狂教授斯尔克",
-  "entity.yellowduck.silk_shadow_bat": "暗影蝙蝠",
-  "entity.yellowduck.silk_meteor": "追踪陨石",
+  "entity.yellowduck.silk_shadow_bat": "爆炸蝙蝠",
+  "entity.yellowduck.silk_meteor": "黑暗流星",
+  "entity.yellowduck.silk_dark_teddy": "黑暗泰迪",
+  "entity.yellowduck.silk_dark_slime": "黑暗史莱姆",
   "entity.yellowduck.cleopatra": "艳后",
   "entity.yellowduck.cleopatra_sandworm": "艳后沙虫",
   "entity.yellowduck.cleopatra_scorpion": "艳后蝎子",
@@ -61,5 +63,8 @@
   "block.yellowduck.dungeon_entrance_marker": "副本入口方块",
   "item.yellowduck.dungeon_entrance_marker": "副本入口方块",
   "block.yellowduck.dungeon_boss_spawn_marker": "Boss出生点方块",
-  "item.yellowduck.dungeon_boss_spawn_marker": "Boss出生点方块"
+  "item.yellowduck.dungeon_boss_spawn_marker": "Boss出生点方块",
+  "entity.yellowduck.silk_black_ball": "黑暗能量球",
+  "entity.yellowduck.silk_black_water": "腐蚀黑水",
+  "entity.yellowduck.silk_visual_circle": "斯尔克技能预警圈"
 }
