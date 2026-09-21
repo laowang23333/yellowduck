@@ -559,7 +559,7 @@ public class ToyBearEntity extends PathfinderMob {
             float dealt = Math.max(0.0F, before - getHealth());
             Player attacker = resolvePlayerAttacker(source);
             if (attacker != null && dealt > 0.0F) {
-                hatred.merge(attacker.getUUID(), dealt, Double::sum);
+                hatred.merge(attacker.getUUID(), (double) dealt, Double::sum);
             }
         }
         return damaged;
