@@ -4,6 +4,6 @@ license="All rights reserved"
 
 [[mods]]
 modId="yellowduck"
-version="1.0"
+version="${file.jarVersion}"
 displayName="tianmingBoss"
 description="netcraft扩展"
