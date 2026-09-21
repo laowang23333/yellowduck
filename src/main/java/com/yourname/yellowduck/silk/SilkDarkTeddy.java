@@ -35,12 +35,12 @@ public class SilkDarkTeddy extends PathfinderMob {
 
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 10000.0D)
+                .add(Attributes.MAX_HEALTH, SilkBalance.TEDDY_HEALTH)
                 .add(Attributes.ATTACK_DAMAGE, SilkBalance.TEDDY_DAMAGE)
-                .add(Attributes.MOVEMENT_SPEED, 0.30D)
-                .add(Attributes.FOLLOW_RANGE, 48.0D)
+                .add(Attributes.MOVEMENT_SPEED, SilkBalance.TEDDY_MOVEMENT_SPEED)
+                .add(Attributes.FOLLOW_RANGE, SilkBalance.TEDDY_FOLLOW_RANGE)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D)
-                .add(Attributes.ARMOR, 20.0D);
+                .add(Attributes.ARMOR, SilkBalance.TEDDY_ARMOR);
     }
 
     @Override
@@ -51,6 +51,7 @@ public class SilkDarkTeddy extends PathfinderMob {
 
     public void setOwner(SilkBoss boss) {
         owner = boss.getUUID();
+        SilkConfig.reapply(this);
     }
 
     private SilkBoss boss() {
@@ -73,10 +74,10 @@ public class SilkDarkTeddy extends PathfinderMob {
                 && boss.valid(player) ? player : null;
         if (getTarget() != target) setTarget(target);
 
-        if (nextRoar == 0) nextRoar = tickCount + SilkBalance.SUMMON_COOLDOWN / 2;
+        if (nextRoar == 0) nextRoar = tickCount + SilkBalance.TEDDY_ROAR_COOLDOWN;
         if (tickCount >= nextRoar) {
             roar(boss);
-            nextRoar = tickCount + 30 * 20;
+            nextRoar = tickCount + SilkBalance.TEDDY_ROAR_COOLDOWN;
         }
     }
 
@@ -85,7 +86,7 @@ public class SilkDarkTeddy extends PathfinderMob {
         if (!(target instanceof ServerPlayer player) || tickCount < nextHit) return false;
         SilkBoss boss = boss();
         if (boss == null || !boss.valid(player)) return false;
-        nextHit = tickCount + 40; // 7411：2 秒。
+        nextHit = tickCount + SilkBalance.TEDDY_HIT_COOLDOWN; // 7411 默认 2 秒。
         boolean hit = boss.hit(player, SilkBalance.TEDDY_DAMAGE, SilkBalance.TEDDY_HIT_CORRUPTION);
         if (hit && level() instanceof ServerLevel serverLevel) {
             serverLevel.playSound(null, blockPosition(), ModSounds.SILK_BEAR_HURT.get(), SoundSource.HOSTILE, 1.2F, 1.0F);
@@ -100,7 +101,7 @@ public class SilkDarkTeddy extends PathfinderMob {
                 120, 2.5D, 1.2D, 2.5D, 0.025D);
         serverLevel.sendParticles(ModParticles.SILK_STONE_SMOKE.get(), getX(), getY() + 1.0D, getZ(),
                 70, 2.5D, 1.2D, 2.5D, 0.02D);
-        AABB box = getBoundingBox().inflate(10.0D);
+        AABB box = getBoundingBox().inflate(SilkBalance.TEDDY_ROAR_RADIUS);
         for (ServerPlayer player : serverLevel.getEntitiesOfClass(ServerPlayer.class, box, boss::valid)) {
             boss.corrupt(player, SilkBalance.TEDDY_ROAR_CORRUPTION);
             player.addEffect(new net.minecraft.world.effect.MobEffectInstance(
@@ -123,6 +124,5 @@ public class SilkDarkTeddy extends PathfinderMob {
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         owner = tag.hasUUID("SilkOwner") ? tag.getUUID("SilkOwner") : null;
-        discard();
     }
 }

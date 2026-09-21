@@ -33,10 +33,10 @@ public class SilkDarkSlime extends Slime {
 
     public static AttributeSupplier.Builder createAttributes() {
         return Monster.createMonsterAttributes()
-                .add(Attributes.MAX_HEALTH, 300.0D)
+                .add(Attributes.MAX_HEALTH, SilkBalance.SLIME_HEALTH)
                 .add(Attributes.ATTACK_DAMAGE, SilkBalance.SLIME_DAMAGE)
-                .add(Attributes.MOVEMENT_SPEED, 0.24D)
-                .add(Attributes.FOLLOW_RANGE, 32.0D);
+                .add(Attributes.MOVEMENT_SPEED, SilkBalance.SLIME_MOVEMENT_SPEED)
+                .add(Attributes.FOLLOW_RANGE, SilkBalance.SLIME_FOLLOW_RANGE);
     }
 
     public void setOwner(SilkBoss boss) {
@@ -44,8 +44,9 @@ public class SilkDarkSlime extends Slime {
         // setSize 是受保护方法，子类可直接调用。
         setSize(2, true);
         var maxHealth = getAttribute(Attributes.MAX_HEALTH);
-        if (maxHealth != null) maxHealth.setBaseValue(300.0D);
-        setHealth(300.0F);
+        if (maxHealth != null) maxHealth.setBaseValue(SilkBalance.SLIME_HEALTH);
+        setHealth((float) SilkBalance.SLIME_HEALTH);
+        SilkConfig.reapply(this);
     }
 
     public boolean isShielded() {
@@ -89,7 +90,7 @@ public class SilkDarkSlime extends Slime {
         setTarget(target);
 
         if (distanceToSqr(target) <= 2.5D * 2.5D && tickCount >= nextAttack) {
-            nextAttack = tickCount + 40; // 7421/7422 都是 2 秒内部 CD。
+            nextAttack = tickCount + SilkBalance.SLIME_ATTACK_COOLDOWN; // 7421/7422 默认 2 秒。
             if (random.nextFloat() < 0.35F) detonate(boss);
             else boss.hit(target, SilkBalance.SLIME_DAMAGE, SilkBalance.SLIME_HIT_CORRUPTION);
         }
@@ -103,7 +104,7 @@ public class SilkDarkSlime extends Slime {
         AABB box = getBoundingBox().inflate(3.0D);
         for (ServerPlayer player : serverLevel.getEntitiesOfClass(ServerPlayer.class, box, boss::valid)) {
             boss.hit(player, SilkBalance.SLIME_DAMAGE, SilkBalance.SLIME_EXPLODE_CORRUPTION);
-            SilkCombatEvents.addBoilingBlood(player, 10 * 20);
+            SilkCombatEvents.addBoilingBlood(player, SilkBalance.BOILING_BLOOD_TICKS);
         }
         discard();
     }

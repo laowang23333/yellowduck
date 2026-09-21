@@ -40,7 +40,7 @@ import java.util.UUID;
  * P1：普攻AOE、多重蝙蝠、10秒流星禁锢+分摊、120度暗火喷射；
  * P2：腐化横扫、黑暗泰迪/黑暗史莱姆、20秒玩家间疫病传染、能量爆发；
  * P3：10秒后脚下黑水并十字扩散、200HP黑暗能量球；
- * 玩家资源：心智腐蚀/黑暗能量均为 99 层上限；99黑能量进入120秒疯狂。
+ * 玩家资源：心智腐蚀/黑暗能量上限和疯狂持续时间可由 yellowduck-entities.toml 调整。
  */
 public class SilkBoss extends NetcraftBossBase {
     public static final EntityDataAccessor<Integer> ANIMATION =
@@ -104,6 +104,7 @@ public class SilkBoss extends NetcraftBossBase {
     private float flameYaw;
     private double previousX;
     private double previousZ;
+    private boolean configApplied;
 
     private int nextBasic;
     private int nextBats;
@@ -123,7 +124,7 @@ public class SilkBoss extends NetcraftBossBase {
     public SilkBoss(EntityType<? extends SilkBoss> type, net.minecraft.world.level.Level level) {
         super(type, level);
         setPersistenceRequired();
-        setBaseTier(5);
+        setBaseTier(SilkBalance.BOSS_TIER);
         setBaseDamage((int) SilkBalance.BASIC_DAMAGE);
         xpReward = 150;
     }
@@ -131,9 +132,9 @@ public class SilkBoss extends NetcraftBossBase {
     public static AttributeSupplier.Builder createAttributes() {
         return Monster.createMonsterAttributes()
                 .add(Attributes.MAX_HEALTH, SilkBalance.HEALTH)
-                .add(Attributes.MOVEMENT_SPEED, 0.23D)
-                .add(Attributes.FOLLOW_RANGE, 48.0D)
-                .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D)
+                .add(Attributes.MOVEMENT_SPEED, SilkBalance.BOSS_MOVEMENT_SPEED)
+                .add(Attributes.FOLLOW_RANGE, SilkBalance.BOSS_FOLLOW_RANGE)
+                .add(Attributes.KNOCKBACK_RESISTANCE, SilkBalance.BOSS_KNOCKBACK_RESISTANCE)
                 .add(Attributes.ATTACK_DAMAGE, SilkBalance.BASIC_DAMAGE);
     }
 
@@ -165,6 +166,11 @@ public class SilkBoss extends NetcraftBossBase {
     public boolean isPlayingAttackAnimation() {
         return castAction != 0;
     }
+
+    @Override public int getMeleeDefense() { return SilkBalance.BOSS_MELEE_DEFENSE; }
+    @Override public int getRangedDefense() { return SilkBalance.BOSS_RANGED_DEFENSE; }
+    @Override public int getMagicDefense() { return SilkBalance.BOSS_MAGIC_DEFENSE; }
+    @Override public float getDamageReductionRatio() { return SilkBalance.BOSS_DAMAGE_REDUCTION; }
 
     public int phase() {
         float pct = getHealth() / Math.max(1.0F, getMaxHealth());
@@ -220,6 +226,10 @@ public class SilkBoss extends NetcraftBossBase {
     public void tick() {
         super.tick();
         if (level().isClientSide || !isAlive()) return;
+        if (!configApplied) {
+            SilkConfig.reapply(this);
+            configApplied = true;
+        }
 
         ServerPlayer tank = chooseTank();
         if (tank == null || !tank.isAlive()) {
@@ -539,7 +549,7 @@ public class SilkBoss extends NetcraftBossBase {
                     55, 2.8D, 0.6D, 2.8D, 0.05D);
         }
         for (ServerPlayer player : targets()) {
-            if (distanceToSqr(player) <= 3.5D * 3.5D) {
+            if (distanceToSqr(player) <= SilkBalance.SWEEP_RADIUS * SilkBalance.SWEEP_RADIUS) {
                 hit(player, SilkBalance.SWEEP_DAMAGE, SilkBalance.SWEEP_CORRUPTION);
             }
         }
@@ -575,7 +585,8 @@ public class SilkBoss extends NetcraftBossBase {
         if (candidates.isEmpty()) return;
         ServerPlayer target = candidates.get(random.nextInt(candidates.size()));
         infect(target);
-        announce("§4黑暗疫病点名：" + target.getScoreboardName() + "，20秒结束前靠近另一名队友完成传染！");
+        announce("§4黑暗疫病点名：" + target.getScoreboardName() + "，"
+                + Math.max(0, SilkBalance.PLAGUE_TICKS / 20) + "秒结束前靠近另一名队友完成传染！");
     }
 
     private void infect(ServerPlayer player) {
@@ -621,7 +632,7 @@ public class SilkBoss extends NetcraftBossBase {
         announce("§4黑暗能量爆发：3秒后每名玩家脚下都会发生追加AOE，请分散！");
         for (ServerPlayer player : targets()) {
             hit(player, SilkBalance.BURST_DAMAGE, SilkBalance.BURST_INITIAL_CORRUPTION);
-            echoes.add(new Echo(player.getUUID(), player.position(), tickCount + 60));
+            echoes.add(new Echo(player.getUUID(), player.position(), tickCount + SilkBalance.BURST_ECHO_DELAY_TICKS));
         }
         if (level() instanceof ServerLevel serverLevel) {
             serverLevel.sendParticles(ModParticles.SILK_GUSH.get(), getX(), getY() + 0.3D, getZ(),
@@ -633,7 +644,8 @@ public class SilkBoss extends NetcraftBossBase {
         for (ServerPlayer player : randomTargets(3)) {
             Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
             fighter.blackWaterDue = tickCount + SilkBalance.BLACK_WATER_DELAY_TICKS;
-            player.displayClientMessage(Component.literal("§8腐蚀黑水：10秒后将在你脚下生成，提前散开！"), true);
+            player.displayClientMessage(Component.literal("§8腐蚀黑水："
+                    + Math.max(0, SilkBalance.BLACK_WATER_DELAY_TICKS / 20) + "秒后将在你脚下生成，提前散开！"), true);
         }
     }
 
@@ -678,8 +690,10 @@ public class SilkBoss extends NetcraftBossBase {
     private void sprayFlameVisual() {
         if (!(level() instanceof ServerLevel serverLevel)) return;
         Vec3 hand = flameHandPosition();
-        for (int i = -6; i <= 6; i++) {
-            double angle = Math.toRadians(flameYaw + i * 10.0D);
+        int visualSteps = Math.max(1, (int) Math.ceil(SilkBalance.FLAME_HALF_ANGLE_DEGREES / 10.0D));
+        double visualStepDegrees = SilkBalance.FLAME_HALF_ANGLE_DEGREES / visualSteps;
+        for (int i = -visualSteps; i <= visualSteps; i++) {
+            double angle = Math.toRadians(flameYaw + i * visualStepDegrees);
             Vec3 direction = new Vec3(-Math.sin(angle), 0.0D, Math.cos(angle));
             for (double distance = 0.7D; distance <= SilkBalance.FLAME_RANGE; distance += 1.0D) {
                 Vec3 point = hand.add(direction.scale(distance));
@@ -700,7 +714,7 @@ public class SilkBoss extends NetcraftBossBase {
             if (horizontal.lengthSqr() < 1.0E-6D || horizontal.length() > SilkBalance.FLAME_RANGE) continue;
             if (Math.abs(delta.y) > 4.0D) continue;
             double dot = horizontal.normalize().dot(forward);
-            if (dot < 0.5D) continue; // cos(60°)，完整扇形 120°。
+            if (dot < Math.cos(Math.toRadians(SilkBalance.FLAME_HALF_ANGLE_DEGREES))) continue;
             if (hit(player, SilkBalance.FLAME_DAMAGE, 0)) {
                 addBlackEnergy(player, SilkBalance.BLACK_ENERGY_PER_HIT);
             }
@@ -767,7 +781,7 @@ public class SilkBoss extends NetcraftBossBase {
         if (tickCount >= nextHeartFire) {
             for (ServerPlayer player : targets()) {
                 Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
-                fighter.heartFire = Math.min(99, fighter.heartFire + 10);
+                fighter.heartFire = Math.min(SilkBalance.MAX_METER, fighter.heartFire + 10);
                 fighter.heartFireUntil = tickCount + SilkBalance.HEART_FIRE_TICKS;
                 player.displayClientMessage(Component.literal("§6获得心火庇护 ×10：每层可清除一格腐蚀黑水"), true);
             }
@@ -787,7 +801,7 @@ public class SilkBoss extends NetcraftBossBase {
                     .findFirst().orElse(null);
             if (picker != null) {
                 Fighter fighter = fighters.computeIfAbsent(picker.getUUID(), ignored -> new Fighter());
-                fighter.fireStacks = Math.min(99, fighter.fireStacks + 1);
+                fighter.fireStacks = Math.min(SilkBalance.MAX_METER, fighter.fireStacks + 1);
                 fighter.fireUntil = tickCount + SilkBalance.STRENGTHENED_FIRE_TICKS;
                 SilkCombatEvents.setStrengthenedFire(picker, fighter.fireStacks, SilkBalance.STRENGTHENED_FIRE_TICKS);
                 picker.displayClientMessage(Component.literal("§6强化火焰 +1（每层伤害 +10%）"), true);
@@ -874,8 +888,8 @@ public class SilkBoss extends NetcraftBossBase {
 
             if (tickCount % 20 == 0) {
                 StringBuilder text = new StringBuilder()
-                        .append("§5心智 ").append(fighter.corruption).append("/99")
-                        .append(" §8黑暗能量 ").append(fighter.blackEnergy).append("/99");
+                        .append("§5心智 ").append(fighter.corruption).append("/").append(SilkBalance.MAX_METER)
+                        .append(" §8黑暗能量 ").append(fighter.blackEnergy).append("/").append(SilkBalance.MAX_METER);
                 if (fighter.plagueDue > tickCount) {
                     text.append(" §4疫病 ").append((fighter.plagueDue - tickCount + 19) / 20).append("秒");
                 }
@@ -892,7 +906,7 @@ public class SilkBoss extends NetcraftBossBase {
         Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
         fighter.corruption = Math.min(SilkBalance.MAX_METER, fighter.corruption + amount);
         if (fighter.corruption >= SilkBalance.MAX_METER && player.isAlive()) {
-            player.displayClientMessage(Component.literal("§4心智腐蚀达到99层，你失去神志！"), false);
+            player.displayClientMessage(Component.literal("§4心智腐蚀达到" + SilkBalance.MAX_METER + "层，你失去神志！"), false);
             SilkCombatEvents.lock(player);
             player.kill();
         }
@@ -907,7 +921,8 @@ public class SilkBoss extends NetcraftBossBase {
             fighter.blackEnergy = 0;
             fighter.madUntil = tickCount + SilkBalance.MADNESS_TICKS;
             SilkCombatEvents.setMadness(player, SilkBalance.MADNESS_TICKS);
-            player.displayClientMessage(Component.literal("§d黑暗能量达到99层：陷入疯狂120秒，移速降低但伤害大幅提升！"), false);
+            player.displayClientMessage(Component.literal("§d黑暗能量达到" + SilkBalance.MAX_METER + "层：陷入疯狂"
+                    + Math.max(0, SilkBalance.MADNESS_TICKS / 20) + "秒，移速降低但伤害大幅提升！"), false);
         }
     }
 
@@ -940,8 +955,8 @@ public class SilkBoss extends NetcraftBossBase {
     public void spreadBlackWater(Vec3 origin, int depth) {
         Vec3 home = homePosition();
         Vec3[] points = {
-                origin.add(3.0D, 0.0D, 0.0D), origin.add(-3.0D, 0.0D, 0.0D),
-                origin.add(0.0D, 0.0D, 3.0D), origin.add(0.0D, 0.0D, -3.0D)
+                origin.add(SilkBalance.BLACK_WATER_SPREAD_DISTANCE, 0.0D, 0.0D), origin.add(-SilkBalance.BLACK_WATER_SPREAD_DISTANCE, 0.0D, 0.0D),
+                origin.add(0.0D, 0.0D, SilkBalance.BLACK_WATER_SPREAD_DISTANCE), origin.add(0.0D, 0.0D, -SilkBalance.BLACK_WATER_SPREAD_DISTANCE)
         };
         for (Vec3 point : points) {
             if (point.distanceToSqr(home) <= SilkBalance.ARENA_RADIUS * SilkBalance.ARENA_RADIUS) {

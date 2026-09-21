@@ -31,10 +31,7 @@ public final class SilkCombatEvents {
     private static final String BOIL_UNTIL = "YellowduckSilkBoilUntil";
 
     private static final UUID MAD_SPEED_UUID = UUID.fromString("f2f08be4-88d1-4d18-9c1a-6e5b35575d19");
-    private static final AttributeModifier MAD_SPEED = new AttributeModifier(
-            MAD_SPEED_UUID, "yellowduck_silk_madness_slow", -0.50D,
-            AttributeModifier.Operation.MULTIPLY_TOTAL);
-
+    
     private SilkCombatEvents() {
     }
 
@@ -47,7 +44,8 @@ public final class SilkCombatEvents {
         long until = Math.max(tag.getLong("Until"), clock(player) + SilkBalance.REVIVE_LOCK_TICKS);
         tag.putLong("Until", until);
         player.getPersistentData().put(REVIVE_KEY, tag);
-        player.displayClientMessage(Component.literal("§4心智崩溃：30秒内无法原地复活"), false);
+        player.displayClientMessage(Component.literal("§4心智崩溃："
+                + Math.max(0, SilkBalance.REVIVE_LOCK_TICKS / 20) + "秒内无法原地复活"), false);
         MountNetwork.sendSilkReviveLock(player, SilkBalance.REVIVE_LOCK_TICKS);
     }
 
@@ -77,7 +75,7 @@ public final class SilkCombatEvents {
     }
 
     public static void setStrengthenedFire(ServerPlayer player, int stacks, int ticks) {
-        int clamped = Math.max(0, Math.min(99, stacks));
+        int clamped = Math.max(0, Math.min(SilkBalance.MAX_METER, stacks));
         player.getPersistentData().putInt(FIRE_STACKS, clamped);
         player.getPersistentData().putLong(FIRE_UNTIL, clock(player) + ticks);
     }
@@ -88,7 +86,7 @@ public final class SilkCombatEvents {
     }
 
     public static void addBoilingBlood(ServerPlayer player, int ticks) {
-        int stacks = Math.min(99, Math.max(0, player.getPersistentData().getInt(BOIL_STACKS)) + 1);
+        int stacks = Math.min(SilkBalance.MAX_METER, Math.max(0, player.getPersistentData().getInt(BOIL_STACKS)) + 1);
         player.getPersistentData().putInt(BOIL_STACKS, stacks);
         player.getPersistentData().putLong(BOIL_UNTIL, clock(player) + ticks);
     }
@@ -107,7 +105,9 @@ public final class SilkCombatEvents {
         var attribute = player.getAttribute(Attributes.MOVEMENT_SPEED);
         if (attribute == null) return;
         if (attribute.getModifier(MAD_SPEED_UUID) != null) attribute.removeModifier(MAD_SPEED_UUID);
-        if (enabled) attribute.addTransientModifier(MAD_SPEED);
+        if (enabled) attribute.addTransientModifier(new AttributeModifier(
+                MAD_SPEED_UUID, "yellowduck_silk_madness_slow", SilkBalance.MADNESS_SPEED_MODIFIER,
+                AttributeModifier.Operation.MULTIPLY_TOTAL));
     }
 
     @SubscribeEvent
@@ -116,13 +116,13 @@ public final class SilkCombatEvents {
 
         float multiplier = 1.0F;
         if (event.getSource().getEntity() instanceof ServerPlayer attacker) {
-            if (plagued(attacker)) multiplier *= 1.20F; // 2280 change_damage +200
-            if (mad(attacker)) multiplier *= 3.00F;     // 2273 change_damage +2000
+            if (plagued(attacker)) multiplier *= SilkBalance.PLAGUE_OUTGOING_MULTIPLIER;
+            if (mad(attacker)) multiplier *= SilkBalance.MADNESS_OUTGOING_MULTIPLIER;
             int fire = fireStacks(attacker);
-            if (fire > 0) multiplier *= 1.0F + 0.10F * fire; // 2283：每层 +10%
+            if (fire > 0) multiplier *= 1.0F + SilkBalance.STRENGTHENED_FIRE_PER_STACK * fire;
         }
         if (event.getEntity() instanceof ServerPlayer victim && plagued(victim)) {
-            multiplier *= 1.50F; // 2280 描述明确“提升被伤害”；-500 按 50% 易伤还原。
+            multiplier *= SilkBalance.PLAGUE_INCOMING_MULTIPLIER;
         }
         if (multiplier != 1.0F) event.setAmount(event.getAmount() * multiplier);
     }
@@ -175,9 +175,10 @@ public final class SilkCombatEvents {
 
         long boilUntil = player.getPersistentData().getLong(BOIL_UNTIL);
         if (boilUntil > now) {
-            if (player.tickCount % 40 == 0) {
+            if (SilkBalance.BOILING_BLOOD_INTERVAL > 0 && player.tickCount % SilkBalance.BOILING_BLOOD_INTERVAL == 0) {
                 int stacks = Math.max(1, player.getPersistentData().getInt(BOIL_STACKS));
-                player.hurt(player.damageSources().magic(), Math.min(10.0F, 0.75F * stacks));
+                player.hurt(player.damageSources().magic(), Math.min(
+                        SilkBalance.BOILING_BLOOD_DAMAGE_CAP, SilkBalance.BOILING_BLOOD_DAMAGE_PER_STACK * stacks));
             }
         } else {
             player.getPersistentData().remove(BOIL_STACKS);

@@ -29,14 +29,15 @@ public class SilkBlackBall extends PathfinderMob {
 
     public static AttributeSupplier.Builder createAttributes() {
         return PathfinderMob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 200.0D)
+                .add(Attributes.MAX_HEALTH, SilkBalance.BLACK_BALL_HEALTH)
                 .add(Attributes.MOVEMENT_SPEED, 0.0D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D)
-                .add(Attributes.ARMOR, 24.0D);
+                .add(Attributes.ARMOR, SilkBalance.BLACK_BALL_ARMOR);
     }
 
     public void setOwner(SilkBoss boss) {
         owner = boss.getUUID();
+        SilkConfig.reapply(this);
     }
 
     private SilkBoss boss() {
@@ -69,7 +70,9 @@ public class SilkBlackBall extends PathfinderMob {
                     3, 0.45D, 0.45D, 0.45D, 0.01D);
         }
 
-        if (tickCount % 40 == 0 && level() instanceof ServerLevel serverLevel) {
+        if (SilkBalance.BLACK_BALL_PULSE_COOLDOWN > 0
+                && tickCount % SilkBalance.BLACK_BALL_PULSE_COOLDOWN == 0
+                && level() instanceof ServerLevel serverLevel) {
             AABB area = getBoundingBox().inflate(SilkBalance.BLACK_BALL_RADIUS);
             for (ServerPlayer player : serverLevel.getEntitiesOfClass(ServerPlayer.class, area, boss::valid)) {
                 boss.hit(player, SilkBalance.BLACK_BALL_DAMAGE, SilkBalance.BLACK_BALL_CORRUPTION);
@@ -87,6 +90,5 @@ public class SilkBlackBall extends PathfinderMob {
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         owner = tag.hasUUID("SilkOwner") ? tag.getUUID("SilkOwner") : null;
-        discard();
     }
 }

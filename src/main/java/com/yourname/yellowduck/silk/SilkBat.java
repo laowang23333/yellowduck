@@ -83,9 +83,7 @@ public class SilkBat extends Bat {
             if (boss.hit(victim, SilkBalance.BAT_DAMAGE, 0)) {
                 boss.addBlackEnergy(victim, SilkBalance.BLACK_ENERGY_PER_HIT);
             }
-            serverLevel.sendParticles(ModParticles.SILK_SOUL.get(),
-                    victim.getX(), victim.getY() + 1.0D, victim.getZ(),
-                    55, 0.85D, 0.65D, 0.85D, 0.045D);
+            boss.spawnDarkHit(victim.position().add(0.0D, 1.0D, 0.0D));
             discard();
             return;
         }
