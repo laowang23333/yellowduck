@@ -93,6 +93,7 @@ public final class DungeonCompletionControllers {
 
     private static boolean hasLivingSakuraBear(DungeonInstance instance, ServerLevel level) {
         if (instance == null || level == null) return false;
+
         int r = Math.max(24, instance.arenaRadius + 16);
         AABB box = new AABB(
                 instance.origin.getX() - r, instance.origin.getY() - 8, instance.origin.getZ() - r,
@@ -100,21 +101,35 @@ public final class DungeonCompletionControllers {
         );
 
         for (ToyBearEntity bear : level.getEntitiesOfClass(ToyBearEntity.class, box)) {
-            if (bear.isRemoved()) continue;
-            if (!bear.isAlive() && !bear.getEntityData().get(ToyBearEntity.DYING)) continue;
+            // 熊一旦进入 DYING 死亡动画，就已经算“被击败”。
+            // 不再让死亡动画中的熊阻塞副本进入 REWARD 状态。
+            if (bear.isRemoved()
+                    || !bear.isAlive()
+                    || bear.getEntityData().get(ToyBearEntity.DYING)) {
+                continue;
+            }
+
             if (bear.getPersistentData().hasUUID("YellowDuckDungeon")) {
-                if (instance.id.equals(bear.getPersistentData().getUUID("YellowDuckDungeon"))) return true;
+                if (instance.id.equals(bear.getPersistentData().getUUID("YellowDuckDungeon"))) {
+                    return true;
+                }
             } else {
                 return true;
             }
         }
+
         return false;
     }
 
     private static void announce(DungeonInstance instance, MinecraftServer server, String message) {
         for (UUID uuid : instance.participants) {
             ServerPlayer player = server.getPlayerList().getPlayer(uuid);
-            if (player != null) player.displayClientMessage(net.minecraft.network.chat.Component.literal(message), false);
+            if (player != null) {
+                player.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal(message),
+                        false
+                );
+            }
         }
     }
 }
