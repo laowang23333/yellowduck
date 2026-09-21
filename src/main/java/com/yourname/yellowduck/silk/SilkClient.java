@@ -2,6 +2,7 @@ package com.yourname.yellowduck.silk;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import com.yourname.yellowduck.client.ClientEntityMotionState;
 import dev.phe.polymesh.animation.AnimationController;
 import dev.phe.polymesh.api.GltfRenderOptions;
 import dev.phe.polymesh.client.GltfEntityRenderer;
@@ -32,6 +33,7 @@ public final class SilkClient {
     }
 
     public static final class BossRenderer extends GltfEntityRenderer<SilkBoss> {
+        private static final int MOVE_GRACE_TICKS = 4;
         private final Map<SilkBoss, Integer> serials = new WeakHashMap<>();
 
         public BossRenderer(EntityRendererProvider.Context context) {
@@ -52,17 +54,30 @@ public final class SilkClient {
             if (controller != null) {
                 int attack = boss.getEntityData().get(SilkBoss.ANIMATION);
                 int serial = boss.getEntityData().get(SilkBoss.CAST_SERIAL);
+
+                boolean moving = ClientEntityMotionState.isMoving(
+                        boss,
+                        boss.getEntityData().get(SilkBoss.WALKING),
+                        MOVE_GRACE_TICKS
+                );
+
                 String animation = !boss.isAlive() || attack < 0 ? "Anim-1_death"
                         : attack > 0 ? "Anim-1_attack_0" + attack
-                        : boss.getEntityData().get(SilkBoss.WALKING) ? "Anim-1_walk"
-                        : boss.getEntityData().get(SilkBoss.MAD) ? "Anim-1_stand2" : "Anim-1_stand";
+                        : moving ? "Anim-1_walk"
+                        : boss.getEntityData().get(SilkBoss.MAD) ? "Anim-1_stand2"
+                        : "Anim-1_stand";
 
-                if (!animation.equals(controller.getAnimationName())
-                        || (attack > 0 && serials.getOrDefault(boss, -1) != serial)) {
+                // CAST_SERIAL 只在真正开始一次施法时变化。
+                // 即使连续两次是同一种 attack_xx，也会正确从头重播一次。
+                boolean newCast = attack != 0
+                        && serials.getOrDefault(boss, Integer.MIN_VALUE) != serial;
+
+                if (!animation.equals(controller.getAnimationName()) || newCast) {
                     controller.play(animation, attack == 0 && boss.isAlive());
                     serials.put(boss, serial);
                 }
             }
+
             super.render(boss, yaw, partialTick, pose, buffers, light);
         }
     }
