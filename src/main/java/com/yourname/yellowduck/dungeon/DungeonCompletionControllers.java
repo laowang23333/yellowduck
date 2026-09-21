@@ -1,9 +1,11 @@
 package com.yourname.yellowduck.dungeon;
 
+import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 
 import java.util.LinkedHashMap;
@@ -11,7 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-/** 通关控制器注册表。以后新增特殊Boss时只需注册新的 key，不需要继续往 DungeonManager 堆 if/else。 */
+/** 通关控制器注册表。 */
 public final class DungeonCompletionControllers {
     private static final Map<String, DungeonCompletionController> CONTROLLERS = new LinkedHashMap<>();
 
@@ -19,8 +21,6 @@ public final class DungeonCompletionControllers {
         register("boss_death", new DungeonCompletionController() {
             @Override
             public void onMainBossDeath(DungeonInstance instance, MinecraftServer server, ServerLevel level) {
-                // 兼容已有服务器配置：即便旧配置仍写 boss_death，
-                // 小樱副本也必须等她召唤出来的布偶熊一起结束后才能结算。
                 if (isSakura(instance) && hasLivingSakuraBear(instance, level)) {
                     announce(instance, server, "§6[副本] §c小樱已经倒下，但布偶熊仍在战斗！");
                     return;
@@ -30,14 +30,21 @@ public final class DungeonCompletionControllers {
 
             @Override
             public void tick(DungeonInstance instance, MinecraftServer server, ServerLevel level) {
-                if (!isSakura(instance) || !instance.mainBossDead) return;
-                if (!hasLivingSakuraBear(instance, level)) {
+                if (!isSakura(instance)) return;
+
+                // 小樱使用自定义延迟死亡动画：die() 先把血量设为 0，
+                // 之后才调用 LivingEntity#die。不要只依赖 LivingDeathEvent，
+                // 否则某些环境下 mainBossDead 永远不会被置为 true。
+                if (!instance.mainBossDead && sakuraHasBeenDefeated(instance, level)) {
+                    instance.mainBossDead = true;
+                }
+
+                if (instance.mainBossDead && !hasLivingSakuraBear(instance, level)) {
                     DungeonManager.completeFromController(instance, server);
                 }
             }
         });
 
-        // 新配置推荐显式使用 sakura_bear；行为与上面对旧 boss_death 的兼容逻辑一致。
         register("sakura_bear", new DungeonCompletionController() {
             @Override
             public void onMainBossDeath(DungeonInstance instance, MinecraftServer server, ServerLevel level) {
@@ -50,6 +57,9 @@ public final class DungeonCompletionControllers {
 
             @Override
             public void tick(DungeonInstance instance, MinecraftServer server, ServerLevel level) {
+                if (!instance.mainBossDead && sakuraHasBeenDefeated(instance, level)) {
+                    instance.mainBossDead = true;
+                }
                 if (instance.mainBossDead && !hasLivingSakuraBear(instance, level)) {
                     DungeonManager.completeFromController(instance, server);
                 }
@@ -91,9 +101,23 @@ public final class DungeonCompletionControllers {
                 && "yellowduck:sakurawitch".equalsIgnoreCase(instance.definition.bossEntity());
     }
 
+    private static boolean sakuraHasBeenDefeated(DungeonInstance instance, ServerLevel level) {
+        if (instance == null || level == null || instance.mainBossId == null) return false;
+
+        Entity entity = level.getEntity(instance.mainBossId);
+        // Boss 已经被真正移除，也应视为死亡，避免实例永久卡住。
+        if (entity == null || entity.isRemoved()) return true;
+
+        if (entity instanceof SakurawitchEntity sakura) {
+            return sakura.getEntityData().get(SakurawitchEntity.IS_DYING)
+                    || !sakura.isAlive()
+                    || sakura.getHealth() <= 0.0F;
+        }
+        return false;
+    }
+
     private static boolean hasLivingSakuraBear(DungeonInstance instance, ServerLevel level) {
         if (instance == null || level == null) return false;
-
         int r = Math.max(24, instance.arenaRadius + 16);
         AABB box = new AABB(
                 instance.origin.getX() - r, instance.origin.getY() - 8, instance.origin.getZ() - r,
@@ -101,10 +125,10 @@ public final class DungeonCompletionControllers {
         );
 
         for (ToyBearEntity bear : level.getEntitiesOfClass(ToyBearEntity.class, box)) {
-            // 熊一旦进入 DYING 死亡动画，就已经算“被击败”。
-            // 不再让死亡动画中的熊阻塞副本进入 REWARD 状态。
+            // 进入自定义死亡动画后已经算被击败，不能继续阻塞副本结算。
             if (bear.isRemoved()
                     || !bear.isAlive()
+                    || bear.getHealth() <= 0.0F
                     || bear.getEntityData().get(ToyBearEntity.DYING)) {
                 continue;
             }
@@ -114,10 +138,10 @@ public final class DungeonCompletionControllers {
                     return true;
                 }
             } else {
+                // 兼容旧存档/极端情况下未及时写入实例标签的熊。
                 return true;
             }
         }
-
         return false;
     }
 
@@ -126,9 +150,7 @@ public final class DungeonCompletionControllers {
             ServerPlayer player = server.getPlayerList().getPlayer(uuid);
             if (player != null) {
                 player.displayClientMessage(
-                        net.minecraft.network.chat.Component.literal(message),
-                        false
-                );
+                        net.minecraft.network.chat.Component.literal(message), false);
             }
         }
     }

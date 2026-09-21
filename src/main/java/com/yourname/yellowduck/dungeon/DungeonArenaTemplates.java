@@ -18,7 +18,6 @@ public final class DungeonArenaTemplates {
 
     static {
         // 埃及艳后场地：59 x 39 x 59。
-        // litematic 中心标记位于 (29,0,29)，因此让它正好落在 instance.origin。
         register("cleopatra", new ArenaTemplate(
                 new ResourceLocation(YellowDuckMod.MOD_ID, "dungeons/cleopatra"),
                 new BlockPos(-29, 0, -29),
@@ -32,6 +31,23 @@ public final class DungeonArenaTemplates {
                 ),
                 30,
                 39
+        ));
+
+        // 小樱副本“暮色钟楼”：29 x 25 x 31。
+        // litematic 中央金块 local=(14,0,15)，绑定为 Boss 出生点/实例原点。
+        // 四个绿宝石块相对中央金块分别位于四个方向，绑定为玩家出生点。
+        register("sakura", new ArenaTemplate(
+                new ResourceLocation(YellowDuckMod.MOD_ID, "dungeons/sakura"),
+                new BlockPos(-14, 0, -15),
+                new BlockPos(0, 0, 0),
+                List.of(
+                        new BlockPos(0, 0, -12),
+                        new BlockPos(-11, 0, 0),
+                        new BlockPos(11, 0, 0),
+                        new BlockPos(0, 0, 12)
+                ),
+                16,
+                25
         ));
     }
 
