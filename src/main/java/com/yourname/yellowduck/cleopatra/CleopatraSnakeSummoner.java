@@ -1,5 +1,6 @@
 package com.yourname.yellowduck.cleopatra;
 
+import com.yourname.yellowduck.dungeon.DungeonManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
@@ -40,23 +41,22 @@ public class CleopatraSnakeSummoner extends Entity {
         if (pads == null) pads = findGoldPads();
 
         if (timer >= CleopatraConfig.summonPoisonTick.get() && !poisonSpawned) {
-            poisonSpawned = true;
-            spawnOnPad(0, CleopatraEntities.SNAKE_POISON.get());
+            poisonSpawned = spawnOnPad(0, CleopatraEntities.SNAKE_POISON.get());
         }
         if (timer >= CleopatraConfig.summonFireTick.get() && !fireSpawned) {
-            fireSpawned = true;
-            spawnOnPad(1, CleopatraEntities.SNAKE_FIRE.get());
+            fireSpawned = spawnOnPad(1, CleopatraEntities.SNAKE_FIRE.get());
         }
         if (timer >= CleopatraConfig.summonIceTick.get() && !iceSpawned) {
-            iceSpawned = true;
-            spawnOnPad(2, CleopatraEntities.SNAKE_ICE.get());
+            iceSpawned = spawnOnPad(2, CleopatraEntities.SNAKE_ICE.get());
         }
-        if (timer >= CleopatraConfig.summonerDiscardTick.get()) discard();
+        // 三条都真实生成后才允许召唤器消失；出生点异常时宁可让副本失败，也绝不能误判通关发奖励。
+        if (timer >= CleopatraConfig.summonerDiscardTick.get() && poisonSpawned && fireSpawned && iceSpawned) discard();
     }
 
     private List<BlockPos> findGoldPads() {
         BlockPos origin = blockPosition();
-        List<BlockPos> found = new ArrayList<>();
+        List<BlockPos> strict = new ArrayList<>();
+        List<BlockPos> fallback = new ArrayList<>();
         int radius = CleopatraConfig.goldPadSearchRadius.get();
         int verticalRange = CleopatraConfig.goldPadVerticalRange.get();
         int radiusSq = radius * radius;
@@ -70,17 +70,16 @@ public class CleopatraSnakeSummoner extends Entity {
                 // 同一 X/Z 只取最高的可用金块，避免堆叠金块被识别成多个出生点。
                 for (int y = origin.getY() + verticalRange; y >= origin.getY() - verticalRange; y--) {
                     BlockPos pos = new BlockPos(x, y, z);
-                    if (level().getBlockState(pos).is(Blocks.GOLD_BLOCK)
-                            && level().getBlockState(pos.above()).isAir()
-                            && isGreenSnakePad(pos)) {
-                        found.add(pos);
-                        break;
-                    }
+                    if (!level().getBlockState(pos).is(Blocks.GOLD_BLOCK)
+                            || !level().getBlockState(pos.above()).isAir()) continue;
+                    fallback.add(pos);
+                    if (isGreenSnakePad(pos)) strict.add(pos);
+                    break;
                 }
             }
         }
 
-        found.sort((a, b) -> {
+        java.util.Comparator<BlockPos> byDistance = (a, b) -> {
             long da = distanceSq(a, origin);
             long db = distanceSq(b, origin);
             int cmp = Long.compare(da, db);
@@ -90,10 +89,22 @@ public class CleopatraSnakeSummoner extends Entity {
             cmp = Integer.compare(a.getZ(), b.getZ());
             if (cmp != 0) return cmp;
             return Integer.compare(a.getY(), b.getY());
-        });
+        };
+        strict.sort(byDistance);
+        fallback.sort(byDistance);
 
-        if (found.size() > 3) return new ArrayList<>(found.subList(0, 3));
-        return found;
+        // 优先使用绿色区域明确标记的金块；地图版本较旧、绿色标记不完整时，
+        // 再用同范围内最近的其它金块补足三处，避免三蛇根本没刷出来却被旧通关检测误判为完成。
+        List<BlockPos> result = new ArrayList<>();
+        for (BlockPos pos : strict) {
+            if (result.size() >= 3) break;
+            if (!result.contains(pos)) result.add(pos);
+        }
+        for (BlockPos pos : fallback) {
+            if (result.size() >= 3) break;
+            if (!result.contains(pos)) result.add(pos);
+        }
+        return result;
     }
 
     /**
@@ -116,15 +127,26 @@ public class CleopatraSnakeSummoner extends Entity {
         return dx * dx + dy * dy + dz * dz;
     }
 
-    private void spawnOnPad(int index, EntityType<CleopatraVenomSnake> type) {
-        if (pads == null || index < 0 || index >= pads.size()) return;
+    private boolean spawnOnPad(int index, EntityType<CleopatraVenomSnake> type) {
+        if (pads == null || index < 0 || index >= pads.size()) return false;
 
         CleopatraVenomSnake snake = type.create(level());
-        if (snake == null) return;
+        if (snake == null) return false;
 
         BlockPos pad = pads.get(index);
         snake.moveTo(pad.getX() + 0.5D, pad.getY() + 1.0D, pad.getZ() + 0.5D, getYRot(), 0.0F);
-        level().addFreshEntity(snake);
+        // 明确继承副本实例 ID，不再完全依赖位置推断，防止并发副本或边界位置下三蛇漏记。
+        if (getPersistentData().hasUUID("YellowDuckDungeon")) {
+            snake.getPersistentData().putUUID("YellowDuckDungeon",
+                    getPersistentData().getUUID("YellowDuckDungeon"));
+        }
+        boolean added = level().addFreshEntity(snake);
+        if (added) {
+            // 只有实体真正成功加入世界后才登记“已生成”。
+            // EntityJoinLevelEvent 之后仍可能被其它 Mod/插件取消，不能在那里提前记 UUID。
+            DungeonManager.recordCleopatraSnakeSpawned(snake);
+        }
+        return added;
     }
 
     @Override
