@@ -16,9 +16,7 @@ import com.yourname.yellowduck.registry.ModSounds;
 import com.yourname.yellowduck.silk.SilkContent;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
 @Mod(YellowDuckMod.MOD_ID)
@@ -46,8 +44,12 @@ public class YellowDuckMod {
         CleopatraEffects.EFFECTS.register(bus);
         MountNetwork.init();
 
-        // 首次启动后自动生成 config/yellowduck-entities.toml。
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, EntityTuningConfig.SPEC, "yellowduck-entities.toml");
+        /*
+         * 生物属性 + 掉落 + 艳后战斗参数仍然共用 config/yellowduck-entities.toml，
+         * 但不再注册 ForgeConfigSpec，彻底避免 Forge 自动 Correcting 后把用户值改回默认。
+         */
+        EntityTuningConfig.ensureLoaded();
+
         // 独立副本配置：config/yellowduck-dungeons.toml。
         DungeonConfig.ensureLoaded();
 
