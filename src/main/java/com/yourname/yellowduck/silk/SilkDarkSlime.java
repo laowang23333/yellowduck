@@ -10,6 +10,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -31,7 +32,7 @@ public class SilkDarkSlime extends Slime {
     }
 
     public static AttributeSupplier.Builder createAttributes() {
-        return Slime.createAttributes()
+        return Monster.createMonsterAttributes()
                 .add(Attributes.MAX_HEALTH, 300.0D)
                 .add(Attributes.ATTACK_DAMAGE, SilkBalance.SLIME_DAMAGE)
                 .add(Attributes.MOVEMENT_SPEED, 0.24D)
@@ -119,6 +120,5 @@ public class SilkDarkSlime extends Slime {
         super.readAdditionalSaveData(tag);
         owner = tag.hasUUID("SilkOwner") ? tag.getUUID("SilkOwner") : null;
         shielded = tag.getBoolean("SilkShielded");
-        discard();
     }
 }
