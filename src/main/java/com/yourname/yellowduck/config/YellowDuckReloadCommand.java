@@ -25,9 +25,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.config.ConfigTracker;
-import net.minecraftforge.fml.config.ModConfig;
-import net.minecraftforge.fml.loading.FMLPaths;
 
 /** YellowDuck 主命令：配置重载；副本玩家命令只保留安全退出与奖励查看。 */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID)
@@ -42,9 +39,6 @@ public final class YellowDuckReloadCommand {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal(name);
 
         root.then(Commands.literal("reload").requires(s -> s.hasPermission(2)).executes(ctx -> reload(ctx.getSource())));
-
-        // 组队/开本不再提供玩家命令入口。
-        // 玩家必须右键副本柱子（meet_stone）打开组队界面，并通过GUI开始副本。
 
         LiteralArgumentBuilder<CommandSourceStack> dungeon = Commands.literal("dungeon");
         dungeon.then(Commands.literal("leave").executes(ctx -> DungeonManager.leave(ctx.getSource().getPlayerOrException()) ? 1 : 0));
@@ -132,24 +126,50 @@ public final class YellowDuckReloadCommand {
 
     private static int reload(CommandSourceStack source) {
         try {
-            ConfigTracker.INSTANCE.loadConfigs(ModConfig.Type.COMMON, FMLPaths.CONFIGDIR.get());
+            /*
+             * yellowduck-entities.toml 已经不走 Forge ConfigTracker。
+             * 先完整解析并验证，只有成功才原子切换；失败时保留上一份有效配置。
+             */
+            boolean entityOk = EntityTuningConfig.reload();
             boolean dungeonOk = DungeonConfig.reload();
+
             int count = 0;
-            for (ServerLevel level : source.getServer().getAllLevels()) {
-                for (var entity : level.getAllEntities()) {
-                    if (entity instanceof LivingEntity living) {
+            if (entityOk) {
+                for (ServerLevel level : source.getServer().getAllLevels()) {
+                    for (var entity : level.getAllEntities()) {
+                        if (!(entity instanceof LivingEntity living)) continue;
+
                         EntityTuningConfig.reapply(living);
-                        if (living instanceof CleopatraBoss) apply(living, CleopatraConfig.bossHealth.get(), CleopatraConfig.bossAttack.get());
-                        else if (living instanceof CleopatraSandworm) apply(living, CleopatraConfig.sandwormHealth.get(), null);
-                        else if (living instanceof CleopatraScorpion) apply(living, CleopatraConfig.scorpionHealth.get(), null);
-                        else if (living instanceof CleopatraVenomSnake) apply(living, CleopatraConfig.snakeHealth.get(), CleopatraConfig.snakeAttack.get());
+
+                        // 艳后的战斗配置仍在同一个 yellowduck-entities.toml 中。
+                        // 这些实体的基础属性在 reload 后同步刷新。
+                        if (living instanceof CleopatraBoss) {
+                            apply(living, CleopatraConfig.bossHealth.get(), CleopatraConfig.bossAttack.get());
+                        } else if (living instanceof CleopatraSandworm) {
+                            apply(living, CleopatraConfig.sandwormHealth.get(), null);
+                        } else if (living instanceof CleopatraScorpion) {
+                            apply(living, CleopatraConfig.scorpionHealth.get(), null);
+                        } else if (living instanceof CleopatraVenomSnake) {
+                            apply(living, CleopatraConfig.snakeHealth.get(), CleopatraConfig.snakeAttack.get());
+                        }
                         count++;
                     }
                 }
             }
-            source.sendSuccess(() -> Component.literal("YellowDuck 配置已重新读取；实体配置和副本配置已刷新。"
-                    + (dungeonOk ? "" : "（副本配置读取失败，请查看日志）")), true);
-            return count;
+
+            if (!entityOk) {
+                source.sendFailure(Component.literal(
+                        "yellowduck-entities.toml 读取失败：已保留上一份有效生物/艳后配置，文件没有被自动改回默认。请查看日志。"));
+            }
+
+            source.sendSuccess(() -> Component.literal(
+                    "YellowDuck 重载完成："
+                            + (entityOk ? "生物/艳后配置已更新" : "生物/艳后配置保持上一份有效值")
+                            + "；"
+                            + (dungeonOk ? "副本配置已更新" : "副本配置读取失败")
+                            + "。"), true);
+
+            return entityOk || dungeonOk ? Math.max(1, count) : 0;
         } catch (Throwable t) {
             source.sendFailure(Component.literal("YellowDuck reload 失败: " + t.getMessage()));
             return 0;
@@ -158,12 +178,19 @@ public final class YellowDuckReloadCommand {
 
     private static void apply(LivingEntity entity, Double hp, Double attack) {
         float ratio = entity.getMaxHealth() > 0 ? entity.getHealth() / entity.getMaxHealth() : 1;
+
         if (hp != null && entity.getAttribute(Attributes.MAX_HEALTH) != null) {
-            entity.getAttribute(Attributes.MAX_HEALTH).setBaseValue(hp);
-            entity.setHealth(Math.max(.1f, Math.min(entity.getMaxHealth(), entity.getMaxHealth() * ratio)));
+            var attr = entity.getAttribute(Attributes.MAX_HEALTH);
+            if (Math.abs(attr.getBaseValue() - hp) > 1.0E-9D) {
+                attr.setBaseValue(hp);
+                entity.setHealth(Math.max(.1f,
+                        Math.min(entity.getMaxHealth(), entity.getMaxHealth() * ratio)));
+            }
         }
-        if (attack != null && entity.getAttribute(Attributes.ATTACK_DAMAGE) != null)
+
+        if (attack != null && entity.getAttribute(Attributes.ATTACK_DAMAGE) != null) {
             entity.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(attack);
+        }
     }
 
     private YellowDuckReloadCommand() {}
