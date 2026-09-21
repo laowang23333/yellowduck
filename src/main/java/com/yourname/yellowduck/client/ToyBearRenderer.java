@@ -13,17 +13,21 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 
+import java.util.Map;
+import java.util.WeakHashMap;
+
 @OnlyIn(Dist.CLIENT)
 public class ToyBearRenderer extends GltfEntityRenderer<ToyBearEntity> {
     private static final ResourceLocation MODEL_ID =
             new ResourceLocation("yellowduck", "entity_toy_bear");
 
     private static final float MODEL_SCALE = 0.15F;
-
     private static final String IDLE_ANIMATION = "ToyBearIdle";
     private static final String WALK_ANIMATION = "ToyBearWalk";
     private static final String ATTACK_ANIMATION = "ToyBearAttack";
     private static final String DEATH_ANIMATION = "ToyBearDeath";
+
+    private final Map<ToyBearEntity, Integer> attackSerials = new WeakHashMap<>();
 
     public ToyBearRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
@@ -39,17 +43,21 @@ public class ToyBearRenderer extends GltfEntityRenderer<ToyBearEntity> {
     public void render(ToyBearEntity entity, float entityYaw, float partialTick,
                        PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
         try {
-            AnimationController ctrl = this.getAnimationController(entity);
+            AnimationController ctrl = getAnimationController(entity);
             if (ctrl != null) {
-                final String animation;
-                final boolean loop;
+                String animation;
+                boolean loop;
+                boolean forceRestart = false;
 
-                if (!entity.isAlive()) {
+                if (entity.getEntityData().get(ToyBearEntity.DYING) || !entity.isAlive()) {
                     animation = DEATH_ANIMATION;
                     loop = false;
                 } else if (entity.getEntityData().get(ToyBearEntity.ATTACKING)) {
                     animation = ATTACK_ANIMATION;
-                    loop = true;
+                    loop = false;
+                    int serial = entity.getEntityData().get(ToyBearEntity.ATTACK_SERIAL);
+                    forceRestart = attackSerials.getOrDefault(entity, -1) != serial;
+                    attackSerials.put(entity, serial);
                 } else if (entity.getDeltaMovement().horizontalDistanceSqr() > 0.0004D) {
                     animation = WALK_ANIMATION;
                     loop = true;
@@ -58,7 +66,7 @@ public class ToyBearRenderer extends GltfEntityRenderer<ToyBearEntity> {
                     loop = true;
                 }
 
-                if (!animation.equals(ctrl.getAnimationName())) {
+                if (forceRestart || !animation.equals(ctrl.getAnimationName())) {
                     ctrl.play(animation, loop);
                 }
             }

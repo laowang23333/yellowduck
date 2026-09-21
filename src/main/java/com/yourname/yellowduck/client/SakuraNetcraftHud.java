@@ -43,15 +43,13 @@ public final class SakuraNetcraftHud {
             new ResourceLocation("yellowduck", "textures/gui/boss_blood_yellow.png");
     private static final ResourceLocation BLOOD_RED =
             new ResourceLocation("yellowduck", "textures/gui/boss_blood_red.png");
-    private static final ResourceLocation BOSS_ICON_ATLAS =
-            new ResourceLocation("yellowduck", "textures/gui/boss_map_icon.png");
+    // Stargazer 原版独立小樱头像（不改用户的小樱模型）。
+    private static final ResourceLocation SAKURA_HEAD =
+            new ResourceLocation("yellowduck", "textures/gui/boss_head/sakura.png");
 
-    private static final int ICON_ATLAS_W = 1368;
-    private static final int ICON_ATLAS_H = 1012;
-    private static final int SAKURA_ICON_U = 1083;
-    private static final int SAKURA_ICON_V = 631;
-    private static final int SAKURA_ICON_W = 103;
-    private static final int SAKURA_ICON_H = 79;
+    // Stargazer 原版火焰蓄能 18x18 图标。
+    private static final ResourceLocation SAKURA_FLAME_CHARGE =
+            new ResourceLocation("yellowduck", "textures/mob_effect/sakura_flame_charge.png");
 
     private SakuraNetcraftHud() {
     }
@@ -149,6 +147,20 @@ public final class SakuraNetcraftHud {
         float textCenterY = barY + barHeight / 2.0F;
         float textScale = 0.7F * screenScale;
         drawCenteredScaledText(graphics, mc, percent, textCenterX, textCenterY, textScale);
+
+        // Stargazer 原版会把火焰蓄能同步成状态图标；这里直接接到现有小樱 HUD。
+        int fireStacks = boss.getEntityData().get(SakurawitchEntity.FIRE_MARK_STACKS);
+        if (fireStacks > 0) {
+            float chargeSize = 12.0F * screenScale * groupScale;
+            float chargeX = barX + barWidth + 3.0F * screenScale;
+            float chargeY = barY - 1.0F * screenScale;
+            drawTexturedQuad(graphics, SAKURA_FLAME_CHARGE, chargeX, chargeY, chargeSize, chargeSize,
+                    0.0F, 0.0F, 1.0F, 1.0F);
+            drawCenteredScaledText(graphics, mc, Integer.toString(fireStacks),
+                    chargeX + chargeSize + 3.5F * screenScale,
+                    chargeY + chargeSize / 2.0F,
+                    0.65F * screenScale * groupScale);
+        }
     }
 
     private static ResourceLocation chooseBloodTexture(float healthRatio) {
@@ -236,11 +248,8 @@ public final class SakuraNetcraftHud {
             float width,
             float height
     ) {
-        float u0 = SAKURA_ICON_U / (float) ICON_ATLAS_W;
-        float v0 = SAKURA_ICON_V / (float) ICON_ATLAS_H;
-        float u1 = (SAKURA_ICON_U + SAKURA_ICON_W) / (float) ICON_ATLAS_W;
-        float v1 = (SAKURA_ICON_V + SAKURA_ICON_H) / (float) ICON_ATLAS_H;
-        drawTexturedQuad(graphics, BOSS_ICON_ATLAS, x, y, width, height, u0, v0, u1, v1);
+        drawTexturedQuad(graphics, SAKURA_HEAD, x, y, width, height,
+                0.0F, 0.0F, 1.0F, 1.0F);
     }
 
     /**
