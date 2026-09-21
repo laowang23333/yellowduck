@@ -297,7 +297,10 @@ public class MountEntity extends PathfinderMob {
 
     @Override
     public void remove(RemovalReason reason) {
-        if (!this.level().isClientSide) {
+        // 区块卸载、玩家带实体卸载、跨维度切换等 RemovalReason 仍需要保存实体，
+        // 不能把它们当成“坐骑真的消失”去清除 ActiveMount。
+        // 只有 KILLED / DISCARDED 等真正销毁实体的原因才解除唯一坐骑记录。
+        if (!this.level().isClientSide && reason.shouldDestroy()) {
             MountManager.onMountRemoved(this);
         }
         super.remove(reason);
