@@ -20,6 +20,11 @@ public class ToyBearRenderer extends GltfEntityRenderer<ToyBearEntity> {
 
     private static final float MODEL_SCALE = 0.15F;
 
+    private static final String IDLE_ANIMATION = "ToyBearIdle";
+    private static final String WALK_ANIMATION = "ToyBearWalk";
+    private static final String ATTACK_ANIMATION = "ToyBearAttack";
+    private static final String DEATH_ANIMATION = "ToyBearDeath";
+
     public ToyBearRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, MODEL_ID, GltfRenderOptions.builder()
                 .scale(MODEL_SCALE)
@@ -36,9 +41,25 @@ public class ToyBearRenderer extends GltfEntityRenderer<ToyBearEntity> {
         try {
             AnimationController ctrl = this.getAnimationController(entity);
             if (ctrl != null) {
-                String animation = "Anim-1";
-                if (ctrl.getAnimationName() == null || !ctrl.getAnimationName().equals(animation)) {
-                    ctrl.play(animation, true);
+                final String animation;
+                final boolean loop;
+
+                if (!entity.isAlive()) {
+                    animation = DEATH_ANIMATION;
+                    loop = false;
+                } else if (entity.getEntityData().get(ToyBearEntity.ATTACKING)) {
+                    animation = ATTACK_ANIMATION;
+                    loop = true;
+                } else if (entity.getDeltaMovement().horizontalDistanceSqr() > 0.0004D) {
+                    animation = WALK_ANIMATION;
+                    loop = true;
+                } else {
+                    animation = IDLE_ANIMATION;
+                    loop = true;
+                }
+
+                if (!animation.equals(ctrl.getAnimationName())) {
+                    ctrl.play(animation, loop);
                 }
             }
         } catch (Throwable ignored) {
