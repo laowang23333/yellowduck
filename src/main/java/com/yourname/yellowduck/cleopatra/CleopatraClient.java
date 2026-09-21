@@ -23,6 +23,9 @@ import org.joml.Matrix4f;
 import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 
+import java.util.Map;
+import java.util.WeakHashMap;
+
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public final class CleopatraClient {
     @SubscribeEvent
@@ -49,6 +52,8 @@ public final class CleopatraClient {
         private static final double BBOX_CENTER_X = -10.2684006690979D;
         private static final double BBOX_CENTER_Z = -2.2494001388549805D;
 
+        private final Map<CleopatraBoss, Integer> serials = new WeakHashMap<>();
+
         BossRenderer(EntityRendererProvider.Context c) {
             super(c, new ResourceLocation("yellowduck", "cleopatra_embedded"),
                     GltfRenderOptions.builder()
@@ -68,16 +73,27 @@ public final class CleopatraClient {
         public void render(CleopatraBoss x, float y, float p, PoseStack ps, MultiBufferSource b, int l) {
             AnimationController c = getAnimationController(x);
             if (c != null) {
-                String a = switch (x.getAttackState()) {
-                    case 2 -> "Attack1";
-                    case 3 -> "Attack2";
-                    case 4 -> "Attack3";
+                int state = x.getAttackState();
+                int serial = x.getEntityData().get(CleopatraBoss.CAST_SERIAL);
+
+                String a = switch (state) {
+                    case CleopatraBoss.ANIM_ATTACK1 -> "Attack1";
+                    case CleopatraBoss.ANIM_ATTACK2 -> "Attack2";
+                    case CleopatraBoss.ANIM_ATTACK3 -> "Attack3";
+                    case CleopatraBoss.ANIM_DEATH -> "Death";
                     default -> x.isDeadOrDying() ? "Death" : "Idle";
                 };
-                if (!a.equals(c.getAnimationName())) {
-                    c.play(a, a.equals("Idle"));
+
+                boolean oneShot = !"Idle".equals(a);
+                boolean newAction = oneShot
+                        && serials.getOrDefault(x, Integer.MIN_VALUE) != serial;
+
+                if (!a.equals(c.getAnimationName()) || newAction) {
+                    c.play(a, !oneShot);
+                    serials.put(x, serial);
                 }
             }
+
             float yaw = Mth.rotLerp(p, x.yRotO, x.getYRot());
             ps.pushPose();
             ps.mulPose(Axis.YP.rotationDegrees(-yaw));
@@ -91,6 +107,8 @@ public final class CleopatraClient {
         private static final float MODEL_SCALE = .1f;
         private static final double BBOX_CENTER_X = 0.0D;
         private static final double BBOX_CENTER_Z = -6.653698921203613D;
+
+        private final Map<CleopatraVenomSnake, Integer> serials = new WeakHashMap<>();
 
         SnakeRenderer(EntityRendererProvider.Context c, String m) {
             super(c, new ResourceLocation("yellowduck", m),
@@ -111,15 +129,26 @@ public final class CleopatraClient {
         public void render(CleopatraVenomSnake x, float y, float p, PoseStack ps, MultiBufferSource b, int l) {
             AnimationController c = getAnimationController(x);
             if (c != null) {
-                String a = x.isDeadOrDying() ? "Death" : switch (x.getAttackState()) {
-                    case 1 -> "Appear";
-                    case 2 -> "Attack";
-                    default -> "Idle";
+                int state = x.getAttackState();
+                int serial = x.getAnimationSerial();
+
+                String a = switch (state) {
+                    case CleopatraVenomSnake.ANIM_APPEAR -> "Appear";
+                    case CleopatraVenomSnake.ANIM_ATTACK -> "Attack";
+                    case CleopatraVenomSnake.ANIM_DEATH -> "Death";
+                    default -> x.isDeadOrDying() ? "Death" : "Idle";
                 };
-                if (!a.equals(c.getAnimationName())) {
-                    c.play(a, a.equals("Idle"));
+
+                boolean oneShot = !"Idle".equals(a);
+                boolean newAction = oneShot
+                        && serials.getOrDefault(x, Integer.MIN_VALUE) != serial;
+
+                if (!a.equals(c.getAnimationName()) || newAction) {
+                    c.play(a, !oneShot);
+                    serials.put(x, serial);
                 }
             }
+
             float yaw = Mth.rotLerp(p, x.yRotO, x.getYRot());
             ps.pushPose();
             ps.mulPose(Axis.YP.rotationDegrees(-yaw));
@@ -130,23 +159,43 @@ public final class CleopatraClient {
     }
 
     static class SandwormModel extends GeoModel<CleopatraSandworm> {
-        public ResourceLocation getModelResource(CleopatraSandworm a) { return new ResourceLocation("yellowduck", "geo/entity/cleopatra_sandworm.geo.json"); }
-        public ResourceLocation getTextureResource(CleopatraSandworm a) { return new ResourceLocation("yellowduck", "textures/entity/cleopatra_sandworm.png"); }
-        public ResourceLocation getAnimationResource(CleopatraSandworm a) { return new ResourceLocation("yellowduck", "animations/entity/cleopatra_sandworm.animation.json"); }
+        public ResourceLocation getModelResource(CleopatraSandworm a) {
+            return new ResourceLocation("yellowduck", "geo/entity/cleopatra_sandworm.geo.json");
+        }
+
+        public ResourceLocation getTextureResource(CleopatraSandworm a) {
+            return new ResourceLocation("yellowduck", "textures/entity/cleopatra_sandworm.png");
+        }
+
+        public ResourceLocation getAnimationResource(CleopatraSandworm a) {
+            return new ResourceLocation("yellowduck", "animations/entity/cleopatra_sandworm.animation.json");
+        }
     }
 
     static class SandwormRenderer extends GeoEntityRenderer<CleopatraSandworm> {
-        SandwormRenderer(EntityRendererProvider.Context c) { super(c, new SandwormModel()); }
+        SandwormRenderer(EntityRendererProvider.Context c) {
+            super(c, new SandwormModel());
+        }
     }
 
     static class ScorpionModel extends GeoModel<CleopatraScorpion> {
-        public ResourceLocation getModelResource(CleopatraScorpion a) { return new ResourceLocation("yellowduck", "geo/entity/cleopatra_scorpion.geo.json"); }
-        public ResourceLocation getTextureResource(CleopatraScorpion a) { return new ResourceLocation("yellowduck", "textures/entity/cleopatra_scorpion.png"); }
-        public ResourceLocation getAnimationResource(CleopatraScorpion a) { return new ResourceLocation("yellowduck", "animations/entity/cleopatra_scorpion.animation.json"); }
+        public ResourceLocation getModelResource(CleopatraScorpion a) {
+            return new ResourceLocation("yellowduck", "geo/entity/cleopatra_scorpion.geo.json");
+        }
+
+        public ResourceLocation getTextureResource(CleopatraScorpion a) {
+            return new ResourceLocation("yellowduck", "textures/entity/cleopatra_scorpion.png");
+        }
+
+        public ResourceLocation getAnimationResource(CleopatraScorpion a) {
+            return new ResourceLocation("yellowduck", "animations/entity/cleopatra_scorpion.animation.json");
+        }
     }
 
     static class ScorpionRenderer extends GeoEntityRenderer<CleopatraScorpion> {
-        ScorpionRenderer(EntityRendererProvider.Context c) { super(c, new ScorpionModel()); }
+        ScorpionRenderer(EntityRendererProvider.Context c) {
+            super(c, new ScorpionModel());
+        }
     }
 
     static class FlatRenderer<T extends Entity> extends EntityRenderer<T> {
@@ -161,38 +210,77 @@ public final class CleopatraClient {
             horizontal = h;
         }
 
-        public ResourceLocation getTextureLocation(T e) { return tex; }
+        public ResourceLocation getTextureLocation(T e) {
+            return tex;
+        }
 
         @Override
         public void render(T e, float yaw, float pt, PoseStack ps, MultiBufferSource bs, int light) {
             ps.pushPose();
             ps.translate(0, .05, 0);
-            if (horizontal) ps.mulPose(Axis.XP.rotationDegrees(90));
-            else ps.mulPose(entityRenderDispatcher.cameraOrientation());
+            if (horizontal) {
+                ps.mulPose(Axis.XP.rotationDegrees(90));
+            } else {
+                ps.mulPose(entityRenderDispatcher.cameraOrientation());
+            }
             ps.scale(size, size, size);
+
             Matrix4f m = ps.last().pose();
             VertexConsumer v = bs.getBuffer(RenderType.entityTranslucent(getTextureLocation(e)));
-            v.vertex(m, -.5f, -.5f, 0).color(255, 255, 255, 255).uv(0, 1).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light).normal(0, 1, 0).endVertex();
-            v.vertex(m, .5f, -.5f, 0).color(255, 255, 255, 255).uv(1, 1).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light).normal(0, 1, 0).endVertex();
-            v.vertex(m, .5f, .5f, 0).color(255, 255, 255, 255).uv(1, 0).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light).normal(0, 1, 0).endVertex();
-            v.vertex(m, -.5f, .5f, 0).color(255, 255, 255, 255).uv(0, 0).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light).normal(0, 1, 0).endVertex();
+
+            v.vertex(m, -.5f, -.5f, 0).color(255, 255, 255, 255).uv(0, 1)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light).normal(0, 1, 0).endVertex();
+            v.vertex(m, .5f, -.5f, 0).color(255, 255, 255, 255).uv(1, 1)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light).normal(0, 1, 0).endVertex();
+            v.vertex(m, .5f, .5f, 0).color(255, 255, 255, 255).uv(1, 0)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light).normal(0, 1, 0).endVertex();
+            v.vertex(m, -.5f, .5f, 0).color(255, 255, 255, 255).uv(0, 0)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light).normal(0, 1, 0).endVertex();
+
             ps.popPose();
             super.render(e, yaw, pt, ps, bs, light);
         }
     }
 
     static class RingRenderer extends FlatRenderer<CleopatraVenomRing> {
-        RingRenderer(EntityRendererProvider.Context c) { super(c, new ResourceLocation("yellowduck", "textures/entity/elite_ring_plain.png"), 4f, true); }
-        @Override public ResourceLocation getTextureLocation(CleopatraVenomRing e) { return new ResourceLocation("yellowduck", "textures/entity/" + (e.getKind() == 0 ? "elite_ring_fire.png" : e.getKind() == 1 ? "elite_ring_ice.png" : "elite_ring_plain.png")); }
+        RingRenderer(EntityRendererProvider.Context c) {
+            super(c, new ResourceLocation("yellowduck", "textures/entity/elite_ring_plain.png"), 4f, true);
+        }
+
+        @Override
+        public ResourceLocation getTextureLocation(CleopatraVenomRing e) {
+            return new ResourceLocation(
+                    "yellowduck",
+                    "textures/entity/" + (e.getKind() == 0
+                            ? "elite_ring_fire.png"
+                            : e.getKind() == 1 ? "elite_ring_ice.png" : "elite_ring_plain.png")
+            );
+        }
     }
 
     static class BombRenderer extends FlatRenderer<CleopatraBombMark> {
-        BombRenderer(EntityRendererProvider.Context c) { super(c, new ResourceLocation("yellowduck", "textures/entity/bomb_mark_poison.png"), .8f, false); }
-        @Override public ResourceLocation getTextureLocation(CleopatraBombMark e) { return new ResourceLocation("yellowduck", "textures/entity/" + (e.getKind() == 1 ? "bomb_mark_burning.png" : e.getKind() == 2 ? "bomb_mark_frozen.png" : "bomb_mark_poison.png")); }
+        BombRenderer(EntityRendererProvider.Context c) {
+            super(c, new ResourceLocation("yellowduck", "textures/entity/bomb_mark_poison.png"), .8f, false);
+        }
+
+        @Override
+        public ResourceLocation getTextureLocation(CleopatraBombMark e) {
+            return new ResourceLocation(
+                    "yellowduck",
+                    "textures/entity/" + (e.getKind() == 1
+                            ? "bomb_mark_burning.png"
+                            : e.getKind() == 2 ? "bomb_mark_frozen.png" : "bomb_mark_poison.png")
+            );
+        }
     }
 
     static class NoRenderer extends EntityRenderer<CleopatraSnakeSummoner> {
-        NoRenderer(EntityRendererProvider.Context c) { super(c); }
-        public ResourceLocation getTextureLocation(CleopatraSnakeSummoner e) { return new ResourceLocation("minecraft", "textures/misc/white.png"); }
+        NoRenderer(EntityRendererProvider.Context c) {
+            super(c);
+        }
+
+        public ResourceLocation getTextureLocation(CleopatraSnakeSummoner e) {
+            return new ResourceLocation("minecraft", "textures/misc/white.png");
+        }
     }
 }
