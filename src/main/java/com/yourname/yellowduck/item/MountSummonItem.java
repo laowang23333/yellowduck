@@ -28,6 +28,13 @@ public class MountSummonItem extends Item {
         if (!level.isClientSide) {
             if (!MountData.hasMount(player, mountId)) {
                 MountData.bindMount(player, mountId);
+
+                // 坐骑蛋是一次性绑定凭证：首次成功绑定后消耗 1 个。
+                // 创造模式不消耗，方便管理员测试；已经绑定的玩家再次使用也不会误扣。
+                if (!player.getAbilities().instabuild) {
+                    stack.shrink(1);
+                }
+
                 if (player instanceof ServerPlayer serverPlayer) {
                     MountNetwork.syncTo(serverPlayer);
                 }
