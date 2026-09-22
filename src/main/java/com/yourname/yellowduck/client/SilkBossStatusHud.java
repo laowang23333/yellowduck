@@ -31,19 +31,24 @@ import java.util.List;
  * - 史莱姆25秒爆炸倒计时
  * - 火圈/光柱等场景对象标记
  *
- * 已确认的原配置图标路径：
+ * 已确认的原配置/战斗说明：
+ * 2271 黑暗能量     -> BOSS 自身 0~99 能量；原图标引用 YYBuffImages/black_energy
  * 2279 腐蚀黑水     -> YYBuffImages/blast_black
- * 2280 黑暗疫病     -> YYBuffImages/black_energy
  * 2281 心火庇护     -> YYBuffImages/fly_fast
  * 2283 强化火焰     -> YYBuffImages/de_fire
  * 2293 能量爆发     -> YYBuffImages/posion
  *
- * 当前解包资源没有 YYBuffImages.png 原图集，所以只在“Buff种类/层数/倒计时”上严格按解析结果，
- * 图面暂用已经提取到 YellowDuck 的斯尔克资源作占位；以后拿到 YYBuffImages 原图集只需替换纹理。
+ * 2280 黑暗疫病仍显示独立状态，但不再冒充 2271 黑暗能量。
+ * 当前解包资源没有 YYBuffImages.png 原图集，所以只在 Buff 身份、层数/倒计时和状态同步上按解析结果；
+ * 图面暂用已提取的斯尔克资源占位，拿到原图集后只需替换纹理。
  */
 public final class SilkBossStatusHud {
+    /** 2271 原图标 YYBuffImages/black_energy 尚未拿到；先用黑能量球资源占位。 */
     private static final ResourceLocation ICON_BLACK_ENERGY =
             new ResourceLocation("yellowduck", "textures/entity/silk/stone_ball_black.png");
+    /** 2280 黑暗疫病单独用灵魂素材占位，避免和 2271 黑暗能量混为同一个图标。 */
+    private static final ResourceLocation ICON_PLAGUE =
+            new ResourceLocation("yellowduck", "textures/particle/silk/soul_0.png");
     private static final ResourceLocation ICON_BLACK_WATER =
             new ResourceLocation("yellowduck", "textures/entity/silk/pool_black.png");
     private static final ResourceLocation ICON_HEART_FIRE =
@@ -98,11 +103,19 @@ public final class SilkBossStatusHud {
 
         List<StatusIcon> icons = new ArrayList<>();
 
-        // 2280 黑暗疫病（传染） -> YYBuffImages/black_energy
+        // 2271 黑暗能量：截图中常驻于斯尔克血条下方，显示 Boss 自身当前能量层数。
+        int blackEnergy = Math.max(0, boss.getEntityData().get(SilkBoss.BLACK_ENERGY_STACKS));
+        icons.add(new StatusIcon(
+                ICON_BLACK_ENERGY,
+                Integer.toString(blackEnergy),
+                0xFF7A4A9E
+        ));
+
+        // 2280 黑暗疫病：独立于 2271，只在疫病实际存在时显示剩余秒数。
         int plagueSeconds = Math.max(0, boss.getEntityData().get(SilkBoss.PLAGUE_SECONDS));
         if (plagueSeconds > 0) {
             icons.add(new StatusIcon(
-                    ICON_BLACK_ENERGY,
+                    ICON_PLAGUE,
                     Integer.toString(plagueSeconds),
                     0xFF3E86B8
             ));
