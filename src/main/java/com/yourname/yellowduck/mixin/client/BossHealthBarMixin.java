@@ -2,6 +2,7 @@ package com.yourname.yellowduck.client.event;
 
 import com.yourname.yellowduck.client.NetcraftBossHud;
 import com.yourname.yellowduck.client.SakuraNetcraftHud;
+import com.yourname.yellowduck.client.SilkBossStatusHud;
 import com.yourname.yellowduck.client.ToyBearNetcraftHud;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiEvent;
@@ -24,5 +25,7 @@ public final class BossHealthBarMixin {
         SakuraNetcraftHud.render(event);
         ToyBearNetcraftHud.render(event);
         NetcraftBossHud.render(event);
+        // 斯尔克原版式技能/Buff 图标行必须最后绘制，保证位于 Boss 血条之上。
+        SilkBossStatusHud.render(event);
     }
 }
