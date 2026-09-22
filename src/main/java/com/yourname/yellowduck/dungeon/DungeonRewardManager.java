@@ -141,16 +141,23 @@ public final class DungeonRewardManager {
         }
     }
 
+    /**
+     * 发放已经持久化的副本奖励。
+     *
+     * 旧逻辑要求“整批奖励必须一次性全部放进36格主背包”，背包不足时整批卡在SavedData里。
+     * 新逻辑改为：能塞进背包的正常塞；剩余部分直接掉在玩家当前世界的脚下。
+     * 这样奖励总量超过背包最大容量时也不会清空/覆盖玩家原背包，更不会看起来像奖励消失。
+     */
     public static void deliverPending(ServerPlayer player) {
         DungeonSavedData data = DungeonSavedData.get(player.server);
         List<DungeonSavedData.PendingReward> batches = data.pendingRewards(player.getUUID());
         if (batches.isEmpty()) return;
 
         boolean granted = false;
-        boolean waitingForSpace = false;
+        boolean droppedOverflow = false;
 
         for (DungeonSavedData.PendingReward pending : batches) {
-            SafePlayerDelivery.DeliveryResult result = SafePlayerDelivery.deliver(
+            SafePlayerDelivery.DeliveryResult result = SafePlayerDelivery.deliverOrDropOverflow(
                     player,
                     "dungeon_reward",
                     pending.batchId(),
@@ -160,8 +167,9 @@ public final class DungeonRewardManager {
 
             if (result == SafePlayerDelivery.DeliveryResult.GRANTED) {
                 granted = true;
-            } else if (result == SafePlayerDelivery.DeliveryResult.NO_SPACE) {
-                waitingForSpace = true;
+            } else if (result == SafePlayerDelivery.DeliveryResult.GRANTED_WITH_DROPS) {
+                granted = true;
+                droppedOverflow = true;
             } else if (SafePlayerDelivery.canAcknowledge(
                     player, "dungeon_reward", pending.batchId())) {
                 data.acknowledgePendingReward(player.getUUID(), pending.batchId());
@@ -171,9 +179,9 @@ public final class DungeonRewardManager {
         if (granted) {
             player.sendSystemMessage(Component.literal("§a已安全发放你的副本奖励。"));
         }
-        if (waitingForSpace) {
+        if (droppedOverflow) {
             player.sendSystemMessage(Component.literal(
-                    "§e背包空间不足，未能放下的副本奖励仍安全保存在服务器中；整理背包后重新登录或正常离开副本即可再次尝试。"));
+                    "§e你的背包已满，放不下的副本奖励已经掉落在你脚下，请及时拾取。"));
         }
     }
 
@@ -187,6 +195,4 @@ public final class DungeonRewardManager {
         for (ItemStack stack : list) out.add(stack.copy());
         return out;
     }
-
-
 }
