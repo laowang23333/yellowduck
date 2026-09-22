@@ -51,7 +51,7 @@ public final class SilkBalance {
 
     // 持续时间（tick）
     public static volatile int MADNESS_TICKS = 120 * 20;
-    public static volatile int PLAGUE_TICKS = 20 * 20;
+    public static volatile int PLAGUE_TICKS = 30 * 20;
     public static volatile int PLAGUE_HOST_MARK_TICKS = 5 * 20;
     public static volatile int REVIVE_LOCK_TICKS = 30 * 20;
     public static volatile int METEOR_ROOT_TICKS = 10 * 20;
@@ -59,7 +59,7 @@ public final class SilkBalance {
     public static volatile int BLACK_WATER_SPLIT_TICKS = 10 * 20;
     public static volatile int HEART_FIRE_TICKS = 20 * 20;
     public static volatile int STRENGTHENED_FIRE_TICKS = 15 * 20;
-    public static volatile int BOILING_BLOOD_TICKS = 10 * 20;
+    public static volatile int BOILING_BLOOD_TICKS = 5 * 20;
     public static volatile int BURST_ECHO_DELAY_TICKS = 3 * 20;
 
     // 技能冷却（tick）
@@ -115,11 +115,24 @@ public final class SilkBalance {
     public static volatile float MADNESS_OUTGOING_MULTIPLIER = 3.00F;
     public static volatile double MADNESS_SPEED_MODIFIER = -0.50D;
     public static volatile float STRENGTHENED_FIRE_PER_STACK = 0.10F;
-    public static volatile float BOILING_BLOOD_DAMAGE_PER_STACK = 0.75F;
-    public static volatile float BOILING_BLOOD_DAMAGE_CAP = 10.0F;
+    public static volatile float BOILING_BLOOD_DAMAGE_PER_STACK = 1.0F;
+    public static volatile float BOILING_BLOOD_DAMAGE_CAP = 99.0F;
 
-    // 阶段阈值。奶块客户端包未暴露服务端 HP 阈值，因此默认继续沿用 YellowDuck v1。
+
+
+    // 斯尔克 v1.5 行为节奏/召唤物规则（来自用户提供的战斗说明图）
+    /** 每 5 次普通攻击后释放 1 个当前阶段技能。 */
+    public static volatile int BASIC_ATTACKS_PER_SKILL = 5;
+    /** 黑暗史莱姆出生 25 秒后若未被火圈清除则自爆。 */
+    public static volatile int SLIME_AUTO_EXPLODE_TICKS = 25 * 20;
+    /** 每只史莱姆自爆对 30 格内玩家造成固定 30 点伤害。 */
+    public static volatile float SLIME_EXPLOSION_DAMAGE = 30.0F;
+    public static volatile double SLIME_EXPLOSION_RADIUS = 30.0D;
+    /** 黑暗疫病未成功转移给黑暗泰迪时的致命伤害。 */
+    public static volatile float PLAGUE_FAIL_DAMAGE = 99999.0F;
+
+    // 阶段阈值。第二阶段 80%，狂暴阶段 30%，按用户提供的斯尔克战斗说明图还原。
     public static volatile float PHASE_TWO_HEALTH = 0.80F;
-    public static volatile float PHASE_THREE_HEALTH = 0.20F;
+    public static volatile float PHASE_THREE_HEALTH = 0.30F;
     public static volatile float PHASE_THREE_MULTIPLIER = 1.15F;
 }

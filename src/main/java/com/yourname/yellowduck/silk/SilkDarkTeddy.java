@@ -87,6 +87,23 @@ public class SilkDarkTeddy extends PathfinderMob {
         return entity instanceof SilkBoss boss ? boss : null;
     }
 
+    /** 疫病只允许转移给同一只教授召唤的黑暗泰迪。 */
+    public boolean isOwnedBy(SilkBoss boss) {
+        return boss != null && owner != null && owner.equals(boss.getUUID()) && isAlive();
+    }
+
+    /** 黑暗疫病倒计时结束时，玩家站在泰迪附近会把疫病传给泰迪并直接杀死它。 */
+    public void killByPlague(SilkBoss boss) {
+        if (!isOwnedBy(boss)) return;
+        if (level() instanceof ServerLevel serverLevel) {
+            serverLevel.sendParticles(ModParticles.SILK_SOUL.get(), getX(), getY() + 1.1D, getZ(),
+                    80, 0.8D, 1.0D, 0.8D, 0.05D);
+            serverLevel.sendParticles(ModParticles.SILK_DARK_FIRE.get(), getX(), getY() + 0.8D, getZ(),
+                    55, 0.8D, 0.8D, 0.8D, 0.06D);
+        }
+        kill();
+    }
+
     private boolean isValidOwnTarget(ServerPlayer player) {
         SilkBoss boss = ownerBossRaw();
         return boss != null && boss.isAlive() && boss.isEncounterActive() && boss.valid(player);

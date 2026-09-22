@@ -36,11 +36,14 @@ import java.util.UUID;
 /**
  * 疯狂教授斯尔克。
  *
- * 本版把旧 YellowDuck 的“追踪陨石/30秒传熊/中心扩圈黑水”替换为从奶块客户端资源确认的机制：
- * P1：普攻AOE、多重蝙蝠、10秒流星禁锢+分摊、120度暗火喷射；
- * P2：腐化横扫、黑暗泰迪/黑暗史莱姆、20秒玩家间疫病传染、能量爆发；
- * P3：10秒后脚下黑水并十字扩散、200HP黑暗能量球；
- * 玩家资源：心智腐蚀/黑暗能量上限和疯狂持续时间可由 yellowduck-entities.toml 调整。
+ * v1.5 依据用户提供的“斯尔克战斗及技能说明”与已解析客户端配置重新整理：
+ * - HP 阶段为 100~80 / 80~30 / 30~0；
+ * - 每完成 5 次普通攻击，按当前阶段固定轮转释放 1 个技能，不再抢 CD 乱放；
+ * - 召唤史莱姆时同步生成火圈，25 秒未清除或被直接击杀都会自爆；
+ * - 黑暗疫病只允许在倒计时结束瞬间转给同一教授的黑暗泰迪；
+ * - P2 切入时必定生成一次心火光柱；
+ * - 原有理智/疯狂/狂暴表现保持，不在本轮重写其状态体系。
+ * 玩家资源与战斗参数继续从 yellowduck-entities.toml 读取。
  */
 public class SilkBoss extends NetcraftBossBase {
     public static final EntityDataAccessor<Integer> ANIMATION =
@@ -51,17 +54,38 @@ public class SilkBoss extends NetcraftBossBase {
             SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.BOOLEAN);
     public static final EntityDataAccessor<Boolean> WALKING =
             SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.BOOLEAN);
+    /** 服务端实际阶段，避免客户端自定义阈值不同导致 HUD 阶段显示错乱。 */
+    public static final EntityDataAccessor<Integer> PHASE_SYNC =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 已完成的连续普通攻击次数（0~5）。 */
+    public static final EntityDataAccessor<Integer> BASIC_CHAIN =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 当前配置要求的连续普攻次数，默认 5；同步给客户端 HUD。 */
+    public static final EntityDataAccessor<Integer> BASIC_REQUIRED =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 下一次“5普攻后技能”的动作 ID，供 HUD 显示。 */
+    public static final EntityDataAccessor<Integer> NEXT_SPECIAL =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 当前场上黑暗疫病剩余的最大秒数，0 表示没有疫病。 */
+    public static final EntityDataAccessor<Integer> PLAGUE_SECONDS =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 协战状态位：1火元素 / 2火圈 / 4心火光柱 / 8心火庇护。 */
+    public static final EntityDataAccessor<Integer> SUPPORT_FLAGS =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 场上所属黑暗史莱姆距离强制爆炸的最短剩余秒数。 */
+    public static final EntityDataAccessor<Integer> SLIME_SECONDS =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
 
-    private static final int ACT_BASIC = 1;
-    private static final int ACT_BATS = 2;
-    private static final int ACT_METEOR = 3;
-    private static final int ACT_FLAME = 4;
-    private static final int ACT_SWEEP = 5;
-    private static final int ACT_SUMMON = 6;
-    private static final int ACT_PLAGUE = 7;
-    private static final int ACT_BURST = 8;
-    private static final int ACT_BLACK_WATER = 9;
-    private static final int ACT_BLACK_BALL = 10;
+    public static final int ACT_BASIC = 1;
+    public static final int ACT_BATS = 2;
+    public static final int ACT_METEOR = 3;
+    public static final int ACT_FLAME = 4;
+    public static final int ACT_SWEEP = 5;
+    public static final int ACT_SUMMON = 6;
+    public static final int ACT_PLAGUE = 7;
+    public static final int ACT_BURST = 8;
+    public static final int ACT_BLACK_WATER = 9;
+    public static final int ACT_BLACK_BALL = 10;
 
     private static final class Fighter {
         int corruption;
@@ -101,25 +125,24 @@ public class SilkBoss extends NetcraftBossBase {
     private int castAction;
     private int castAge;
     private int castDuration;
+    /** 记录本次技能开始时的阶段，避免技能过程中切阶段导致轮转表误跳一格。 */
+    private int castPhase;
     private UUID castTarget;
     private Vec3 castPoint;
     private float flameYaw;
     private double previousX;
     private double previousZ;
     private boolean configApplied;
-    /** Boss 技能之间的公共恢复窗口，避免多个已冷却技能在动画结束后瞬间倾泻。 */
+    /** 5 次普通攻击 -> 1 个阶段技能；技能按固定轮转，不再按“哪个 CD 到了就抢先放”。 */
     private int nextDecisionTick;
-
     private int nextBasic;
-    private int nextBats;
-    private int nextMeteor;
-    private int nextFlame;
-    private int nextSweep;
-    private int nextSummon;
-    private int nextPlague;
-    private int nextBurst;
-    private int nextBlackWater;
-    private int nextBlackBall;
+    private int basicChain;
+    private int p1Rotation;
+    private int p2Rotation;
+    private int p3Rotation;
+    private int blackBallWave;
+
+    /** 助战小樱各阶段独立计时。 */
     private int nextFireOrb;
     private int nextFireRain;
     private int nextPillar;
@@ -154,6 +177,13 @@ public class SilkBoss extends NetcraftBossBase {
         entityData.define(CAST_SERIAL, 0);
         entityData.define(MAD, false);
         entityData.define(WALKING, false);
+        entityData.define(PHASE_SYNC, 1);
+        entityData.define(BASIC_CHAIN, 0);
+        entityData.define(BASIC_REQUIRED, 5);
+        entityData.define(NEXT_SPECIAL, ACT_BATS);
+        entityData.define(PLAGUE_SECONDS, 0);
+        entityData.define(SUPPORT_FLAGS, 0);
+        entityData.define(SLIME_SECONDS, 0);
     }
 
     @Override
@@ -272,6 +302,8 @@ public class SilkBoss extends NetcraftBossBase {
         for (ServerPlayer player : targets()) fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
 
         int phase = phase();
+        entityData.set(PHASE_SYNC, phase);
+        entityData.set(BASIC_REQUIRED, Math.max(1, SilkBalance.BASIC_ATTACKS_PER_SKILL));
         entityData.set(MAD, phase == 2);
         if (phase >= 2 && !enteredP2) enterPhaseTwo();
         if (phase == 3 && !enteredP3) enterPhaseThree();
@@ -307,106 +339,115 @@ public class SilkBoss extends NetcraftBossBase {
         previousX = getX();
         previousZ = getZ();
         int now = tickCount;
+
         nextDecisionTick = now;
-
-        // 首轮不再使用 5/9/13 秒这种无来源的手写时间；直接从解析到的技能 CD 开始计时。
         nextBasic = now + SilkBalance.BASIC_COOLDOWN;
-        nextBats = now + SilkBalance.BAT_COOLDOWN;
-        nextMeteor = now + SilkBalance.METEOR_COOLDOWN;
-        nextFlame = now + SilkBalance.FLAME_COOLDOWN;
+        basicChain = 0;
+        p1Rotation = 0;
+        p2Rotation = 0;
+        p3Rotation = 0;
+        blackBallWave = 0;
 
-        // 尚未进入对应阶段的技能不提前计时，避免刚切阶段就一股脑全放。
-        nextSweep = Integer.MAX_VALUE;
-        nextSummon = Integer.MAX_VALUE;
-        nextPlague = Integer.MAX_VALUE;
-        nextBurst = Integer.MAX_VALUE;
-        nextBlackWater = Integer.MAX_VALUE;
-        nextBlackBall = Integer.MAX_VALUE;
-        nextFireOrb = Integer.MAX_VALUE;
-        nextFireRain = Integer.MAX_VALUE;
+        entityData.set(BASIC_CHAIN, 0);
+        entityData.set(BASIC_REQUIRED, Math.max(1, SilkBalance.BASIC_ATTACKS_PER_SKILL));
+        entityData.set(PHASE_SYNC, phase());
+        entityData.set(NEXT_SPECIAL, nextSpecialAction(phase()));
+        entityData.set(PLAGUE_SECONDS, 0);
+        entityData.set(SUPPORT_FLAGS, 0);
+        entityData.set(SLIME_SECONDS, 0);
+
+        // 战斗说明图：P1 协战为火元素 + 火雨；P2 是心火光柱；P3 是心火庇护。
+        nextFireOrb = now + SilkBalance.SUPPORT_FIRE_ORB_COOLDOWN;
+        nextFireRain = now + SilkBalance.SUPPORT_FIRE_RAIN_COOLDOWN;
         nextPillar = Integer.MAX_VALUE;
         nextHeartFire = Integer.MAX_VALUE;
     }
 
     private void enterPhaseTwo() {
         enteredP2 = true;
-        announce("§5斯尔克进入疯狂阶段：黑暗泰迪、黑暗史莱姆与黑暗疫病出现！");
+        announce("§5斯尔克进入第二阶段：先生成心火光柱，之后仍按 5 次普攻轮转技能。");
 
-        // P2 从进入阶段这一刻开始自己的 CD，不继承 P1 已经过掉的时间。
-        nextSweep = tickCount + SilkBalance.SWEEP_COOLDOWN;
-        nextSummon = tickCount + SilkBalance.SUMMON_COOLDOWN;
-        nextPlague = tickCount + SilkBalance.PLAGUE_COOLDOWN;
-        nextBurst = tickCount + SilkBalance.BURST_COOLDOWN;
+        basicChain = 0;
+        p2Rotation = 0;
+        entityData.set(BASIC_CHAIN, 0);
+        entityData.set(PHASE_SYNC, 2);
 
-        // 助战小樱 7451~7454 同样从 P2 开始计时，杜绝切阶段瞬间四个辅助效果同时刷出。
-        nextFireOrb = tickCount + SilkBalance.SUPPORT_FIRE_ORB_COOLDOWN;
-        nextFireRain = tickCount + SilkBalance.SUPPORT_FIRE_RAIN_COOLDOWN;
+        // 79% 以下进入 P2 时必定先出现一个心火光柱。
+        spawnPillarNow();
+
+        // P1 的火元素/火雨定时停止；P2 只保留光柱协战。
+        nextFireOrb = Integer.MAX_VALUE;
+        nextFireRain = Integer.MAX_VALUE;
         nextPillar = tickCount + SilkBalance.SUPPORT_PILLAR_COOLDOWN;
-        nextHeartFire = tickCount + SilkBalance.SUPPORT_HEART_FIRE_COOLDOWN;
-        nextDecisionTick = Math.max(nextDecisionTick, tickCount + 20);
+        nextHeartFire = Integer.MAX_VALUE;
+
+        nextDecisionTick = tickCount + 20;
+        entityData.set(NEXT_SPECIAL, nextSpecialAction(2));
     }
 
     private void enterPhaseThree() {
         enteredP3 = true;
-        announce("§4斯尔克进入狂暴阶段：腐蚀黑水与黑暗能量球出现！");
-        nextSweep = tickCount + SilkBalance.SWEEP_COOLDOWN;
-        nextBlackWater = tickCount + SilkBalance.BLACK_WATER_COOLDOWN;
-        nextBlackBall = tickCount + SilkBalance.BLACK_BALL_COOLDOWN;
-        nextDecisionTick = Math.max(nextDecisionTick, tickCount + 20);
+        announce("§4斯尔克进入狂暴阶段：继承核心技能并加入腐蚀黑水与黑暗能量球！");
+
+        basicChain = 0;
+        p3Rotation = 0;
+        blackBallWave = 0;
+        entityData.set(BASIC_CHAIN, 0);
+        entityData.set(PHASE_SYNC, 3);
+
+        // P3 协战改为心火庇护。
+        nextFireOrb = Integer.MAX_VALUE;
+        nextFireRain = Integer.MAX_VALUE;
+        nextPillar = Integer.MAX_VALUE;
+        nextHeartFire = tickCount + SilkBalance.SUPPORT_HEART_FIRE_COOLDOWN;
+
+        nextDecisionTick = tickCount + 20;
+        entityData.set(NEXT_SPECIAL, nextSpecialAction(3));
     }
 
     private void schedule(ServerPlayer tank) {
         if (tickCount < nextDecisionTick) return;
 
-        int phase = phase();
-        if (phase == 1) {
-            if (tickCount >= nextFlame) {
-                begin(ACT_FLAME, tank);
-                return;
-            }
-            if (tickCount >= nextMeteor) {
-                begin(ACT_METEOR, tank);
-                return;
-            }
-            if (tickCount >= nextBats) {
-                begin(ACT_BATS, tank);
-                return;
-            }
-        } else if (phase == 2) {
-            if (tickCount >= nextSummon) {
-                begin(ACT_SUMMON, tank);
-                return;
-            }
-            if (tickCount >= nextPlague) {
-                begin(ACT_PLAGUE, tank);
-                return;
-            }
-            if (tickCount >= nextBurst) {
-                begin(ACT_BURST, tank);
-                return;
-            }
-            if (tickCount >= nextSweep) {
-                begin(ACT_SWEEP, tank);
-                return;
-            }
-        } else {
-            if (tickCount >= nextBlackWater) {
-                begin(ACT_BLACK_WATER, tank);
-                return;
-            }
-            if (tickCount >= nextBlackBall) {
-                begin(ACT_BLACK_BALL, tank);
-                return;
-            }
-            if (tickCount >= nextSweep) {
-                begin(ACT_SWEEP, tank);
-                return;
-            }
+        int required = Math.max(1, SilkBalance.BASIC_ATTACKS_PER_SKILL);
+
+        // 第 5 次普通攻击结束后，下一次决策必定是当前阶段轮转技能。
+        if (basicChain >= required) {
+            begin(nextSpecialAction(phase()), tank);
+            return;
         }
 
-        if (tickCount >= nextBasic && distanceToSqr(tank) <= 24.0D * 24.0D && hasLineOfSight(tank)) {
+        // 普通攻击仍使用原本 basic_attack_cooldown_ticks，不改攻击节奏。
+        if (tickCount >= nextBasic
+                && distanceToSqr(tank) <= 24.0D * 24.0D
+                && hasLineOfSight(tank)) {
             begin(ACT_BASIC, tank);
         }
+    }
+
+    /**
+     * 战斗说明图 + 用户指定的固定轮转：
+     * P1：多重蝙蝠 -> 腐化横扫 -> 召唤怪物；
+     * P2：黑暗流星 -> 暗火喷射 -> 黑暗疫病 -> 能量爆发；
+     * P3：继承召唤/暗火/疫病/爆发，再轮转黑水与黑球。
+     */
+    private int nextSpecialAction(int phase) {
+        if (phase <= 1) {
+            int[] rotation = {ACT_BATS, ACT_SWEEP, ACT_SUMMON};
+            return rotation[Math.floorMod(p1Rotation, rotation.length)];
+        }
+        if (phase == 2) {
+            int[] rotation = {ACT_METEOR, ACT_FLAME, ACT_PLAGUE, ACT_BURST};
+            return rotation[Math.floorMod(p2Rotation, rotation.length)];
+        }
+        int[] rotation = {ACT_SUMMON, ACT_FLAME, ACT_PLAGUE, ACT_BURST, ACT_BLACK_WATER, ACT_BLACK_BALL};
+        return rotation[Math.floorMod(p3Rotation, rotation.length)];
+    }
+
+    private void advanceSpecialRotation(int phase) {
+        if (phase <= 1) p1Rotation++;
+        else if (phase == 2) p2Rotation++;
+        else p3Rotation++;
+        entityData.set(NEXT_SPECIAL, nextSpecialAction(phase));
     }
 
     private int animationFor(int action) {
@@ -439,6 +480,7 @@ public class SilkBoss extends NetcraftBossBase {
         faceTargetForAttack(target);
         castAction = action;
         castAge = 0;
+        castPhase = phase();
         castTarget = target.getUUID();
         castPoint = target.position();
         int animation = animationFor(action);
@@ -488,7 +530,7 @@ public class SilkBoss extends NetcraftBossBase {
             castTarget = null;
             castPoint = null;
             entityData.set(ANIMATION, 0);
-            finishCooldown(finished);
+            finishCooldown(finished, castPhase);
         }
     }
 
@@ -496,39 +538,22 @@ public class SilkBoss extends NetcraftBossBase {
      * 技能 CD 从动作真正结束后开始；同时给所有已经到点的技能一个公共恢复窗口，
      * 防止长动画期间其它技能全部到点，随后无缝连续倾泻。
      */
-    private void finishCooldown(int action) {
-        switch (action) {
-            case ACT_BASIC -> nextBasic = tickCount + SilkBalance.BASIC_COOLDOWN;
-            case ACT_BATS -> nextBats = tickCount + SilkBalance.BAT_COOLDOWN;
-            case ACT_METEOR -> nextMeteor = tickCount + SilkBalance.METEOR_COOLDOWN;
-            case ACT_FLAME -> nextFlame = tickCount + SilkBalance.FLAME_COOLDOWN;
-            case ACT_SWEEP -> nextSweep = tickCount + SilkBalance.SWEEP_COOLDOWN;
-            case ACT_SUMMON -> nextSummon = tickCount + SilkBalance.SUMMON_COOLDOWN;
-            case ACT_PLAGUE -> nextPlague = tickCount + SilkBalance.PLAGUE_COOLDOWN;
-            case ACT_BURST -> nextBurst = tickCount + SilkBalance.BURST_COOLDOWN;
-            case ACT_BLACK_WATER -> nextBlackWater = tickCount + SilkBalance.BLACK_WATER_COOLDOWN;
-            case ACT_BLACK_BALL -> nextBlackBall = tickCount + SilkBalance.BLACK_BALL_COOLDOWN;
-            default -> {
-            }
+    private void finishCooldown(int action, int actionPhase) {
+        if (action == ACT_BASIC) {
+            // 普攻严格使用 basic_attack_cooldown_ticks，不再额外叠一层公共 1 秒限制。
+            nextBasic = tickCount + SilkBalance.BASIC_COOLDOWN;
+            nextDecisionTick = tickCount;
+        } else {
+            basicChain = 0;
+            entityData.set(BASIC_CHAIN, 0);
+            advanceSpecialRotation(Math.max(1, Math.min(3, actionPhase)));
+
+            // 只有技能结束后保留 1 秒恢复，防止技能动画无缝连普通攻击。
+            nextDecisionTick = tickCount + 20;
         }
-
-        nextDecisionTick = tickCount + 20; // 1 秒公共恢复。
-        deferReadyBossSkills();
     }
 
-    private void deferReadyBossSkills() {
-        int defer = nextDecisionTick;
-        if (nextBasic <= tickCount) nextBasic = defer;
-        if (nextBats <= tickCount) nextBats = defer;
-        if (nextMeteor <= tickCount) nextMeteor = defer;
-        if (nextFlame <= tickCount) nextFlame = defer;
-        if (nextSweep <= tickCount) nextSweep = defer;
-        if (nextSummon <= tickCount) nextSummon = defer;
-        if (nextPlague <= tickCount) nextPlague = defer;
-        if (nextBurst <= tickCount) nextBurst = defer;
-        if (nextBlackWater <= tickCount) nextBlackWater = defer;
-        if (nextBlackBall <= tickCount) nextBlackBall = defer;
-    }
+
 
     private void executeAction(int action) {
         switch (action) {
@@ -567,6 +592,11 @@ public class SilkBoss extends NetcraftBossBase {
                 }
             }
         }
+
+        basicChain = Math.min(Math.max(1, SilkBalance.BASIC_ATTACKS_PER_SKILL), basicChain + 1);
+        entityData.set(BASIC_CHAIN, basicChain);
+        entityData.set(NEXT_SPECIAL, nextSpecialAction(phase()));
+
         level().playSound(null, blockPosition(), ModSounds.SILK_ATT1.get(), SoundSource.HOSTILE, 1.4F, 1.0F);
     }
 
@@ -642,14 +672,8 @@ public class SilkBoss extends NetcraftBossBase {
     }
 
     private void summonMonsters() {
-        SilkDarkTeddy teddy = SilkContent.DARK_TEDDY.get().create(level());
-        if (teddy != null) {
-            Vec3 point = randomFloor();
-            teddy.moveTo(point.x, point.y, point.z, random.nextFloat() * 360.0F, 0.0F);
-            teddy.setOwner(this);
-            level().addFreshEntity(teddy);
-            summons.add(teddy.getUUID());
-        }
+        spawnDarkTeddy();
+
         for (int i = 0; i < 3; i++) {
             SilkDarkSlime slime = SilkContent.DARK_SLIME.get().create(level());
             if (slime == null) continue;
@@ -659,7 +683,21 @@ public class SilkBoss extends NetcraftBossBase {
             level().addFreshEntity(slime);
             summons.add(slime.getUUID());
         }
-        announce("§5斯尔克召唤黑暗泰迪与黑暗史莱姆！史莱姆需用助战火雨解除无敌。");
+
+        // 用户确认：史莱姆与负责清理它们的火圈必须同一时间出现。
+        spawnFireRainNow();
+        announce("§5黑暗泰迪与 3 只黑暗史莱姆出现！史莱姆 25 秒后自爆，只能拉进火圈安全清除。");
+    }
+
+    private SilkDarkTeddy spawnDarkTeddy() {
+        SilkDarkTeddy teddy = SilkContent.DARK_TEDDY.get().create(level());
+        if (teddy == null) return null;
+        Vec3 point = randomFloor();
+        teddy.moveTo(point.x, point.y, point.z, random.nextFloat() * 360.0F, 0.0F);
+        teddy.setOwner(this);
+        level().addFreshEntity(teddy);
+        summons.add(teddy.getUUID());
+        return teddy;
     }
 
     private void plague() {
@@ -669,10 +707,16 @@ public class SilkBoss extends NetcraftBossBase {
             return fighter.plagueDue > tickCount;
         });
         if (candidates.isEmpty()) return;
+
+        // 用户确认：黑暗疫病出现时必须同时出现一只可用于传染/击杀的黑暗泰迪。
+        SilkDarkTeddy teddy = spawnDarkTeddy();
         ServerPlayer target = candidates.get(random.nextInt(candidates.size()));
         infect(target);
-        announce("§4黑暗疫病点名：" + target.getScoreboardName() + "，"
-                + Math.max(0, SilkBalance.PLAGUE_TICKS / 20) + "秒结束前靠近另一名队友完成传染！");
+
+        announce("§4黑暗疫病点名：" + target.getScoreboardName()
+                + "，" + Math.max(0, SilkBalance.PLAGUE_TICKS / 20)
+                + "秒倒计时结束瞬间站在黑暗泰迪 5 格内，可把疫病转给泰迪并将其杀死！"
+                + (teddy == null ? " §c（本次泰迪生成失败）" : ""));
     }
 
     private void infect(ServerPlayer player) {
@@ -686,32 +730,37 @@ public class SilkBoss extends NetcraftBossBase {
         SilkCombatEvents.clearPlague(source);
         sourceState.plagueDue = 0;
 
-        ServerPlayer target = targets().stream()
-                .filter(player -> player != source)
-                .filter(player -> player.distanceToSqr(source)
-                        <= SilkBalance.PLAGUE_TRANSFER_RADIUS * SilkBalance.PLAGUE_TRANSFER_RADIUS)
-                .filter(player -> fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter()).plagueDue <= tickCount)
-                .min(Comparator.comparingDouble(player -> player.distanceToSqr(source)))
+        if (!(level() instanceof ServerLevel serverLevel)) return;
+
+        SilkDarkTeddy teddy = serverLevel.getEntitiesOfClass(
+                        SilkDarkTeddy.class,
+                        source.getBoundingBox().inflate(SilkBalance.PLAGUE_TRANSFER_RADIUS),
+                        candidate -> candidate.isOwnedBy(this))
+                .stream()
+                .min(Comparator.comparingDouble(source::distanceToSqr))
                 .orElse(null);
 
-        if (target == null) {
-            source.displayClientMessage(Component.literal("§4黑暗疫病未找到传染目标，受到致命伤害！"), false);
-            source.kill();
+        if (teddy != null) {
+            sourceState.hostUntil = tickCount + SilkBalance.PLAGUE_HOST_MARK_TICKS;
+            spawnPlagueTransfer(source, teddy);
+            teddy.killByPlague(this);
+            announce("§d黑暗疫病：" + source.getScoreboardName() + " 成功将疫病转给黑暗泰迪，泰迪被消灭！");
             return;
         }
 
-        Fighter targetState = fighters.computeIfAbsent(target.getUUID(), ignored -> new Fighter());
-        if (targetState.hostUntil > tickCount) {
-            target.displayClientMessage(Component.literal("§4短时间内再次成为疫病宿主，黑暗能量失控！"), false);
-            target.kill(); // 2318：99999 直接伤害。
-            return;
-        }
+        // 修复旧版“倒计时结束但没有任何伤害”的问题：
+        // 找不到黑暗泰迪时立刻结算致命疫病伤害，并施加 30 秒禁止复活。
+        serverLevel.sendParticles(ModParticles.SILK_DARK_FIRE.get(),
+                source.getX(), source.getY() + 1.0D, source.getZ(),
+                100, 1.1D, 1.0D, 1.1D, 0.10D);
+        serverLevel.sendParticles(ModParticles.SILK_SOUL.get(),
+                source.getX(), source.getY() + 1.2D, source.getZ(),
+                80, 0.8D, 1.0D, 0.8D, 0.07D);
 
-        sourceState.hostUntil = tickCount + SilkBalance.PLAGUE_HOST_MARK_TICKS;
-        targetState.hostUntil = tickCount + SilkBalance.PLAGUE_HOST_MARK_TICKS;
-        infect(target);
-        spawnPlagueTransfer(source, target);
-        announce("§d黑暗疫病：" + source.getScoreboardName() + " → " + target.getScoreboardName());
+        source.displayClientMessage(Component.literal("§4黑暗疫病没有传给黑暗泰迪，疫病爆发！"), false);
+        SilkCombatEvents.lock(source);
+        source.hurt(source.damageSources().magic(), SilkBalance.PLAGUE_FAIL_DAMAGE);
+        if (source.isAlive()) source.kill();
     }
 
     private void burst() {
@@ -727,31 +776,33 @@ public class SilkBoss extends NetcraftBossBase {
     }
 
     private void markBlackWater() {
-        for (ServerPlayer player : randomTargets(3)) {
+        // 战斗说明写的是“给目标玩家 buff”，按单目标点名还原，不再一次随机 3 人。
+        for (ServerPlayer player : randomTargets(1)) {
             Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
             fighter.blackWaterDue = tickCount + SilkBalance.BLACK_WATER_DELAY_TICKS;
             player.displayClientMessage(Component.literal("§8腐蚀黑水："
-                    + Math.max(0, SilkBalance.BLACK_WATER_DELAY_TICKS / 20) + "秒后将在你脚下生成，提前散开！"), true);
+                    + Math.max(0, SilkBalance.BLACK_WATER_DELAY_TICKS / 20)
+                    + "秒后将在你脚下生成并继续四向扩散！"), true);
         }
     }
 
     private void summonBlackBall() {
-        if (!(level() instanceof ServerLevel serverLevel)) return;
-        long active = serverLevel.getEntitiesOfClass(
-                        SilkBlackBall.class,
-                        new AABB(homePosition(), homePosition()).inflate(SilkBalance.ARENA_RADIUS),
-                        Entity::isAlive)
-                .stream().count();
-        if (active >= 4L) return;
-
-        SilkBlackBall ball = SilkContent.BLACK_BALL.get().create(level());
-        if (ball == null) return;
-        Vec3 point = randomFloor().add(0.0D, 1.2D, 0.0D);
-        ball.moveTo(point.x, point.y, point.z, 0.0F, 0.0F);
-        ball.setOwner(this);
-        level().addFreshEntity(ball);
-        summons.add(ball.getUUID());
-        announce("§5黑暗能量球出现：尽快集火摧毁！");
+        // 战斗说明：黑暗能量球波次随时间递增 1、2、3、4、5、6……
+        blackBallWave = Math.max(1, blackBallWave + 1);
+        int spawned = 0;
+        for (int i = 0; i < blackBallWave; i++) {
+            SilkBlackBall ball = SilkContent.BLACK_BALL.get().create(level());
+            if (ball == null) continue;
+            Vec3 point = randomFloor().add(0.0D, 1.2D, 0.0D);
+            ball.moveTo(point.x, point.y, point.z, 0.0F, 0.0F);
+            ball.setOwner(this);
+            level().addFreshEntity(ball);
+            summons.add(ball.getUUID());
+            spawned++;
+        }
+        if (spawned > 0) {
+            announce("§5黑暗能量球聚集：本轮出现 " + spawned + " 个，下一轮数量还会增加！");
+        }
     }
 
     private Vec3 flameHandPosition() {
@@ -853,48 +904,88 @@ public class SilkBoss extends NetcraftBossBase {
                 hit(player, SilkBalance.BURST_DAMAGE * 0.6F * count,
                         SilkBalance.BURST_ECHO_CORRUPTION * count));
 
-        if (phase() >= 2) updateSupport(serverLevel);
+        // 协战内容按阶段在 updateSupport 内部决定；P1 同样需要火元素/火圈。
+        updateSupport(serverLevel);
+
+        // HUD 同步场上最紧迫的史莱姆自爆倒计时。
+        int minSlimeSeconds = 0;
+        AABB slimeArea = new AABB(homePosition(), homePosition()).inflate(SilkBalance.ARENA_RADIUS);
+        for (SilkDarkSlime slime : serverLevel.getEntitiesOfClass(
+                SilkDarkSlime.class, slimeArea, e -> e.isOwnedBy(this))) {
+            int seconds = slime.secondsUntilExplosion();
+            if (seconds <= 0) continue;
+            if (minSlimeSeconds == 0 || seconds < minSlimeSeconds) minSlimeSeconds = seconds;
+        }
+        entityData.set(SLIME_SECONDS, minSlimeSeconds);
+    }
+
+    private void spawnFireRainNow() {
+        Vec3 point = randomFloor();
+        int life = 45 * 20; // NPC750 原资源存在时间 45 秒。
+        fireRain.add(new SupportZone(point, tickCount + life));
+        spawnCircle(point, SilkVisualCircle.RED_FIRE_RAIN, life);
+        nextFireRain = tickCount + SilkBalance.SUPPORT_FIRE_RAIN_COOLDOWN;
+    }
+
+    private void spawnPillarNow() {
+        Vec3 point = randomFloor();
+        int life = 60 * 20; // NPC747 心火光柱原资源存在时间 60 秒。
+        pillars.add(new SupportPillar(point, tickCount + life));
+        spawnCircle(point, SilkVisualCircle.HEART_PILLAR, life);
+        nextPillar = tickCount + SilkBalance.SUPPORT_PILLAR_COOLDOWN;
+        announce("§b心火光柱出现：站在光柱 2 格内每秒降低 10 点心智腐蚀！");
+    }
+
+    private void grantHeartFireNow() {
+        for (ServerPlayer player : targets()) {
+            Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
+            fighter.heartFire = Math.min(SilkBalance.MAX_METER, fighter.heartFire + 10);
+            fighter.heartFireUntil = tickCount + SilkBalance.HEART_FIRE_TICKS;
+            player.displayClientMessage(Component.literal("§6获得心火庇护 ×10：每层可清除一格腐蚀黑水"), true);
+        }
+        nextHeartFire = tickCount + SilkBalance.SUPPORT_HEART_FIRE_COOLDOWN;
     }
 
     private void updateSupport(ServerLevel serverLevel) {
-        if (tickCount >= nextFireOrb) {
-            Vec3 point = randomFloor().add(0.0D, 0.8D, 0.0D);
-            int life = 60 * 20; // NPC746 原资源存在时间 60 秒。
-            fireOrbs.add(new SupportOrb(point, tickCount + life));
-            spawnCircle(point, SilkVisualCircle.FIRE_ORB, life);
-            nextFireOrb = tickCount + SilkBalance.SUPPORT_FIRE_ORB_COOLDOWN;
-        }
-        if (tickCount >= nextFireRain) {
-            Vec3 point = randomFloor();
-            int life = 45 * 20; // NPC750 原资源存在时间 45 秒。
-            fireRain.add(new SupportZone(point, tickCount + life));
-            spawnCircle(point, SilkVisualCircle.RED_FIRE_RAIN, life);
-            nextFireRain = tickCount + SilkBalance.SUPPORT_FIRE_RAIN_COOLDOWN;
-        }
-        if (tickCount >= nextPillar) {
-            Vec3 point = randomFloor();
-            int life = 60 * 20; // NPC747 心火光柱原资源存在时间 60 秒。
-            pillars.add(new SupportPillar(point, tickCount + life));
-            spawnCircle(point, SilkVisualCircle.HEART_PILLAR, life);
-            nextPillar = tickCount + SilkBalance.SUPPORT_PILLAR_COOLDOWN;
-        }
-        if (tickCount >= nextHeartFire) {
-            for (ServerPlayer player : targets()) {
-                Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
-                fighter.heartFire = Math.min(SilkBalance.MAX_METER, fighter.heartFire + 10);
-                fighter.heartFireUntil = tickCount + SilkBalance.HEART_FIRE_TICKS;
-                player.displayClientMessage(Component.literal("§6获得心火庇护 ×10：每层可清除一格腐蚀黑水"), true);
+        int phase = phase();
+
+        /*
+         * 战斗说明图中的协战分阶段：
+         * P1：火元素 + 火雨；
+         * P2：心火光柱（切阶段必刷一次，之后按 CD 再刷）；
+         * P3：心火庇护。
+         *
+         * 已经生成的协战物不会因为切阶段瞬间消失，而是走完自己的原资源存在时间。
+         */
+        if (phase == 1) {
+            if (tickCount >= nextFireOrb) {
+                Vec3 point = randomFloor().add(0.0D, 0.8D, 0.0D);
+                int life = 60 * 20; // NPC746 原资源存在时间 60 秒。
+                fireOrbs.add(new SupportOrb(point, tickCount + life));
+                spawnCircle(point, SilkVisualCircle.FIRE_ORB, life);
+                nextFireOrb = tickCount + SilkBalance.SUPPORT_FIRE_ORB_COOLDOWN;
             }
-            nextHeartFire = tickCount + SilkBalance.SUPPORT_HEART_FIRE_COOLDOWN;
+            if (tickCount >= nextFireRain) {
+                spawnFireRainNow();
+            }
+        } else if (phase == 2) {
+            if (tickCount >= nextPillar) {
+                spawnPillarNow();
+            }
+        } else {
+            if (tickCount >= nextHeartFire) {
+                grantHeartFireNow();
+            }
         }
 
-        // NPC746：存在 60 秒，每秒对 2 格内玩家施加一层 2283 强化火焰，而不是碰一下就把火球吃掉。
+        // NPC746：存在 60 秒，每秒对 2 格内玩家施加一层 2283 强化火焰。
         for (Iterator<SupportOrb> iterator = fireOrbs.iterator(); iterator.hasNext();) {
             SupportOrb orb = iterator.next();
             if (tickCount >= orb.expires()) {
                 iterator.remove();
                 continue;
             }
+
             serverLevel.sendParticles(ModParticles.SILK_FIRE.get(), orb.point().x, orb.point().y, orb.point().z,
                     4, 0.25D, 0.25D, 0.25D, 0.02D);
 
@@ -904,33 +995,38 @@ public class SilkBoss extends NetcraftBossBase {
                     Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
                     fighter.fireStacks = Math.min(SilkBalance.MAX_METER, fighter.fireStacks + 1);
                     fighter.fireUntil = tickCount + SilkBalance.STRENGTHENED_FIRE_TICKS;
-                    SilkCombatEvents.setStrengthenedFire(player, fighter.fireStacks, SilkBalance.STRENGTHENED_FIRE_TICKS);
+                    SilkCombatEvents.setStrengthenedFire(
+                            player, fighter.fireStacks, SilkBalance.STRENGTHENED_FIRE_TICKS);
                     player.displayClientMessage(Component.literal("§6强化火焰 +1（每层伤害 +10%）"), true);
                 }
             }
         }
 
-        // NPC750：45 秒火雨区；每秒解除史莱姆 2292 无敌并维持火雨灼烧/减速表现。
+        /*
+         * NPC750 火圈：
+         * 史莱姆只能靠进入火圈安全清除。这里不再“破盾后再打死”，
+         * 而是直接调用 clearByFireCircle()，这是唯一不会触发 30 格自爆的清除路径。
+         */
         for (Iterator<SupportZone> iterator = fireRain.iterator(); iterator.hasNext();) {
             SupportZone zone = iterator.next();
             if (tickCount >= zone.expires()) {
                 iterator.remove();
                 continue;
             }
+
             if (tickCount % 4 == 0) {
-                serverLevel.sendParticles(ModParticles.SILK_FIRE.get(), zone.point().x, zone.point().y + 2.0D, zone.point().z,
+                serverLevel.sendParticles(ModParticles.SILK_FIRE.get(),
+                        zone.point().x, zone.point().y + 2.0D, zone.point().z,
                         14, SilkBalance.SUPPORT_ZONE_RADIUS * 0.65D, 0.8D,
                         SilkBalance.SUPPORT_ZONE_RADIUS * 0.65D, 0.07D);
             }
-            if (tickCount % 20 == 0) {
-                AABB area = new AABB(zone.point(), zone.point()).inflate(
-                        SilkBalance.SUPPORT_ZONE_RADIUS, 3.0D, SilkBalance.SUPPORT_ZONE_RADIUS);
-                for (SilkDarkSlime slime : serverLevel.getEntitiesOfClass(SilkDarkSlime.class, area, Entity::isAlive)) {
-                    slime.breakShield();
-                    slime.hurt(damageSources().indirectMagic(this, this), 12.0F);
-                    slime.addEffect(new net.minecraft.world.effect.MobEffectInstance(
-                            net.minecraft.world.effect.MobEffects.MOVEMENT_SLOWDOWN, 50, 1));
-                }
+
+            // 每 tick 判定，避免史莱姆高速穿过火圈却漏检。
+            AABB area = new AABB(zone.point(), zone.point()).inflate(
+                    SilkBalance.SUPPORT_ZONE_RADIUS, 3.0D, SilkBalance.SUPPORT_ZONE_RADIUS);
+            for (SilkDarkSlime slime : serverLevel.getEntitiesOfClass(
+                    SilkDarkSlime.class, area, Entity::isAlive)) {
+                slime.clearByFireCircle(this);
             }
         }
 
@@ -941,6 +1037,7 @@ public class SilkBoss extends NetcraftBossBase {
                 iterator.remove();
                 continue;
             }
+
             if (tickCount % 4 == 0) {
                 for (int y = 0; y < 8; y++) {
                     serverLevel.sendParticles(ModParticles.SILK_SOUL.get(), pillar.point().x,
@@ -948,6 +1045,7 @@ public class SilkBoss extends NetcraftBossBase {
                             3, 0.25D, 0.16D, 0.25D, 0.01D);
                 }
             }
+
             for (ServerPlayer player : targets()) {
                 if (player.position().distanceToSqr(pillar.point()) > 2.0D * 2.0D) continue;
                 Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
@@ -957,10 +1055,23 @@ public class SilkBoss extends NetcraftBossBase {
                 }
             }
         }
-    }
+    
+
+        int supportFlags = 0;
+        if (!fireOrbs.isEmpty()) supportFlags |= 1;
+        if (!fireRain.isEmpty()) supportFlags |= 2;
+        if (!pillars.isEmpty()) supportFlags |= 4;
+        boolean heartActive = fighters.values().stream()
+                .anyMatch(f -> f.heartFire > 0 && f.heartFireUntil > tickCount);
+        if (heartActive) supportFlags |= 8;
+        entityData.set(SUPPORT_FLAGS, supportFlags);
+}
 
     private void updateFighters() {
         if (!(level() instanceof ServerLevel serverLevel)) return;
+
+        int maxPlagueSeconds = 0;
+
         for (Map.Entry<UUID, Fighter> entry : new ArrayList<>(fighters.entrySet())) {
             ServerPlayer player = online(entry.getKey());
             Fighter fighter = entry.getValue();
@@ -976,11 +1087,20 @@ public class SilkBoss extends NetcraftBossBase {
                 player.setDeltaMovement(Vec3.ZERO);
             }
 
-            if (fighter.plagueDue > tickCount && tickCount % 10 == 0) {
-                serverLevel.sendParticles(ModParticles.SILK_SOUL.get(), player.getX(), player.getY() + 2.2D, player.getZ(),
-                        5, 0.35D, 0.25D, 0.35D, 0.008D);
+            if (fighter.plagueDue > tickCount) {
+                maxPlagueSeconds = Math.max(maxPlagueSeconds,
+                        Math.max(0, (fighter.plagueDue - tickCount + 19) / 20));
+
+                if (tickCount % 10 == 0) {
+                    serverLevel.sendParticles(ModParticles.SILK_SOUL.get(),
+                            player.getX(), player.getY() + 2.2D, player.getZ(),
+                            5, 0.35D, 0.25D, 0.35D, 0.008D);
+                }
             }
-            if (fighter.plagueDue > 0 && tickCount >= fighter.plagueDue) transferPlague(player);
+
+            if (fighter.plagueDue > 0 && tickCount >= fighter.plagueDue) {
+                transferPlague(player);
+            }
 
             if (fighter.blackWaterDue > 0 && tickCount >= fighter.blackWaterDue) {
                 fighter.blackWaterDue = 0;
@@ -1003,6 +1123,8 @@ public class SilkBoss extends NetcraftBossBase {
                 player.displayClientMessage(Component.literal(text.toString()), true);
             }
         }
+
+        entityData.set(PLAGUE_SECONDS, maxPlagueSeconds);
     }
 
     public void corrupt(ServerPlayer player, int amount) {
@@ -1075,10 +1197,10 @@ public class SilkBoss extends NetcraftBossBase {
                 45, 0.9D, 0.8D, 0.9D, 0.055D);
     }
 
-    private void spawnPlagueTransfer(ServerPlayer from, ServerPlayer to) {
+    private void spawnPlagueTransfer(ServerPlayer from, Entity to) {
         if (!(level() instanceof ServerLevel serverLevel)) return;
         Vec3 start = from.getEyePosition();
-        Vec3 end = to.getEyePosition();
+        Vec3 end = to.getBoundingBox().getCenter();
         Vec3 delta = end.subtract(start);
         int steps = Math.max(4, (int) Math.ceil(delta.length() * 3.0D));
         for (int i = 0; i <= steps; i++) {
@@ -1164,16 +1286,34 @@ public class SilkBoss extends NetcraftBossBase {
         castAction = 0;
         castAge = 0;
         castDuration = 0;
+        castPhase = 0;
         castTarget = null;
         castPoint = null;
         engaged = false;
         enteredP2 = false;
         enteredP3 = false;
         nextDecisionTick = 0;
+        nextBasic = 0;
+        basicChain = 0;
+        p1Rotation = 0;
+        p2Rotation = 0;
+        p3Rotation = 0;
+        blackBallWave = 0;
+        nextFireOrb = 0;
+        nextFireRain = 0;
+        nextPillar = 0;
+        nextHeartFire = 0;
         flameHitPlayers.clear();
         entityData.set(ANIMATION, 0);
         entityData.set(MAD, false);
         entityData.set(WALKING, false);
+        entityData.set(PHASE_SYNC, 1);
+        entityData.set(BASIC_CHAIN, 0);
+        entityData.set(BASIC_REQUIRED, Math.max(1, SilkBalance.BASIC_ATTACKS_PER_SKILL));
+        entityData.set(NEXT_SPECIAL, ACT_BATS);
+        entityData.set(PLAGUE_SECONDS, 0);
+        entityData.set(SUPPORT_FLAGS, 0);
+        entityData.set(SLIME_SECONDS, 0);
     }
 
     @Override

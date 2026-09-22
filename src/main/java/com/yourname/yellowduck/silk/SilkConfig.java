@@ -51,6 +51,8 @@ public final class SilkConfig {
                         StandardOpenOption.CREATE_NEW);
             } else {
                 appendBattleSectionIfMissing();
+                migrateLegacyGuideDefaults();
+                appendV15KeysIfMissing();
             }
             reloadInternal();
         } catch (Exception ex) {
@@ -64,6 +66,8 @@ public final class SilkConfig {
         ensureLoaded();
         try {
             appendBattleSectionIfMissing();
+            migrateLegacyGuideDefaults();
+            appendV15KeysIfMissing();
         } catch (Exception ex) {
             LOGGER.warn("补充 [{}] 配置段失败，但仍尝试读取现有配置：{}", BATTLE_SECTION, ex.toString());
         }
@@ -156,6 +160,11 @@ public final class SilkConfig {
             v.slimeAttackCooldown = ticks(battle, "dark_slime_attack_cooldown_ticks", v.slimeAttackCooldown, 1, 1_000_000, errors);
             v.blackBallPulseCooldown = ticks(battle, "black_ball_pulse_cooldown_ticks", v.blackBallPulseCooldown, 1, 1_000_000, errors);
             v.boilingBloodInterval = ticks(battle, "boiling_blood_interval_ticks", v.boilingBloodInterval, 1, 1_000_000, errors);
+            v.basicAttacksPerSkill = i(battle, BATTLE_SECTION, "basic_attacks_per_skill", v.basicAttacksPerSkill, 1, 100, errors);
+            v.slimeAutoExplodeTicks = ticks(battle, "dark_slime_auto_explode_ticks", v.slimeAutoExplodeTicks, 1, 1_000_000, errors);
+            v.slimeExplosionDamage = f(battle, BATTLE_SECTION, "dark_slime_explosion_damage", v.slimeExplosionDamage, 0.0D, 1.0E6D, errors);
+            v.slimeExplosionRadius = d(battle, BATTLE_SECTION, "dark_slime_explosion_radius", v.slimeExplosionRadius, 0.1D, 256.0D, errors);
+            v.plagueFailDamage = f(battle, BATTLE_SECTION, "plague_fail_damage", v.plagueFailDamage, 0.0D, 1.0E9D, errors);
 
             v.madnessTicks = ticks(battle, "madness_duration_ticks", v.madnessTicks, 1, 10_000_000, errors);
             v.plagueTicks = ticks(battle, "plague_duration_ticks", v.plagueTicks, 1, 10_000_000, errors);
@@ -262,6 +271,106 @@ public final class SilkConfig {
         if (instance != null && Math.abs(instance.getBaseValue() - value) > 1.0E-9D) {
             instance.setBaseValue(value);
         }
+    }
+
+
+    /**
+     * v1.5 只迁移我们旧版本自动生成过的“旧默认值”。
+     * 只有值仍然完全等于旧默认时才改，服主自定义过的其它数值一律不碰。
+     */
+    private static void migrateLegacyGuideDefaults() throws Exception {
+        if (Files.notExists(PATH)) return;
+        List<String> lines = Files.readAllLines(PATH, StandardCharsets.UTF_8);
+        boolean inBattle = false;
+        boolean changed = false;
+
+        for (int n = 0; n < lines.size(); n++) {
+            String clean = stripComment(lines.get(n)).trim().toLowerCase(Locale.ROOT);
+            if (clean.startsWith("[") && clean.endsWith("]")) {
+                inBattle = clean.equals("[" + BATTLE_SECTION + "]");
+                continue;
+            }
+            if (!inBattle) continue;
+
+            String replacement = null;
+            if (clean.equals("phase3_health_ratio = 0.20")) {
+                replacement = "phase3_health_ratio = 0.30";
+            } else if (clean.equals("plague_duration_ticks = 400")) {
+                replacement = "plague_duration_ticks = 600";
+            } else if (clean.equals("boiling_blood_duration_ticks = 200")) {
+                replacement = "boiling_blood_duration_ticks = 100";
+            } else if (clean.equals("boiling_blood_damage_per_stack = 0.75")) {
+                replacement = "boiling_blood_damage_per_stack = 1.0";
+            } else if (clean.equals("boiling_blood_damage_cap = 10.0")) {
+                replacement = "boiling_blood_damage_cap = 99.0";
+            }
+
+            if (replacement != null) {
+                String original = lines.get(n);
+                int indent = 0;
+                while (indent < original.length() && Character.isWhitespace(original.charAt(indent))) indent++;
+                lines.set(n, original.substring(0, indent) + replacement);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            Files.write(PATH, lines, StandardCharsets.UTF_8,
+                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            LOGGER.info("已把斯尔克旧自动默认值迁移到 v1.5 战斗说明值；自定义值未改动。");
+        }
+    }
+
+    /**
+     * 老服已有 [silk_battle] 时，把 v1.5 新增键补进同一个分组。
+     * 只补“缺失键”，已有值（包括服主自定义值）绝不覆盖。
+     */
+    private static void appendV15KeysIfMissing() throws Exception {
+        if (Files.notExists(PATH)) return;
+
+        List<String> lines = Files.readAllLines(PATH, StandardCharsets.UTF_8);
+        int sectionStart = -1;
+        int sectionEnd = lines.size();
+
+        for (int i = 0; i < lines.size(); i++) {
+            String clean = stripComment(lines.get(i)).trim().toLowerCase(Locale.ROOT);
+            if (clean.equals("[" + BATTLE_SECTION + "]")) {
+                sectionStart = i;
+                continue;
+            }
+            if (sectionStart >= 0 && i > sectionStart && clean.startsWith("[") && clean.endsWith("]")) {
+                sectionEnd = i;
+                break;
+            }
+        }
+        if (sectionStart < 0) return;
+
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (int i = sectionStart + 1; i < sectionEnd; i++) {
+            String clean = stripComment(lines.get(i)).trim();
+            int eq = clean.indexOf('=');
+            if (eq <= 0) continue;
+            keys.add(clean.substring(0, eq).trim().toLowerCase(Locale.ROOT));
+        }
+
+        List<String> add = new ArrayList<>();
+        if (!keys.contains("basic_attacks_per_skill")) add.add("basic_attacks_per_skill = 5");
+        if (!keys.contains("dark_slime_auto_explode_ticks")) add.add("dark_slime_auto_explode_ticks = 500");
+        if (!keys.contains("dark_slime_explosion_damage")) add.add("dark_slime_explosion_damage = 30");
+        if (!keys.contains("dark_slime_explosion_radius")) add.add("dark_slime_explosion_radius = 30");
+        if (!keys.contains("plague_fail_damage")) add.add("plague_fail_damage = 99999");
+        if (add.isEmpty()) return;
+
+        List<String> block = new ArrayList<>();
+        block.add("");
+        block.add("# v1.5：5次普攻轮转技能 / 史莱姆自爆 / 疫病失败伤害");
+        block.addAll(add);
+        lines.addAll(sectionEnd, block);
+
+        Files.write(PATH, lines, StandardCharsets.UTF_8,
+                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+        LOGGER.info("已把 {} 个 v1.5 斯尔克新参数补入 [{}]；已有自定义值未覆盖。",
+                add.size(), BATTLE_SECTION);
     }
 
     private static void appendBattleSectionIfMissing() throws Exception {
@@ -381,9 +490,9 @@ public final class SilkConfig {
                 boss_fixed_reduction = 0.0
                 arena_radius = 32
                 leash_radius = 48
-                # 当前 0.80 / 0.20 沿用 YellowDuck 既有阈值；奶块客户端资源未暴露服务端真实切阶段 HP。
+                # 战斗说明图：P2 从 80% 开始，P3 狂暴从 30% 开始。
                 phase2_health_ratio = 0.80
-                phase3_health_ratio = 0.20
+                phase3_health_ratio = 0.30
                 phase3_damage_multiplier = 1.15
 
                 # 技能伤害
@@ -428,9 +537,16 @@ public final class SilkConfig {
                 black_ball_pulse_cooldown_ticks = 40
                 boiling_blood_interval_ticks = 40
 
+                # v1.5 战斗节奏/召唤物规则
+                basic_attacks_per_skill = 5
+                dark_slime_auto_explode_ticks = 500
+                dark_slime_explosion_damage = 30
+                dark_slime_explosion_radius = 30
+                plague_fail_damage = 99999
+
                 # 状态持续时间（tick）
                 madness_duration_ticks = 2400
-                plague_duration_ticks = 400
+                plague_duration_ticks = 600
                 plague_host_mark_ticks = 100
                 revive_lock_ticks = 600
                 meteor_root_ticks = 200
@@ -438,7 +554,7 @@ public final class SilkConfig {
                 black_water_split_ticks = 200
                 heart_fire_duration_ticks = 400
                 strengthened_fire_duration_ticks = 300
-                boiling_blood_duration_ticks = 200
+                boiling_blood_duration_ticks = 100
                 energy_burst_echo_delay_ticks = 60
 
                 # 心智腐蚀/黑暗能量层数
@@ -476,8 +592,8 @@ public final class SilkConfig {
                 madness_outgoing_multiplier = 3.00
                 madness_speed_modifier = -0.50
                 strengthened_fire_per_stack = 0.10
-                boiling_blood_damage_per_stack = 0.75
-                boiling_blood_damage_cap = 10.0
+                boiling_blood_damage_per_stack = 1.0
+                boiling_blood_damage_cap = 99.0
                 """;
     }
 
@@ -498,7 +614,10 @@ public final class SilkConfig {
         int basicCooldown, batCooldown, meteorCooldown, flameCooldown, sweepCooldown, summonCooldown,
                 plagueCooldown, burstCooldown, blackWaterCooldown, blackBallCooldown,
                 supportFireOrbCooldown, supportFireRainCooldown, supportPillarCooldown, supportHeartFireCooldown,
-                teddyHitCooldown, teddyRoarCooldown, slimeAttackCooldown, blackBallPulseCooldown, boilingBloodInterval;
+                teddyHitCooldown, teddyRoarCooldown, slimeAttackCooldown, blackBallPulseCooldown, boilingBloodInterval,
+                basicAttacksPerSkill, slimeAutoExplodeTicks;
+        float slimeExplosionDamage, plagueFailDamage;
+        double slimeExplosionRadius;
         int basicCorruption, sweepCorruption, teddyHitCorruption, teddyRoarCorruption, slimeHitCorruption,
                 slimeExplodeCorruption, burstInitialCorruption, burstEchoCorruption, blackWaterCorruption, blackBallCorruption;
         double basicRadius, sweepRadius, meteorSplitRadius, plagueTransferRadius, burstEchoRadius,
@@ -580,6 +699,11 @@ public final class SilkConfig {
             v.slimeAttackCooldown = SilkBalance.SLIME_ATTACK_COOLDOWN;
             v.blackBallPulseCooldown = SilkBalance.BLACK_BALL_PULSE_COOLDOWN;
             v.boilingBloodInterval = SilkBalance.BOILING_BLOOD_INTERVAL;
+            v.basicAttacksPerSkill = SilkBalance.BASIC_ATTACKS_PER_SKILL;
+            v.slimeAutoExplodeTicks = SilkBalance.SLIME_AUTO_EXPLODE_TICKS;
+            v.slimeExplosionDamage = SilkBalance.SLIME_EXPLOSION_DAMAGE;
+            v.slimeExplosionRadius = SilkBalance.SLIME_EXPLOSION_RADIUS;
+            v.plagueFailDamage = SilkBalance.PLAGUE_FAIL_DAMAGE;
             v.basicCorruption = SilkBalance.BASIC_CORRUPTION;
             v.sweepCorruption = SilkBalance.SWEEP_CORRUPTION;
             v.teddyHitCorruption = SilkBalance.TEDDY_HIT_CORRUPTION;
@@ -677,6 +801,11 @@ public final class SilkConfig {
             SilkBalance.SLIME_ATTACK_COOLDOWN = slimeAttackCooldown;
             SilkBalance.BLACK_BALL_PULSE_COOLDOWN = blackBallPulseCooldown;
             SilkBalance.BOILING_BLOOD_INTERVAL = boilingBloodInterval;
+            SilkBalance.BASIC_ATTACKS_PER_SKILL = basicAttacksPerSkill;
+            SilkBalance.SLIME_AUTO_EXPLODE_TICKS = slimeAutoExplodeTicks;
+            SilkBalance.SLIME_EXPLOSION_DAMAGE = slimeExplosionDamage;
+            SilkBalance.SLIME_EXPLOSION_RADIUS = slimeExplosionRadius;
+            SilkBalance.PLAGUE_FAIL_DAMAGE = plagueFailDamage;
             SilkBalance.BASIC_CORRUPTION = basicCorruption;
             SilkBalance.SWEEP_CORRUPTION = sweepCorruption;
             SilkBalance.TEDDY_HIT_CORRUPTION = teddyHitCorruption;
