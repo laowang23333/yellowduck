@@ -4,10 +4,10 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.yourname.yellowduck.boss.NetcraftBossBase;
-import com.yourname.yellowduck.silk.SilkBoss;
+import com.yourname.yellowduck.entity.SakurawitchEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -16,64 +16,52 @@ import net.minecraft.world.phys.AABB;
 import net.minecraftforge.client.event.RenderGuiEvent;
 import org.joml.Matrix4f;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
-/**
- * 斯尔克专属的 NetCraft 风格状态图标行。
- *
- * NetCraft 原版会在 Boss 血条下方绘制技能/Buff 图标。当前资源包没有携带
- * YYBuffImages.png 完整图集，所以这里使用已经提取到 YellowDuck 的斯尔克原技能素材，
- * 但状态、层数和倒计时全部由服务端同步，不再只是装饰图。
- */
-public final class SilkBossStatusHud {
-    private static final ResourceLocation FIRE =
-            new ResourceLocation("yellowduck", "textures/particle/silk/fire_0.png");
-    private static final ResourceLocation DARK_FIRE =
-            new ResourceLocation("yellowduck", "textures/particle/silk/dark_fire_0.png");
-    private static final ResourceLocation SOUL =
-            new ResourceLocation("yellowduck", "textures/particle/silk/soul_0.png");
-    private static final ResourceLocation BLACK_BALL =
-            new ResourceLocation("yellowduck", "textures/entity/silk/stone_ball_black.png");
-    private static final ResourceLocation FIRE_CIRCLE =
-            new ResourceLocation("yellowduck", "textures/entity/silk/skill_circle_10_red.png");
-    private static final ResourceLocation PILLAR =
-            new ResourceLocation("yellowduck", "textures/entity/silk/fire_pillar_billboard.png");
-    private static final ResourceLocation FIRE_ORB =
-            new ResourceLocation("yellowduck", "textures/entity/silk/buff_ball_billboard.png");
-    private static final ResourceLocation BLACK_WATER =
-            new ResourceLocation("yellowduck", "textures/entity/silk/pool_black.png");
+public final class SakuraNetcraftHud {
+    private static final ResourceLocation BLOOD_BG =
+            new ResourceLocation("yellowduck", "textures/gui/boss_blood_bg.png");
+    private static final ResourceLocation BLOOD_GREEN =
+            new ResourceLocation("yellowduck", "textures/gui/boss_blood_green.png");
+    private static final ResourceLocation BLOOD_YELLOW =
+            new ResourceLocation("yellowduck", "textures/gui/boss_blood_yellow.png");
+    private static final ResourceLocation BLOOD_RED =
+            new ResourceLocation("yellowduck", "textures/gui/boss_blood_red.png");
+    private static final ResourceLocation SAKURA_HEAD =
+            new ResourceLocation("yellowduck", "textures/gui/boss_head/sakura.png");
+    private static final ResourceLocation SAKURA_FLAME_CHARGE =
+            new ResourceLocation("yellowduck", "textures/mob_effect/sakura_flame_charge.png");
 
-    private record StatusIcon(ResourceLocation texture, String text, int frameColor) {}
-
-    private SilkBossStatusHud() {}
+    private SakuraNetcraftHud() {}
 
     public static void render(RenderGuiEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || mc.options.hideGui) return;
 
         AABB searchBox = mc.player.getBoundingBox().inflate(64.0D);
-        List<NetcraftBossBase> bosses = new ArrayList<>(mc.level.getEntitiesOfClass(
-                NetcraftBossBase.class,
-                searchBox,
-                e -> e.isAlive() && !e.isRemoved()
-        ));
+        List<SakurawitchEntity> bosses = mc.level.getEntitiesOfClass(
+                SakurawitchEntity.class, searchBox, e -> e.isAlive() && !e.isRemoved());
         if (bosses.isEmpty()) return;
 
         bosses.sort(Comparator.comparingDouble(e -> e.distanceToSqr(mc.player)));
-        if (bosses.size() > 3) bosses = new ArrayList<>(bosses.subList(0, 3));
+        if (bosses.size() > 3) bosses = bosses.subList(0, 3);
 
-        for (int index = 0; index < bosses.size(); index++) {
-            if (bosses.get(index) instanceof SilkBoss silk) {
-                renderSilk(event.getGuiGraphics(), mc, silk,
-                        mc.getWindow().getGuiScaledWidth(), index, bosses.size());
-            }
+        GuiGraphics graphics = event.getGuiGraphics();
+        int screenWidth = mc.getWindow().getGuiScaledWidth();
+        int count = bosses.size();
+
+        for (int i = 0; i < count; i++) {
+            renderBoss(graphics, mc, bosses.get(i), screenWidth, i, count);
         }
     }
 
-    private static void renderSilk(GuiGraphics g, Minecraft mc, SilkBoss boss,
+    private static void renderBoss(GuiGraphics graphics, Minecraft mc, SakurawitchEntity boss,
                                    int screenWidth, int index, int bossCount) {
+        float healthRatio = boss.getMaxHealth() <= 0.0F ? 0.0F : boss.getHealth() / boss.getMaxHealth();
+        healthRatio = Math.max(0.0F, Math.min(1.0F, healthRatio));
+
         float screenScale = screenWidth / 427.0F;
         float groupScale = switch (bossCount) {
             case 1 -> 1.2F;
@@ -82,113 +70,92 @@ public final class SilkBossStatusHud {
             default -> 1.0F;
         };
 
-        // 与 NetcraftBossHud 完全相同的血条定位公式，确保状态图标紧贴对应斯尔克血条。
         float barWidth = 112.0F * screenScale * groupScale;
         float barHeight = 10.24F * screenScale;
+        float leftCap = 0.64F * screenScale * groupScale;
+        float rightCap = 0.64F * screenScale * groupScale;
         float slotWidth = (float) screenWidth / bossCount;
         float barX = slotWidth * index + (slotWidth - barWidth) / 2.0F;
         float barY = barHeight * 2.0F;
 
-        List<StatusIcon> icons = new ArrayList<>();
-
-        int chain = Math.max(0, boss.getEntityData().get(SilkBoss.BASIC_CHAIN));
-        int need = Math.max(1, boss.getEntityData().get(SilkBoss.BASIC_REQUIRED));
-        icons.add(new StatusIcon(FIRE, chain + "/" + need, 0xFF1597CB));
-
-        int next = boss.getEntityData().get(SilkBoss.NEXT_SPECIAL);
-        icons.add(new StatusIcon(iconForSkill(next), shortSkillName(next), 0xFF1597CB));
-
-        int phase = Math.max(1, Math.min(3, boss.getEntityData().get(SilkBoss.PHASE_SYNC)));
-        icons.add(new StatusIcon(phase == 3 ? DARK_FIRE : BLACK_BALL,
-                phase == 1 ? "理" : phase == 2 ? "疯" : "暴",
-                phase == 3 ? 0xFFB04D24 : 0xFFB22828));
-
-        int plague = boss.getEntityData().get(SilkBoss.PLAGUE_SECONDS);
-        if (plague > 0) {
-            icons.add(new StatusIcon(SOUL, "疫" + plague, 0xFF8E1A9B));
+        drawThreeSliceBar(graphics, BLOOD_BG, barX, barY, barWidth, barHeight, leftCap, rightCap);
+        if (healthRatio > 0.0F) {
+            drawFilledThreeSliceBar(graphics, chooseBloodTexture(healthRatio),
+                    barX, barY, barWidth, barHeight, leftCap, rightCap, healthRatio);
         }
 
-        int slime = boss.getEntityData().get(SilkBoss.SLIME_SECONDS);
-        if (slime > 0) {
-            icons.add(new StatusIcon(DARK_FIRE, "爆" + slime, 0xFFC13C28));
-        }
+        float iconWidth = 25.44F * screenScale * groupScale;
+        float iconHeight = 22.8F * screenScale * groupScale;
+        drawTexturedQuad(graphics, SAKURA_HEAD,
+                barX - 26.235F * screenScale * groupScale,
+                barY - 7.6F * screenScale,
+                iconWidth, iconHeight, 0, 0, 1, 1);
 
-        int support = boss.getEntityData().get(SilkBoss.SUPPORT_FLAGS);
-        if ((support & 1) != 0) icons.add(new StatusIcon(FIRE_ORB, "火", 0xFFD9911A));
-        if ((support & 2) != 0) icons.add(new StatusIcon(FIRE_CIRCLE, "圈", 0xFFD95E1A));
-        if ((support & 4) != 0) icons.add(new StatusIcon(PILLAR, "柱", 0xFF48A7CC));
-        if ((support & 8) != 0) icons.add(new StatusIcon(BLACK_WATER, "心", 0xFFE2A43B));
+        String percent = String.format(Locale.ROOT, "%.1f%%", healthRatio * 100.0F);
+        drawCenteredScaledText(graphics, mc, percent,
+                barX + barWidth / 2.0F, barY + barHeight / 2.0F, 0.7F * screenScale);
 
-        float icon = 12.5F * screenScale * groupScale;
-        float gap = 1.5F * screenScale * groupScale;
-        float y = barY + barHeight + 1.8F * screenScale;
-        float x = barX;
-
-        // 一个血条槽位过窄时最多画到可见区域，不让图标压到其它 Boss 血条。
-        float maxRight = slotWidth * (index + 1) - 2.0F * screenScale;
-        for (StatusIcon status : icons) {
-            if (x + icon > maxRight) break;
-            drawStatus(g, mc, status, x, y, icon, screenScale * groupScale);
-            x += icon + gap;
+        int fireStacks = boss.getEntityData().get(SakurawitchEntity.FIRE_MARK_STACKS);
+        if (fireStacks > 0) {
+            float size = 12.0F * screenScale * groupScale;
+            float x = barX + barWidth + 3.0F * screenScale;
+            float y = barY - 1.0F * screenScale;
+            drawTexturedQuad(graphics, SAKURA_FLAME_CHARGE, x, y, size, size, 0, 0, 1, 1);
+            drawCenteredScaledText(graphics, mc, Integer.toString(fireStacks),
+                    x + size + 3.5F * screenScale, y + size / 2.0F,
+                    0.65F * screenScale * groupScale);
         }
     }
 
-    private static ResourceLocation iconForSkill(int action) {
-        return switch (action) {
-            case SilkBoss.ACT_BATS -> SOUL;
-            case SilkBoss.ACT_METEOR, SilkBoss.ACT_BLACK_BALL -> BLACK_BALL;
-            case SilkBoss.ACT_FLAME, SilkBoss.ACT_SWEEP -> DARK_FIRE;
-            case SilkBoss.ACT_PLAGUE -> SOUL;
-            case SilkBoss.ACT_BLACK_WATER -> BLACK_WATER;
-            case SilkBoss.ACT_SUMMON -> FIRE_CIRCLE;
-            case SilkBoss.ACT_BURST -> FIRE;
-            default -> FIRE;
-        };
+    private static ResourceLocation chooseBloodTexture(float ratio) {
+        if (ratio >= 0.80F) return BLOOD_GREEN;
+        if (ratio < 0.50F) return BLOOD_RED;
+        return BLOOD_YELLOW;
     }
 
-    private static String shortSkillName(int action) {
-        return switch (action) {
-            case SilkBoss.ACT_BATS -> "蝠";
-            case SilkBoss.ACT_METEOR -> "星";
-            case SilkBoss.ACT_FLAME -> "火";
-            case SilkBoss.ACT_SWEEP -> "扫";
-            case SilkBoss.ACT_SUMMON -> "召";
-            case SilkBoss.ACT_PLAGUE -> "疫";
-            case SilkBoss.ACT_BURST -> "爆";
-            case SilkBoss.ACT_BLACK_WATER -> "水";
-            case SilkBoss.ACT_BLACK_BALL -> "球";
-            default -> "普";
-        };
+    private static void drawThreeSliceBar(GuiGraphics g, ResourceLocation tex,
+                                          float x, float y, float w, float h,
+                                          float left, float right) {
+        float mid = w - left - right;
+        drawTexturedQuad(g, tex, x, y, left, h, 0.0F, 0.0F, 0.16F, 1.0F);
+        drawTexturedQuad(g, tex, x + left, y, mid, h, 0.20F, 0.0F, 0.76F, 1.0F);
+        drawTexturedQuad(g, tex, x + left + mid, y, right, h, 0.80F, 0.0F, 1.0F, 1.0F);
     }
 
-    private static void drawStatus(GuiGraphics g, Minecraft mc, StatusIcon status,
-                                   float x, float y, float size, float scale) {
-        int ix = Math.round(x);
-        int iy = Math.round(y);
-        int is = Math.max(8, Math.round(size));
+    private static void drawFilledThreeSliceBar(GuiGraphics g, ResourceLocation tex,
+                                                float x, float y, float w, float h,
+                                                float left, float right, float ratio) {
+        float fill = w * ratio;
+        if (fill <= 0.001F) return;
 
-        // 原图截图中状态图标都是有色边框，这里保留同样的视觉层级。
-        g.fill(ix - 1, iy - 1, ix + is + 1, iy + is + 1, 0xDD121212);
-        g.fill(ix, iy, ix + is, iy + is, status.frameColor());
-        g.fill(ix + 1, iy + 1, ix + is - 1, iy + is - 1, 0xD9222430);
+        float safe = Math.max(1.0F, fill);
+        float drawnRight = Math.min(right, safe);
+        float rightX = x + safe - drawnRight;
+        float rightU0 = 0.80F;
+        if (drawnRight < right && right > 0.0F) {
+            rightU0 = 0.80F + 0.20F * (1.0F - drawnRight / right);
+        }
 
-        float pad = Math.max(1.0F, size * 0.12F);
-        drawTexturedQuad(g, status.texture(), x + pad, y + pad,
-                size - pad * 2.0F, size - pad * 2.0F);
+        float beforeRight = Math.max(0.0F, rightX - x);
+        float drawnLeft = Math.min(left, beforeRight);
+        if (drawnLeft > 0.001F) {
+            float leftU1 = 0.16F * (drawnLeft / left);
+            drawTexturedQuad(g, tex, x, y, drawnLeft, h, 0.0F, 0.0F, leftU1, 1.0F);
+        }
 
-        float textScale = Math.max(0.45F, 0.48F * scale);
-        g.pose().pushPose();
-        float centerX = x + size / 2.0F;
-        float textY = y + size - 5.0F * textScale;
-        g.pose().translate(centerX, textY, 300.0F);
-        g.pose().scale(textScale, textScale, 1.0F);
-        g.drawString(mc.font, status.text(), -mc.font.width(status.text()) / 2, 0, 0xFFFFFFFF, true);
-        g.pose().popPose();
+        float midX = x + drawnLeft;
+        float midW = rightX - midX;
+        if (midW > 0.001F) {
+            drawTexturedQuad(g, tex, midX, y, midW, h, 0.20F, 0.0F, 0.76F, 1.0F);
+        }
+
+        drawTexturedQuad(g, tex, rightX, y, drawnRight, h, rightU0, 0.0F, 1.0F, 1.0F);
     }
 
     private static void drawTexturedQuad(GuiGraphics graphics, ResourceLocation texture,
-                                         float x, float y, float width, float height) {
-        if (width <= 0.0F || height <= 0.0F) return;
+                                         float x, float y, float width, float height,
+                                         float u0, float v0, float u1, float v1) {
+        if (width <= 0 || height <= 0) return;
 
         RenderSystem.setShaderTexture(0, texture);
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
@@ -198,16 +165,27 @@ public final class SilkBossStatusHud {
         RenderSystem.disableDepthTest();
 
         Matrix4f matrix = graphics.pose().last().pose();
-        BufferBuilder buffer = Tesselator.getInstance().getBuilder();
-        buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        buffer.vertex(matrix, x, y, 250.0F).uv(0.0F, 0.0F).endVertex();
-        buffer.vertex(matrix, x, y + height, 250.0F).uv(0.0F, 1.0F).endVertex();
-        buffer.vertex(matrix, x + width, y + height, 250.0F).uv(1.0F, 1.0F).endVertex();
-        buffer.vertex(matrix, x + width, y, 250.0F).uv(1.0F, 0.0F).endVertex();
-        BufferUploader.drawWithShader(buffer.end());
+        BufferBuilder b = Tesselator.getInstance().getBuilder();
+        b.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+        b.vertex(matrix, x, y, 0).uv(u0, v0).endVertex();
+        b.vertex(matrix, x, y + height, 0).uv(u0, v1).endVertex();
+        b.vertex(matrix, x + width, y + height, 0).uv(u1, v1).endVertex();
+        b.vertex(matrix, x + width, y, 0).uv(u1, v0).endVertex();
+        BufferUploader.drawWithShader(b.end());
 
         RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
+    }
+
+    private static void drawCenteredScaledText(GuiGraphics g, Minecraft mc, String text,
+                                               float centerX, float centerY, float scale) {
+        if (scale <= 0) return;
+        PoseStack pose = g.pose();
+        pose.pushPose();
+        pose.translate(centerX, centerY - 4.0F * scale, 0);
+        pose.scale(scale, scale, 1);
+        g.drawString(mc.font, text, -mc.font.width(text) / 2, 0, 0xFFFFFF, true);
+        pose.popPose();
     }
 }
