@@ -4,10 +4,10 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.yourname.yellowduck.entity.SakurawitchEntity;
+import com.yourname.yellowduck.boss.NetcraftBossBase;
+import com.yourname.yellowduck.silk.SilkBoss;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -16,92 +16,64 @@ import net.minecraft.world.phys.AABB;
 import net.minecraftforge.client.event.RenderGuiEvent;
 import org.joml.Matrix4f;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 
 /**
- * 魔女小樱的 NetCraft 风格 Boss HUD。
+ * 斯尔克专属的 NetCraft 风格状态图标行。
  *
- * 贴图直接来自 NetCraft 1.4.18：
- * - boss_blood_bg.png
- * - boss_blood_green.png
- * - boss_blood_yellow.png
- * - boss_blood_red.png
- * - boss_map_icon.png
- *
- * 小樱头像在 NetCraft 图集中的原始区域：
- * U=1083, V=631, 103x79，图集尺寸 1368x1012。
+ * NetCraft 原版会在 Boss 血条下方绘制技能/Buff 图标。当前资源包没有携带
+ * YYBuffImages.png 完整图集，所以这里使用已经提取到 YellowDuck 的斯尔克原技能素材，
+ * 但状态、层数和倒计时全部由服务端同步，不再只是装饰图。
  */
-public final class SakuraNetcraftHud {
+public final class SilkBossStatusHud {
+    private static final ResourceLocation FIRE =
+            new ResourceLocation("yellowduck", "textures/particle/silk/fire_0.png");
+    private static final ResourceLocation DARK_FIRE =
+            new ResourceLocation("yellowduck", "textures/particle/silk/dark_fire_0.png");
+    private static final ResourceLocation SOUL =
+            new ResourceLocation("yellowduck", "textures/particle/silk/soul_0.png");
+    private static final ResourceLocation BLACK_BALL =
+            new ResourceLocation("yellowduck", "textures/entity/silk/stone_ball_black.png");
+    private static final ResourceLocation FIRE_CIRCLE =
+            new ResourceLocation("yellowduck", "textures/entity/silk/skill_circle_10_red.png");
+    private static final ResourceLocation PILLAR =
+            new ResourceLocation("yellowduck", "textures/entity/silk/fire_pillar_billboard.png");
+    private static final ResourceLocation FIRE_ORB =
+            new ResourceLocation("yellowduck", "textures/entity/silk/buff_ball_billboard.png");
+    private static final ResourceLocation BLACK_WATER =
+            new ResourceLocation("yellowduck", "textures/entity/silk/pool_black.png");
 
-    private static final ResourceLocation BLOOD_BG =
-            new ResourceLocation("yellowduck", "textures/gui/boss_blood_bg.png");
-    private static final ResourceLocation BLOOD_GREEN =
-            new ResourceLocation("yellowduck", "textures/gui/boss_blood_green.png");
-    private static final ResourceLocation BLOOD_YELLOW =
-            new ResourceLocation("yellowduck", "textures/gui/boss_blood_yellow.png");
-    private static final ResourceLocation BLOOD_RED =
-            new ResourceLocation("yellowduck", "textures/gui/boss_blood_red.png");
-    // Stargazer 原版独立小樱头像（不改用户的小樱模型）。
-    private static final ResourceLocation SAKURA_HEAD =
-            new ResourceLocation("yellowduck", "textures/gui/boss_head/sakura.png");
+    private record StatusIcon(ResourceLocation texture, String text, int frameColor) {}
 
-    // Stargazer 原版火焰蓄能 18x18 图标。
-    private static final ResourceLocation SAKURA_FLAME_CHARGE =
-            new ResourceLocation("yellowduck", "textures/mob_effect/sakura_flame_charge.png");
-
-    private SakuraNetcraftHud() {
-    }
+    private SilkBossStatusHud() {}
 
     public static void render(RenderGuiEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.options.hideGui) {
-            return;
-        }
+        if (mc.player == null || mc.level == null || mc.options.hideGui) return;
 
         AABB searchBox = mc.player.getBoundingBox().inflate(64.0D);
-        List<SakurawitchEntity> bosses = mc.level.getEntitiesOfClass(
-                SakurawitchEntity.class,
+        List<NetcraftBossBase> bosses = new ArrayList<>(mc.level.getEntitiesOfClass(
+                NetcraftBossBase.class,
                 searchBox,
                 e -> e.isAlive() && !e.isRemoved()
-        );
+        ));
+        if (bosses.isEmpty()) return;
 
-        if (bosses.isEmpty()) {
-            return;
-        }
-
-        // NetCraft 最多同时画 3 条 Boss 血条。
         bosses.sort(Comparator.comparingDouble(e -> e.distanceToSqr(mc.player)));
-        if (bosses.size() > 3) {
-            bosses = bosses.subList(0, 3);
-        }
+        if (bosses.size() > 3) bosses = new ArrayList<>(bosses.subList(0, 3));
 
-        RenderSystem.disableScissor();
-
-        GuiGraphics graphics = event.getGuiGraphics();
-        int screenWidth = mc.getWindow().getGuiScaledWidth();
-        int count = bosses.size();
-
-        for (int i = 0; i < count; i++) {
-            renderBoss(graphics, mc, bosses.get(i), screenWidth, i, count);
+        for (int index = 0; index < bosses.size(); index++) {
+            if (bosses.get(index) instanceof SilkBoss silk) {
+                renderSilk(event.getGuiGraphics(), mc, silk,
+                        mc.getWindow().getGuiScaledWidth(), index, bosses.size());
+            }
         }
     }
 
-    private static void renderBoss(
-            GuiGraphics graphics,
-            Minecraft mc,
-            SakurawitchEntity boss,
-            int screenWidth,
-            int index,
-            int bossCount
-    ) {
-        float healthRatio = boss.getMaxHealth() <= 0.0F
-                ? 0.0F
-                : boss.getHealth() / boss.getMaxHealth();
-        healthRatio = Math.max(0.0F, Math.min(1.0F, healthRatio));
-
-        // 这些尺寸/位置系数按 NetCraft BossHealthBarRenderer 1.4.18 还原。
+    private static void renderSilk(GuiGraphics g, Minecraft mc, SilkBoss boss,
+                                   int screenWidth, int index, int bossCount) {
         float screenScale = screenWidth / 427.0F;
         float groupScale = switch (bossCount) {
             case 1 -> 1.2F;
@@ -110,179 +82,113 @@ public final class SakuraNetcraftHud {
             default -> 1.0F;
         };
 
+        // 与 NetcraftBossHud 完全相同的血条定位公式，确保状态图标紧贴对应斯尔克血条。
         float barWidth = 112.0F * screenScale * groupScale;
         float barHeight = 10.24F * screenScale;
-        float leftCap = 0.64F * screenScale * groupScale;
-        float rightCap = 0.64F * screenScale * groupScale;
-
         float slotWidth = (float) screenWidth / bossCount;
         float barX = slotWidth * index + (slotWidth - barWidth) / 2.0F;
         float barY = barHeight * 2.0F;
 
-        drawThreeSliceBar(graphics, BLOOD_BG, barX, barY, barWidth, barHeight, leftCap, rightCap);
+        List<StatusIcon> icons = new ArrayList<>();
 
-        ResourceLocation bloodTexture = chooseBloodTexture(healthRatio);
-        if (healthRatio > 0.0F) {
-            drawFilledThreeSliceBar(
-                    graphics,
-                    bloodTexture,
-                    barX,
-                    barY,
-                    barWidth,
-                    barHeight,
-                    leftCap,
-                    rightCap,
-                    healthRatio
-            );
+        int chain = Math.max(0, boss.getEntityData().get(SilkBoss.BASIC_CHAIN));
+        int need = Math.max(1, boss.getEntityData().get(SilkBoss.BASIC_REQUIRED));
+        icons.add(new StatusIcon(FIRE, chain + "/" + need, 0xFF1597CB));
+
+        int next = boss.getEntityData().get(SilkBoss.NEXT_SPECIAL);
+        icons.add(new StatusIcon(iconForSkill(next), shortSkillName(next), 0xFF1597CB));
+
+        int phase = Math.max(1, Math.min(3, boss.getEntityData().get(SilkBoss.PHASE_SYNC)));
+        icons.add(new StatusIcon(phase == 3 ? DARK_FIRE : BLACK_BALL,
+                phase == 1 ? "理" : phase == 2 ? "疯" : "暴",
+                phase == 3 ? 0xFFB04D24 : 0xFFB22828));
+
+        int plague = boss.getEntityData().get(SilkBoss.PLAGUE_SECONDS);
+        if (plague > 0) {
+            icons.add(new StatusIcon(SOUL, "疫" + plague, 0xFF8E1A9B));
         }
 
-        float iconWidth = 25.44F * screenScale * groupScale;
-        float iconHeight = 22.8F * screenScale * groupScale;
-        float iconX = barX - 26.235F * screenScale * groupScale;
-        float iconY = barY - 7.6F * screenScale;
-        drawSakuraIcon(graphics, iconX, iconY, iconWidth, iconHeight);
+        int slime = boss.getEntityData().get(SilkBoss.SLIME_SECONDS);
+        if (slime > 0) {
+            icons.add(new StatusIcon(DARK_FIRE, "爆" + slime, 0xFFC13C28));
+        }
 
-        String percent = String.format(Locale.ROOT, "%.1f%%", healthRatio * 100.0F);
-        float textCenterX = barX + barWidth / 2.0F;
-        float textCenterY = barY + barHeight / 2.0F;
-        float textScale = 0.7F * screenScale;
-        drawCenteredScaledText(graphics, mc, percent, textCenterX, textCenterY, textScale);
+        int support = boss.getEntityData().get(SilkBoss.SUPPORT_FLAGS);
+        if ((support & 1) != 0) icons.add(new StatusIcon(FIRE_ORB, "火", 0xFFD9911A));
+        if ((support & 2) != 0) icons.add(new StatusIcon(FIRE_CIRCLE, "圈", 0xFFD95E1A));
+        if ((support & 4) != 0) icons.add(new StatusIcon(PILLAR, "柱", 0xFF48A7CC));
+        if ((support & 8) != 0) icons.add(new StatusIcon(BLACK_WATER, "心", 0xFFE2A43B));
 
-        // Stargazer 原版会把火焰蓄能同步成状态图标；这里直接接到现有小樱 HUD。
-        int fireStacks = boss.getEntityData().get(SakurawitchEntity.FIRE_MARK_STACKS);
-        if (fireStacks > 0) {
-            float chargeSize = 12.0F * screenScale * groupScale;
-            float chargeX = barX + barWidth + 3.0F * screenScale;
-            float chargeY = barY - 1.0F * screenScale;
-            drawTexturedQuad(graphics, SAKURA_FLAME_CHARGE, chargeX, chargeY, chargeSize, chargeSize,
-                    0.0F, 0.0F, 1.0F, 1.0F);
-            drawCenteredScaledText(graphics, mc, Integer.toString(fireStacks),
-                    chargeX + chargeSize + 3.5F * screenScale,
-                    chargeY + chargeSize / 2.0F,
-                    0.65F * screenScale * groupScale);
+        float icon = 12.5F * screenScale * groupScale;
+        float gap = 1.5F * screenScale * groupScale;
+        float y = barY + barHeight + 1.8F * screenScale;
+        float x = barX;
+
+        // 一个血条槽位过窄时最多画到可见区域，不让图标压到其它 Boss 血条。
+        float maxRight = slotWidth * (index + 1) - 2.0F * screenScale;
+        for (StatusIcon status : icons) {
+            if (x + icon > maxRight) break;
+            drawStatus(g, mc, status, x, y, icon, screenScale * groupScale);
+            x += icon + gap;
         }
     }
 
-    private static ResourceLocation chooseBloodTexture(float healthRatio) {
-        if (healthRatio >= 0.80F) {
-            return BLOOD_GREEN;
-        }
-        if (healthRatio < 0.50F) {
-            return BLOOD_RED;
-        }
-        return BLOOD_YELLOW;
+    private static ResourceLocation iconForSkill(int action) {
+        return switch (action) {
+            case SilkBoss.ACT_BATS -> SOUL;
+            case SilkBoss.ACT_METEOR, SilkBoss.ACT_BLACK_BALL -> BLACK_BALL;
+            case SilkBoss.ACT_FLAME, SilkBoss.ACT_SWEEP -> DARK_FIRE;
+            case SilkBoss.ACT_PLAGUE -> SOUL;
+            case SilkBoss.ACT_BLACK_WATER -> BLACK_WATER;
+            case SilkBoss.ACT_SUMMON -> FIRE_CIRCLE;
+            case SilkBoss.ACT_BURST -> FIRE;
+            default -> FIRE;
+        };
     }
 
-    /** NetCraft 的完整三段式血条：左端 + 中间拉伸 + 右端。 */
-    private static void drawThreeSliceBar(
-            GuiGraphics graphics,
-            ResourceLocation texture,
-            float x,
-            float y,
-            float width,
-            float height,
-            float leftCap,
-            float rightCap
-    ) {
-        float middleWidth = width - leftCap - rightCap;
-
-        drawTexturedQuad(graphics, texture, x, y, leftCap, height, 0.0F, 0.16F);
-        drawTexturedQuad(graphics, texture, x + leftCap, y, middleWidth, height, 0.20F, 0.76F);
-        drawTexturedQuad(graphics, texture, x + leftCap + middleWidth, y, rightCap, height, 0.80F, 1.0F);
+    private static String shortSkillName(int action) {
+        return switch (action) {
+            case SilkBoss.ACT_BATS -> "蝠";
+            case SilkBoss.ACT_METEOR -> "星";
+            case SilkBoss.ACT_FLAME -> "火";
+            case SilkBoss.ACT_SWEEP -> "扫";
+            case SilkBoss.ACT_SUMMON -> "召";
+            case SilkBoss.ACT_PLAGUE -> "疫";
+            case SilkBoss.ACT_BURST -> "爆";
+            case SilkBoss.ACT_BLACK_WATER -> "水";
+            case SilkBoss.ACT_BLACK_BALL -> "球";
+            default -> "普";
+        };
     }
 
-    /**
-     * NetCraft 的血量填充算法。右端帽会跟着当前血量位置移动，
-     * 而不是简单把整张纹理横向压缩。
-     */
-    private static void drawFilledThreeSliceBar(
-            GuiGraphics graphics,
-            ResourceLocation texture,
-            float x,
-            float y,
-            float width,
-            float height,
-            float leftCap,
-            float rightCap,
-            float ratio
-    ) {
-        float fillWidth = width * ratio;
-        if (fillWidth <= 0.001F) {
-            return;
-        }
+    private static void drawStatus(GuiGraphics g, Minecraft mc, StatusIcon status,
+                                   float x, float y, float size, float scale) {
+        int ix = Math.round(x);
+        int iy = Math.round(y);
+        int is = Math.max(8, Math.round(size));
 
-        float safeFillWidth = Math.max(1.0F, fillWidth);
-        float drawnRightCap = Math.min(rightCap, safeFillWidth);
-        float rightX = x + safeFillWidth - drawnRightCap;
+        // 原图截图中状态图标都是有色边框，这里保留同样的视觉层级。
+        g.fill(ix - 1, iy - 1, ix + is + 1, iy + is + 1, 0xDD121212);
+        g.fill(ix, iy, ix + is, iy + is, status.frameColor());
+        g.fill(ix + 1, iy + 1, ix + is - 1, iy + is - 1, 0xD9222430);
 
-        float rightU0 = 0.80F;
-        if (drawnRightCap < rightCap && rightCap > 0.0F) {
-            float missing = 1.0F - drawnRightCap / rightCap;
-            rightU0 = 0.80F + 0.20F * missing;
-        }
+        float pad = Math.max(1.0F, size * 0.12F);
+        drawTexturedQuad(g, status.texture(), x + pad, y + pad,
+                size - pad * 2.0F, size - pad * 2.0F);
 
-        float availableBeforeRight = Math.max(0.0F, rightX - x);
-        float drawnLeftCap = Math.min(leftCap, availableBeforeRight);
-
-        if (drawnLeftCap > 0.001F) {
-            float leftU1 = 0.16F * (drawnLeftCap / leftCap);
-            drawTexturedQuad(graphics, texture, x, y, drawnLeftCap, height, 0.0F, leftU1);
-        }
-
-        float middleX = x + drawnLeftCap;
-        float middleWidth = rightX - middleX;
-        if (middleWidth > 0.001F) {
-            drawTexturedQuad(graphics, texture, middleX, y, middleWidth, height, 0.20F, 0.76F);
-        }
-
-        drawTexturedQuad(graphics, texture, rightX, y, drawnRightCap, height, rightU0, 1.0F);
+        float textScale = Math.max(0.45F, 0.48F * scale);
+        g.pose().pushPose();
+        float centerX = x + size / 2.0F;
+        float textY = y + size - 5.0F * textScale;
+        g.pose().translate(centerX, textY, 300.0F);
+        g.pose().scale(textScale, textScale, 1.0F);
+        g.drawString(mc.font, status.text(), -mc.font.width(status.text()) / 2, 0, 0xFFFFFFFF, true);
+        g.pose().popPose();
     }
 
-    /**
-     * 从 NetCraft 的 boss_map_icon.png 原图集裁出魔女小樱头像。
-     */
-    private static void drawSakuraIcon(
-            GuiGraphics graphics,
-            float x,
-            float y,
-            float width,
-            float height
-    ) {
-        drawTexturedQuad(graphics, SAKURA_HEAD, x, y, width, height,
-                0.0F, 0.0F, 1.0F, 1.0F);
-    }
-
-    /**
-     * 使用纹理的完整 V 轴，只裁 U 范围；用于 NetCraft 的 25x64 血条纹理。
-     */
-    private static void drawTexturedQuad(
-            GuiGraphics graphics,
-            ResourceLocation texture,
-            float x,
-            float y,
-            float width,
-            float height,
-            float u0,
-            float u1
-    ) {
-        drawTexturedQuad(graphics, texture, x, y, width, height, u0, 0.0F, u1, 1.0F);
-    }
-
-    private static void drawTexturedQuad(
-            GuiGraphics graphics,
-            ResourceLocation texture,
-            float x,
-            float y,
-            float width,
-            float height,
-            float u0,
-            float v0,
-            float u1,
-            float v1
-    ) {
-        if (width <= 0.0F || height <= 0.0F) {
-            return;
-        }
+    private static void drawTexturedQuad(GuiGraphics graphics, ResourceLocation texture,
+                                         float x, float y, float width, float height) {
+        if (width <= 0.0F || height <= 0.0F) return;
 
         RenderSystem.setShaderTexture(0, texture);
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
@@ -294,34 +200,14 @@ public final class SakuraNetcraftHud {
         Matrix4f matrix = graphics.pose().last().pose();
         BufferBuilder buffer = Tesselator.getInstance().getBuilder();
         buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        buffer.vertex(matrix, x, y, 0.0F).uv(u0, v0).endVertex();
-        buffer.vertex(matrix, x, y + height, 0.0F).uv(u0, v1).endVertex();
-        buffer.vertex(matrix, x + width, y + height, 0.0F).uv(u1, v1).endVertex();
-        buffer.vertex(matrix, x + width, y, 0.0F).uv(u1, v0).endVertex();
+        buffer.vertex(matrix, x, y, 250.0F).uv(0.0F, 0.0F).endVertex();
+        buffer.vertex(matrix, x, y + height, 250.0F).uv(0.0F, 1.0F).endVertex();
+        buffer.vertex(matrix, x + width, y + height, 250.0F).uv(1.0F, 1.0F).endVertex();
+        buffer.vertex(matrix, x + width, y, 250.0F).uv(1.0F, 0.0F).endVertex();
         BufferUploader.drawWithShader(buffer.end());
 
         RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
-    }
-
-    private static void drawCenteredScaledText(
-            GuiGraphics graphics,
-            Minecraft mc,
-            String text,
-            float centerX,
-            float centerY,
-            float scale
-    ) {
-        if (scale <= 0.0F) {
-            return;
-        }
-
-        PoseStack pose = graphics.pose();
-        pose.pushPose();
-        pose.translate(centerX, centerY - 4.0F * scale, 0.0F);
-        pose.scale(scale, scale, 1.0F);
-        graphics.drawString(mc.font, text, -mc.font.width(text) / 2, 0, 0xFFFFFF, true);
-        pose.popPose();
     }
 }
