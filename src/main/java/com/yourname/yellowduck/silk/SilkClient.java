@@ -42,6 +42,10 @@ public final class SilkClient {
             new ResourceLocation("yellowduck", "textures/entity/silk/skill_circle_10_purple.png");
     private static final ResourceLocation CIRCLE_RED =
             new ResourceLocation("yellowduck", "textures/entity/silk/skill_circle_10_red.png");
+    private static final ResourceLocation PILLAR_TEXTURE =
+            new ResourceLocation("yellowduck", "textures/entity/silk/fire_pillar_billboard.png");
+    private static final ResourceLocation FIRE_ORB_TEXTURE =
+            new ResourceLocation("yellowduck", "textures/entity/silk/buff_ball_billboard.png");
 
     private SilkClient() {
     }
@@ -115,8 +119,10 @@ public final class SilkClient {
         }
     }
 
-    /** 黑暗泰迪复用现有布偶熊 GLB 骨架，并整体压暗以接近原版 black_puppet_teddy。 */
+    /** 黑暗泰迪暂复用现有布偶熊 GLB，但使用 GLB 里真实存在的四套动画。 */
     public static final class DarkTeddyRenderer extends GltfEntityRenderer<SilkDarkTeddy> {
+        private final Map<SilkDarkTeddy, Integer> actionSerials = new WeakHashMap<>();
+
         public DarkTeddyRenderer(EntityRendererProvider.Context context) {
             super(context, new ResourceLocation("yellowduck", "entity_toy_bear"), darkBearOptions());
         }
@@ -124,7 +130,27 @@ public final class SilkClient {
         @Override
         public void render(SilkDarkTeddy teddy, float yaw, float partialTick, PoseStack pose,
                            MultiBufferSource buffers, int light) {
-            playSingleBearAnimation(this, teddy);
+            try {
+                AnimationController controller = getAnimationController(teddy);
+                if (controller != null) {
+                    int action = teddy.getEntityData().get(SilkDarkTeddy.ACTION);
+                    int serial = teddy.getEntityData().get(SilkDarkTeddy.ACTION_SERIAL);
+                    boolean moving = teddy.getDeltaMovement().horizontalDistanceSqr() > 0.0004D;
+
+                    String animation = !teddy.isAlive() ? "ToyBearDeath"
+                            : action != 0 ? "ToyBearAttack"
+                            : moving ? "ToyBearWalk"
+                            : "ToyBearIdle";
+                    boolean restart = action != 0
+                            && actionSerials.getOrDefault(teddy, Integer.MIN_VALUE) != serial;
+                    boolean loop = teddy.isAlive() && action == 0;
+                    if (restart || !animation.equals(controller.getAnimationName())) {
+                        controller.play(animation, loop);
+                        actionSerials.put(teddy, serial);
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
             super.render(teddy, yaw, partialTick, pose, buffers, light);
         }
     }
@@ -154,8 +180,8 @@ public final class SilkClient {
             GltfEntityRenderer<T> renderer, T entity) {
         try {
             AnimationController controller = renderer.getAnimationController(entity);
-            if (controller != null && !"Anim-1".equals(controller.getAnimationName())) {
-                controller.play("Anim-1", true);
+            if (controller != null && !"ToyBearIdle".equals(controller.getAnimationName())) {
+                controller.play("ToyBearIdle", true);
             }
         } catch (Throwable ignored) {
         }
@@ -244,7 +270,7 @@ public final class SilkClient {
                            MultiBufferSource buffers, int light) {
             pose.pushPose();
             pose.translate(0.0D, 0.025D, 0.0D);
-            renderGroundQuad(pose, buffers, LightTexture.FULL_BRIGHT, WATER_TEXTURE, 1.55F, 225);
+            renderGroundQuad(pose, buffers, LightTexture.FULL_BRIGHT, WATER_TEXTURE, (float) SilkBalance.BLACK_WATER_RADIUS, 225);
             pose.popPose();
             super.render(entity, yaw, partialTick, pose, buffers, light);
         }
@@ -258,7 +284,12 @@ public final class SilkClient {
 
         @Override
         public ResourceLocation getTextureLocation(SilkVisualCircle entity) {
-            return entity.style() == SilkVisualCircle.RED_FIRE_RAIN ? CIRCLE_RED : CIRCLE_PURPLE;
+            return switch (entity.style()) {
+                case SilkVisualCircle.RED_FIRE_RAIN -> CIRCLE_RED;
+                case SilkVisualCircle.HEART_PILLAR -> PILLAR_TEXTURE;
+                case SilkVisualCircle.FIRE_ORB -> FIRE_ORB_TEXTURE;
+                default -> CIRCLE_PURPLE;
+            };
         }
 
         @Override
@@ -266,8 +297,17 @@ public final class SilkClient {
                            MultiBufferSource buffers, int light) {
             ResourceLocation texture = getTextureLocation(entity);
             pose.pushPose();
-            pose.translate(0.0D, 0.03D, 0.0D);
-            renderGroundQuad(pose, buffers, LightTexture.FULL_BRIGHT, texture, 5.0F, 210);
+            if (entity.style() == SilkVisualCircle.HEART_PILLAR) {
+                pose.translate(0.0D, 0.03D, 0.0D);
+                renderCrossedRect(pose, buffers, LightTexture.FULL_BRIGHT, texture, 1.15F, 5.2F, 235);
+            } else if (entity.style() == SilkVisualCircle.FIRE_ORB) {
+                pose.translate(0.0D, 0.85D, 0.0D);
+                pose.mulPose(Axis.YP.rotationDegrees((entity.tickCount + partialTick) * 3.0F));
+                renderCrossedSprite(pose, buffers, LightTexture.FULL_BRIGHT, texture, 0.65F, 245);
+            } else {
+                pose.translate(0.0D, 0.03D, 0.0D);
+                renderGroundQuad(pose, buffers, LightTexture.FULL_BRIGHT, texture, 5.0F, 210);
+            }
             pose.popPose();
             super.render(entity, yaw, partialTick, pose, buffers, light);
         }
@@ -303,6 +343,36 @@ public final class SilkClient {
         }
     }
 
+
+    private static void renderCrossedRect(PoseStack pose, MultiBufferSource buffers, int light,
+                                          ResourceLocation texture, float halfWidth, float height, int alpha) {
+        for (int i = 0; i < 3; i++) {
+            pose.pushPose();
+            pose.mulPose(Axis.YP.rotationDegrees(i * 60.0F));
+            renderVerticalRect(pose, buffers, light, texture, halfWidth, height, alpha);
+            pose.popPose();
+        }
+    }
+
+    private static void renderVerticalRect(PoseStack pose, MultiBufferSource buffers, int light,
+                                           ResourceLocation texture, float halfWidth, float height, int alpha) {
+        VertexConsumer vertex = buffers.getBuffer(RenderType.entityTranslucent(texture));
+        PoseStack.Pose last = pose.last();
+        Matrix4f matrix = last.pose();
+        Matrix3f normal = last.normal();
+        vertex.vertex(matrix, -halfWidth, 0.0F, 0.0F).color(255, 255, 255, alpha)
+                .uv(0.0F, 1.0F).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light)
+                .normal(normal, 0.0F, 0.0F, 1.0F).endVertex();
+        vertex.vertex(matrix, halfWidth, 0.0F, 0.0F).color(255, 255, 255, alpha)
+                .uv(1.0F, 1.0F).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light)
+                .normal(normal, 0.0F, 0.0F, 1.0F).endVertex();
+        vertex.vertex(matrix, halfWidth, height, 0.0F).color(255, 255, 255, alpha)
+                .uv(1.0F, 0.0F).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light)
+                .normal(normal, 0.0F, 0.0F, 1.0F).endVertex();
+        vertex.vertex(matrix, -halfWidth, height, 0.0F).color(255, 255, 255, alpha)
+                .uv(0.0F, 0.0F).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(light)
+                .normal(normal, 0.0F, 0.0F, 1.0F).endVertex();
+    }
     private static void renderVerticalQuad(PoseStack pose, MultiBufferSource buffers, int light,
                                            ResourceLocation texture, float halfSize, int alpha) {
         VertexConsumer vertex = buffers.getBuffer(RenderType.entityTranslucent(texture));

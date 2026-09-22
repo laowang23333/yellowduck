@@ -18,6 +18,7 @@ import java.util.UUID;
 /** 奶块 744 黑暗能量球：200 HP，半径 3，每 2 秒 AOE 并 +10 心智腐蚀。 */
 public class SilkBlackBall extends PathfinderMob {
     private UUID owner;
+    private int ownerMissingTicks;
 
     public SilkBlackBall(EntityType<? extends SilkBlackBall> type, Level level) {
         super(type, level);
@@ -37,13 +38,14 @@ public class SilkBlackBall extends PathfinderMob {
 
     public void setOwner(SilkBoss boss) {
         owner = boss.getUUID();
+        ownerMissingTicks = 0;
         SilkConfig.reapply(this);
     }
 
-    private SilkBoss boss() {
+    private SilkBoss ownerBossRaw() {
         if (owner == null || !(level() instanceof ServerLevel serverLevel)) return null;
         Entity entity = serverLevel.getEntity(owner);
-        return entity instanceof SilkBoss boss && boss.isAlive() ? boss : null;
+        return entity instanceof SilkBoss boss ? boss : null;
     }
 
     @Override
@@ -59,11 +61,21 @@ public class SilkBlackBall extends PathfinderMob {
         super.tick();
         if (level().isClientSide) return;
         setDeltaMovement(0.0D, 0.0D, 0.0D);
-        SilkBoss boss = boss();
+        SilkBoss boss = ownerBossRaw();
         if (boss == null) {
+            if (++ownerMissingTicks > 100) discard();
+            return;
+        }
+        if (!boss.isAlive()) {
             discard();
             return;
         }
+        // Boss 与召唤物的区块加载 tick 顺序不固定；给未进入战斗状态 5 秒宽限。
+        if (!boss.isEncounterActive()) {
+            if (++ownerMissingTicks > 100) discard();
+            return;
+        }
+        ownerMissingTicks = 0;
 
         if (level() instanceof ServerLevel serverLevel) {
             serverLevel.sendParticles(ModParticles.SILK_DARK_FIRE.get(), getX(), getY() + 0.7D, getZ(),

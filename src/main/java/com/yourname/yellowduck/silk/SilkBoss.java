@@ -92,6 +92,8 @@ public class SilkBoss extends NetcraftBossBase {
     private final List<SupportZone> fireRain = new ArrayList<>();
     private final List<SupportPillar> pillars = new ArrayList<>();
     private final Set<UUID> summons = new HashSet<>();
+    /** 一次暗火喷射内已经命中过的玩家；视觉持续期间继续判定，但同一轮只结算一次主伤害。 */
+    private final Set<UUID> flameHitPlayers = new HashSet<>();
 
     private boolean engaged;
     private boolean enteredP2;
@@ -105,6 +107,8 @@ public class SilkBoss extends NetcraftBossBase {
     private double previousX;
     private double previousZ;
     private boolean configApplied;
+    /** Boss 技能之间的公共恢复窗口，避免多个已冷却技能在动画结束后瞬间倾泻。 */
+    private int nextDecisionTick;
 
     private int nextBasic;
     private int nextBats;
@@ -191,6 +195,22 @@ public class SilkBoss extends NetcraftBossBase {
         return isValidHatredPlayer(player);
     }
 
+    /** 供召唤物判断其所属教授这一轮战斗是否仍有效；服务器重启/脱战后旧召唤物应自行清理。 */
+    public boolean isEncounterActive() {
+        return isAlive() && engaged;
+    }
+
+    /** /yd reload 调低层数上限时，立即把已经存在的战斗状态压回新上限。 */
+    public void clampRuntimeMeters() {
+        int max = Math.max(1, SilkBalance.MAX_METER);
+        for (Fighter fighter : fighters.values()) {
+            fighter.corruption = Math.min(fighter.corruption, max);
+            fighter.blackEnergy = Math.min(fighter.blackEnergy, max);
+            fighter.heartFire = Math.min(fighter.heartFire, max);
+            fighter.fireStacks = Math.min(fighter.fireStacks, max);
+        }
+    }
+
     public List<ServerPlayer> targets() {
         if (!(level() instanceof ServerLevel serverLevel)) return List.of();
         Vec3 home = homePosition();
@@ -233,6 +253,16 @@ public class SilkBoss extends NetcraftBossBase {
 
         ServerPlayer tank = chooseTank();
         if (tank == null || !tank.isAlive()) {
+            // 目标丢失时不要把半截技能冻住；下次重新进战后从干净状态继续。
+            if (castAction != 0) {
+                castAction = 0;
+                castAge = 0;
+                castDuration = 0;
+                castTarget = null;
+                castPoint = null;
+                flameHitPlayers.clear();
+                entityData.set(ANIMATION, 0);
+            }
             getNavigation().stop();
             entityData.set(WALKING, false);
             return;
@@ -277,97 +307,105 @@ public class SilkBoss extends NetcraftBossBase {
         previousX = getX();
         previousZ = getZ();
         int now = tickCount;
-        nextBasic = now + 20;
-        nextBats = now + 100;
-        nextMeteor = now + 180;
-        nextFlame = now + 260;
-        nextSweep = now + 40;
-        nextSummon = now + 80;
-        nextPlague = now + 160;
-        nextBurst = now + 240;
-        nextBlackWater = now + 80;
-        nextBlackBall = now + 120;
-        nextFireOrb = now + 100;
-        nextFireRain = now + 180;
-        nextPillar = now + 240;
-        nextHeartFire = now + 300;
+        nextDecisionTick = now;
+
+        // 首轮不再使用 5/9/13 秒这种无来源的手写时间；直接从解析到的技能 CD 开始计时。
+        nextBasic = now + SilkBalance.BASIC_COOLDOWN;
+        nextBats = now + SilkBalance.BAT_COOLDOWN;
+        nextMeteor = now + SilkBalance.METEOR_COOLDOWN;
+        nextFlame = now + SilkBalance.FLAME_COOLDOWN;
+
+        // 尚未进入对应阶段的技能不提前计时，避免刚切阶段就一股脑全放。
+        nextSweep = Integer.MAX_VALUE;
+        nextSummon = Integer.MAX_VALUE;
+        nextPlague = Integer.MAX_VALUE;
+        nextBurst = Integer.MAX_VALUE;
+        nextBlackWater = Integer.MAX_VALUE;
+        nextBlackBall = Integer.MAX_VALUE;
+        nextFireOrb = Integer.MAX_VALUE;
+        nextFireRain = Integer.MAX_VALUE;
+        nextPillar = Integer.MAX_VALUE;
+        nextHeartFire = Integer.MAX_VALUE;
     }
 
     private void enterPhaseTwo() {
         enteredP2 = true;
         announce("§5斯尔克进入疯狂阶段：黑暗泰迪、黑暗史莱姆与黑暗疫病出现！");
-        nextSummon = Math.min(nextSummon, tickCount + 20);
-        nextPlague = Math.min(nextPlague, tickCount + 80);
-        nextBurst = Math.min(nextBurst, tickCount + 140);
+
+        // P2 从进入阶段这一刻开始自己的 CD，不继承 P1 已经过掉的时间。
+        nextSweep = tickCount + SilkBalance.SWEEP_COOLDOWN;
+        nextSummon = tickCount + SilkBalance.SUMMON_COOLDOWN;
+        nextPlague = tickCount + SilkBalance.PLAGUE_COOLDOWN;
+        nextBurst = tickCount + SilkBalance.BURST_COOLDOWN;
+
+        // 助战小樱 7451~7454 同样从 P2 开始计时，杜绝切阶段瞬间四个辅助效果同时刷出。
+        nextFireOrb = tickCount + SilkBalance.SUPPORT_FIRE_ORB_COOLDOWN;
+        nextFireRain = tickCount + SilkBalance.SUPPORT_FIRE_RAIN_COOLDOWN;
+        nextPillar = tickCount + SilkBalance.SUPPORT_PILLAR_COOLDOWN;
+        nextHeartFire = tickCount + SilkBalance.SUPPORT_HEART_FIRE_COOLDOWN;
+        nextDecisionTick = Math.max(nextDecisionTick, tickCount + 20);
     }
 
     private void enterPhaseThree() {
         enteredP3 = true;
         announce("§4斯尔克进入狂暴阶段：腐蚀黑水与黑暗能量球出现！");
-        nextBlackWater = tickCount + 20;
-        nextBlackBall = tickCount + 80;
+        nextSweep = tickCount + SilkBalance.SWEEP_COOLDOWN;
+        nextBlackWater = tickCount + SilkBalance.BLACK_WATER_COOLDOWN;
+        nextBlackBall = tickCount + SilkBalance.BLACK_BALL_COOLDOWN;
+        nextDecisionTick = Math.max(nextDecisionTick, tickCount + 20);
     }
 
     private void schedule(ServerPlayer tank) {
+        if (tickCount < nextDecisionTick) return;
+
         int phase = phase();
         if (phase == 1) {
             if (tickCount >= nextFlame) {
                 begin(ACT_FLAME, tank);
-                nextFlame = tickCount + SilkBalance.FLAME_COOLDOWN;
                 return;
             }
             if (tickCount >= nextMeteor) {
                 begin(ACT_METEOR, tank);
-                nextMeteor = tickCount + SilkBalance.METEOR_COOLDOWN;
                 return;
             }
             if (tickCount >= nextBats) {
                 begin(ACT_BATS, tank);
-                nextBats = tickCount + SilkBalance.BAT_COOLDOWN;
                 return;
             }
         } else if (phase == 2) {
             if (tickCount >= nextSummon) {
                 begin(ACT_SUMMON, tank);
-                nextSummon = tickCount + SilkBalance.SUMMON_COOLDOWN;
                 return;
             }
             if (tickCount >= nextPlague) {
                 begin(ACT_PLAGUE, tank);
-                nextPlague = tickCount + SilkBalance.PLAGUE_COOLDOWN;
                 return;
             }
             if (tickCount >= nextBurst) {
                 begin(ACT_BURST, tank);
-                nextBurst = tickCount + SilkBalance.BURST_COOLDOWN;
                 return;
             }
             if (tickCount >= nextSweep) {
                 begin(ACT_SWEEP, tank);
-                nextSweep = tickCount + SilkBalance.SWEEP_COOLDOWN;
                 return;
             }
         } else {
             if (tickCount >= nextBlackWater) {
                 begin(ACT_BLACK_WATER, tank);
-                nextBlackWater = tickCount + SilkBalance.BLACK_WATER_COOLDOWN;
                 return;
             }
             if (tickCount >= nextBlackBall) {
                 begin(ACT_BLACK_BALL, tank);
-                nextBlackBall = tickCount + SilkBalance.BLACK_BALL_COOLDOWN;
                 return;
             }
             if (tickCount >= nextSweep) {
                 begin(ACT_SWEEP, tank);
-                nextSweep = tickCount + SilkBalance.SWEEP_COOLDOWN;
                 return;
             }
         }
 
         if (tickCount >= nextBasic && distanceToSqr(tank) <= 24.0D * 24.0D && hasLineOfSight(tank)) {
             begin(ACT_BASIC, tank);
-            nextBasic = tickCount + SilkBalance.BASIC_COOLDOWN;
         }
     }
 
@@ -409,6 +447,7 @@ public class SilkBoss extends NetcraftBossBase {
         entityData.set(CAST_SERIAL, entityData.get(CAST_SERIAL) + 1);
 
         if (action == ACT_FLAME) {
+            flameHitPlayers.clear();
             Vec3 direction = castPoint.subtract(position());
             flameYaw = (float) Math.toDegrees(Math.atan2(-direction.x, direction.z));
             setYRot(flameYaw);
@@ -423,8 +462,11 @@ public class SilkBoss extends NetcraftBossBase {
             setYRot(flameYaw);
             yBodyRot = flameYaw;
             if (castAge < 90 && castAge % 2 == 0) chargeFlame();
-            if (castAge >= 90 && castAge <= 110) sprayFlameVisual();
-            if (castAge == 90) fanDamage();
+            if (castAge >= 90 && castAge <= 110) {
+                sprayFlameVisual();
+                // 原 7505 仍是一轮一次主伤害；持续判定只为避免玩家晚 1 tick 进入火里却完全不受伤。
+                if (castAge % 2 == 0) fanDamage();
+            }
         } else {
             int trigger = switch (castAction) {
                 case ACT_BASIC -> 12;
@@ -439,9 +481,53 @@ public class SilkBoss extends NetcraftBossBase {
         }
 
         if (castAge >= castDuration) {
+            int finished = castAction;
             castAction = 0;
+            castAge = 0;
+            castDuration = 0;
+            castTarget = null;
+            castPoint = null;
             entityData.set(ANIMATION, 0);
+            finishCooldown(finished);
         }
+    }
+
+    /**
+     * 技能 CD 从动作真正结束后开始；同时给所有已经到点的技能一个公共恢复窗口，
+     * 防止长动画期间其它技能全部到点，随后无缝连续倾泻。
+     */
+    private void finishCooldown(int action) {
+        switch (action) {
+            case ACT_BASIC -> nextBasic = tickCount + SilkBalance.BASIC_COOLDOWN;
+            case ACT_BATS -> nextBats = tickCount + SilkBalance.BAT_COOLDOWN;
+            case ACT_METEOR -> nextMeteor = tickCount + SilkBalance.METEOR_COOLDOWN;
+            case ACT_FLAME -> nextFlame = tickCount + SilkBalance.FLAME_COOLDOWN;
+            case ACT_SWEEP -> nextSweep = tickCount + SilkBalance.SWEEP_COOLDOWN;
+            case ACT_SUMMON -> nextSummon = tickCount + SilkBalance.SUMMON_COOLDOWN;
+            case ACT_PLAGUE -> nextPlague = tickCount + SilkBalance.PLAGUE_COOLDOWN;
+            case ACT_BURST -> nextBurst = tickCount + SilkBalance.BURST_COOLDOWN;
+            case ACT_BLACK_WATER -> nextBlackWater = tickCount + SilkBalance.BLACK_WATER_COOLDOWN;
+            case ACT_BLACK_BALL -> nextBlackBall = tickCount + SilkBalance.BLACK_BALL_COOLDOWN;
+            default -> {
+            }
+        }
+
+        nextDecisionTick = tickCount + 20; // 1 秒公共恢复。
+        deferReadyBossSkills();
+    }
+
+    private void deferReadyBossSkills() {
+        int defer = nextDecisionTick;
+        if (nextBasic <= tickCount) nextBasic = defer;
+        if (nextBats <= tickCount) nextBats = defer;
+        if (nextMeteor <= tickCount) nextMeteor = defer;
+        if (nextFlame <= tickCount) nextFlame = defer;
+        if (nextSweep <= tickCount) nextSweep = defer;
+        if (nextSummon <= tickCount) nextSummon = defer;
+        if (nextPlague <= tickCount) nextPlague = defer;
+        if (nextBurst <= tickCount) nextBurst = defer;
+        if (nextBlackWater <= tickCount) nextBlackWater = defer;
+        if (nextBlackBall <= tickCount) nextBlackBall = defer;
     }
 
     private void executeAction(int action) {
@@ -673,7 +759,8 @@ public class SilkBoss extends NetcraftBossBase {
         Vec3 forward = new Vec3(-Math.sin(yaw), 0.0D, Math.cos(yaw));
         Vec3 right = new Vec3(forward.z, 0.0D, -forward.x);
         return position()
-                .add(0.0D, getBbHeight() * 0.68D, 0.0D)
+                // 旧版 0.68×4.4≈3 格高，视觉会从玩家头顶穿过去；下压到胸口高度。
+                .add(0.0D, getBbHeight() * 0.52D, 0.0D)
                 .add(forward.scale(0.55D))
                 .add(right.scale(0.48D));
     }
@@ -697,11 +784,12 @@ public class SilkBoss extends NetcraftBossBase {
             Vec3 direction = new Vec3(-Math.sin(angle), 0.0D, Math.cos(angle));
             for (double distance = 0.7D; distance <= SilkBalance.FLAME_RANGE; distance += 1.0D) {
                 Vec3 point = hand.add(direction.scale(distance));
-                double y = point.y - Math.min(1.6D, distance * 0.10D);
+                // 随距离向地面压低，使喷火视觉覆盖玩家身体而不是悬在头顶。
+                double y = point.y - Math.min(1.50D, 0.15D + distance * 0.14D);
                 serverLevel.sendParticles(ModParticles.SILK_DARK_FIRE.get(), point.x, y, point.z,
-                        2, 0.18D, 0.20D, 0.18D, 0.01D);
+                        2, 0.22D, 0.30D, 0.22D, 0.01D);
                 serverLevel.sendParticles(ModParticles.SILK_SOUL.get(), point.x, y, point.z,
-                        1, 0.15D, 0.18D, 0.15D, 0.008D);
+                        1, 0.18D, 0.25D, 0.18D, 0.008D);
             }
         }
     }
@@ -709,13 +797,18 @@ public class SilkBoss extends NetcraftBossBase {
     private void fanDamage() {
         Vec3 forward = new Vec3(-Math.sin(Math.toRadians(flameYaw)), 0.0D, Math.cos(Math.toRadians(flameYaw)));
         for (ServerPlayer player : targets()) {
-            Vec3 delta = player.position().subtract(position());
+            if (flameHitPlayers.contains(player.getUUID())) continue;
+
+            Vec3 delta = player.getBoundingBox().getCenter().subtract(position());
             Vec3 horizontal = new Vec3(delta.x, 0.0D, delta.z);
             if (horizontal.lengthSqr() < 1.0E-6D || horizontal.length() > SilkBalance.FLAME_RANGE) continue;
             if (Math.abs(delta.y) > 4.0D) continue;
+
             double dot = horizontal.normalize().dot(forward);
             if (dot < Math.cos(Math.toRadians(SilkBalance.FLAME_HALF_ANGLE_DEGREES))) continue;
+
             if (hit(player, SilkBalance.FLAME_DAMAGE, 0)) {
+                flameHitPlayers.add(player.getUUID());
                 addBlackEnergy(player, SilkBalance.BLACK_ENERGY_PER_HIT);
             }
         }
@@ -765,17 +858,24 @@ public class SilkBoss extends NetcraftBossBase {
 
     private void updateSupport(ServerLevel serverLevel) {
         if (tickCount >= nextFireOrb) {
-            fireOrbs.add(new SupportOrb(randomFloor().add(0.0D, 0.8D, 0.0D), tickCount + 15 * 20));
+            Vec3 point = randomFloor().add(0.0D, 0.8D, 0.0D);
+            int life = 60 * 20; // NPC746 原资源存在时间 60 秒。
+            fireOrbs.add(new SupportOrb(point, tickCount + life));
+            spawnCircle(point, SilkVisualCircle.FIRE_ORB, life);
             nextFireOrb = tickCount + SilkBalance.SUPPORT_FIRE_ORB_COOLDOWN;
         }
         if (tickCount >= nextFireRain) {
             Vec3 point = randomFloor();
-            fireRain.add(new SupportZone(point, tickCount + 10 * 20));
-            spawnCircle(point, SilkVisualCircle.RED_FIRE_RAIN, 10 * 20);
+            int life = 45 * 20; // NPC750 原资源存在时间 45 秒。
+            fireRain.add(new SupportZone(point, tickCount + life));
+            spawnCircle(point, SilkVisualCircle.RED_FIRE_RAIN, life);
             nextFireRain = tickCount + SilkBalance.SUPPORT_FIRE_RAIN_COOLDOWN;
         }
         if (tickCount >= nextPillar) {
-            pillars.add(new SupportPillar(randomFloor(), tickCount + 10 * 20));
+            Vec3 point = randomFloor();
+            int life = 60 * 20; // NPC747 心火光柱原资源存在时间 60 秒。
+            pillars.add(new SupportPillar(point, tickCount + life));
+            spawnCircle(point, SilkVisualCircle.HEART_PILLAR, life);
             nextPillar = tickCount + SilkBalance.SUPPORT_PILLAR_COOLDOWN;
         }
         if (tickCount >= nextHeartFire) {
@@ -788,6 +888,7 @@ public class SilkBoss extends NetcraftBossBase {
             nextHeartFire = tickCount + SilkBalance.SUPPORT_HEART_FIRE_COOLDOWN;
         }
 
+        // NPC746：存在 60 秒，每秒对 2 格内玩家施加一层 2283 强化火焰，而不是碰一下就把火球吃掉。
         for (Iterator<SupportOrb> iterator = fireOrbs.iterator(); iterator.hasNext();) {
             SupportOrb orb = iterator.next();
             if (tickCount >= orb.expires()) {
@@ -796,19 +897,20 @@ public class SilkBoss extends NetcraftBossBase {
             }
             serverLevel.sendParticles(ModParticles.SILK_FIRE.get(), orb.point().x, orb.point().y, orb.point().z,
                     4, 0.25D, 0.25D, 0.25D, 0.02D);
-            ServerPlayer picker = targets().stream()
-                    .filter(player -> player.position().distanceToSqr(orb.point()) <= 1.8D * 1.8D)
-                    .findFirst().orElse(null);
-            if (picker != null) {
-                Fighter fighter = fighters.computeIfAbsent(picker.getUUID(), ignored -> new Fighter());
-                fighter.fireStacks = Math.min(SilkBalance.MAX_METER, fighter.fireStacks + 1);
-                fighter.fireUntil = tickCount + SilkBalance.STRENGTHENED_FIRE_TICKS;
-                SilkCombatEvents.setStrengthenedFire(picker, fighter.fireStacks, SilkBalance.STRENGTHENED_FIRE_TICKS);
-                picker.displayClientMessage(Component.literal("§6强化火焰 +1（每层伤害 +10%）"), true);
-                iterator.remove();
+
+            if (tickCount % 20 == 0) {
+                for (ServerPlayer player : targets()) {
+                    if (player.position().distanceToSqr(orb.point()) > 2.0D * 2.0D) continue;
+                    Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
+                    fighter.fireStacks = Math.min(SilkBalance.MAX_METER, fighter.fireStacks + 1);
+                    fighter.fireUntil = tickCount + SilkBalance.STRENGTHENED_FIRE_TICKS;
+                    SilkCombatEvents.setStrengthenedFire(player, fighter.fireStacks, SilkBalance.STRENGTHENED_FIRE_TICKS);
+                    player.displayClientMessage(Component.literal("§6强化火焰 +1（每层伤害 +10%）"), true);
+                }
             }
         }
 
+        // NPC750：45 秒火雨区；每秒解除史莱姆 2292 无敌并维持火雨灼烧/减速表现。
         for (Iterator<SupportZone> iterator = fireRain.iterator(); iterator.hasNext();) {
             SupportZone zone = iterator.next();
             if (tickCount >= zone.expires()) {
@@ -816,12 +918,13 @@ public class SilkBoss extends NetcraftBossBase {
                 continue;
             }
             if (tickCount % 4 == 0) {
-                serverLevel.sendParticles(ModParticles.SILK_FIRE.get(), zone.point().x, zone.point().y + 3.0D, zone.point().z,
-                        14, SilkBalance.SUPPORT_ZONE_RADIUS * 0.65D, 0.3D,
+                serverLevel.sendParticles(ModParticles.SILK_FIRE.get(), zone.point().x, zone.point().y + 2.0D, zone.point().z,
+                        14, SilkBalance.SUPPORT_ZONE_RADIUS * 0.65D, 0.8D,
                         SilkBalance.SUPPORT_ZONE_RADIUS * 0.65D, 0.07D);
             }
             if (tickCount % 20 == 0) {
-                AABB area = new AABB(zone.point(), zone.point()).inflate(SilkBalance.SUPPORT_ZONE_RADIUS, 3.0D, SilkBalance.SUPPORT_ZONE_RADIUS);
+                AABB area = new AABB(zone.point(), zone.point()).inflate(
+                        SilkBalance.SUPPORT_ZONE_RADIUS, 3.0D, SilkBalance.SUPPORT_ZONE_RADIUS);
                 for (SilkDarkSlime slime : serverLevel.getEntitiesOfClass(SilkDarkSlime.class, area, Entity::isAlive)) {
                     slime.breakShield();
                     slime.hurt(damageSources().indirectMagic(this, this), 12.0F);
@@ -831,23 +934,24 @@ public class SilkBoss extends NetcraftBossBase {
             }
         }
 
+        // NPC747 / 7471：60 秒，1 秒一次，2 格范围清除 10 层心智。
         for (Iterator<SupportPillar> iterator = pillars.iterator(); iterator.hasNext();) {
             SupportPillar pillar = iterator.next();
             if (tickCount >= pillar.expires()) {
                 iterator.remove();
                 continue;
             }
-            if (tickCount % 3 == 0) {
-                for (int y = 0; y < 7; y++) {
+            if (tickCount % 4 == 0) {
+                for (int y = 0; y < 8; y++) {
                     serverLevel.sendParticles(ModParticles.SILK_SOUL.get(), pillar.point().x,
-                            pillar.point().y + 0.4D + y * 0.55D, pillar.point().z,
-                            2, 0.18D, 0.12D, 0.18D, 0.008D);
+                            pillar.point().y + 0.3D + y * 0.6D, pillar.point().z,
+                            3, 0.25D, 0.16D, 0.25D, 0.01D);
                 }
             }
             for (ServerPlayer player : targets()) {
                 if (player.position().distanceToSqr(pillar.point()) > 2.0D * 2.0D) continue;
                 Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
-                if (tickCount - fighter.lastPillarCleanse >= 40) {
+                if (tickCount - fighter.lastPillarCleanse >= 20) {
                     fighter.lastPillarCleanse = tickCount;
                     fighter.corruption = Math.max(0, fighter.corruption - 10); // 2297。
                 }
@@ -1044,6 +1148,7 @@ public class SilkBoss extends NetcraftBossBase {
             }
         }
         summons.clear();
+        flameHitPlayers.clear();
         fighters.clear();
         meteorMarks.clear();
         echoes.clear();
@@ -1064,6 +1169,8 @@ public class SilkBoss extends NetcraftBossBase {
         engaged = false;
         enteredP2 = false;
         enteredP3 = false;
+        nextDecisionTick = 0;
+        flameHitPlayers.clear();
         entityData.set(ANIMATION, 0);
         entityData.set(MAD, false);
         entityData.set(WALKING, false);

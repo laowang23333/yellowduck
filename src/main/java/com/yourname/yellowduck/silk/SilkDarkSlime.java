@@ -15,14 +15,17 @@ import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 
+import java.util.Comparator;
 import java.util.UUID;
 
-/** 奶块 742 黑暗史莱姆：初始无敌；助战火雨解除无敌；近身自爆叠 5 心智并附带黑暗沸血。 */
+/** 奶块 742 黑暗史莱姆：独立选人；初始无敌；火雨解除无敌；近身普通攻击并可靠触发自爆。 */
 public class SilkDarkSlime extends Slime {
     private UUID owner;
     private boolean shielded = true;
     private boolean detonating;
     private int nextAttack;
+    private int closeActionCount;
+    private int ownerMissingTicks;
 
     public SilkDarkSlime(EntityType<? extends SilkDarkSlime> type, Level level) {
         super(type, level);
@@ -41,6 +44,7 @@ public class SilkDarkSlime extends Slime {
 
     public void setOwner(SilkBoss boss) {
         owner = boss.getUUID();
+        ownerMissingTicks = 0;
         // setSize 是受保护方法，子类可直接调用。
         setSize(2, true);
         var maxHealth = getAttribute(Attributes.MAX_HEALTH);
@@ -62,10 +66,31 @@ public class SilkDarkSlime extends Slime {
         }
     }
 
-    private SilkBoss boss() {
+    private SilkBoss ownerBossRaw() {
         if (owner == null || !(level() instanceof ServerLevel serverLevel)) return null;
         Entity entity = serverLevel.getEntity(owner);
-        return entity instanceof SilkBoss boss && boss.isAlive() ? boss : null;
+        return entity instanceof SilkBoss boss ? boss : null;
+    }
+
+    private ServerPlayer ownTarget(SilkBoss boss, ServerLevel serverLevel) {
+        if (getTarget() instanceof ServerPlayer current && boss.valid(current)) return current;
+
+        // 先优先攻击最近打过史莱姆的玩家，再自己找最近玩家；完全不读取教授仇恨表。
+        if (getLastHurtByMob() instanceof ServerPlayer attacker && boss.valid(attacker)) {
+            setTarget(attacker);
+            return attacker;
+        }
+
+        double range = Math.max(4.0D, getAttributeValue(Attributes.FOLLOW_RANGE));
+        ServerPlayer nearest = serverLevel.getEntitiesOfClass(
+                        ServerPlayer.class,
+                        getBoundingBox().inflate(range),
+                        boss::valid)
+                .stream()
+                .min(Comparator.comparingDouble(this::distanceToSqr))
+                .orElse(null);
+        setTarget(nearest);
+        return nearest;
     }
 
     @Override
@@ -78,21 +103,41 @@ public class SilkDarkSlime extends Slime {
     public void tick() {
         super.tick();
         if (level().isClientSide) return;
-        SilkBoss boss = boss();
+        if (!(level() instanceof ServerLevel serverLevel)) return;
+
+        SilkBoss boss = ownerBossRaw();
         if (boss == null) {
+            if (++ownerMissingTicks > 100) discard();
+            return;
+        }
+        if (!boss.isAlive()) {
             discard();
             return;
         }
+        // Boss 与召唤物的区块加载 tick 顺序不固定；给未进入战斗状态 5 秒宽限。
+        if (!boss.isEncounterActive()) {
+            if (++ownerMissingTicks > 100) discard();
+            return;
+        }
+        ownerMissingTicks = 0;
 
-        ServerPlayer target = boss.getHatredManager().getHighestHatredTarget() instanceof ServerPlayer player
-                && boss.valid(player) ? player : null;
+        ServerPlayer target = ownTarget(boss, serverLevel);
         if (target == null) return;
-        setTarget(target);
 
         if (distanceToSqr(target) <= 2.5D * 2.5D && tickCount >= nextAttack) {
             nextAttack = tickCount + SilkBalance.SLIME_ATTACK_COOLDOWN; // 7421/7422 默认 2 秒。
-            if (random.nextFloat() < 0.35F) detonate(boss);
-            else boss.hit(target, SilkBalance.SLIME_DAMAGE, SilkBalance.SLIME_HIT_CORRUPTION);
+
+            /*
+             * 客户端资源只证明 7421/7422 都存在，没有暴露服务器 AI 的选择条件。
+             * 旧版随机 35% 会出现长时间完全不自爆。这里改为稳定节奏：
+             * 前两次近身使用 7421，第三次近身使用 7422 自爆，然后实体结束。
+             */
+            if (closeActionCount >= 2) {
+                detonate(boss);
+            } else {
+                closeActionCount++;
+                boss.hit(target, SilkBalance.SLIME_DAMAGE, SilkBalance.SLIME_HIT_CORRUPTION);
+            }
         }
     }
 
@@ -114,6 +159,8 @@ public class SilkDarkSlime extends Slime {
         super.addAdditionalSaveData(tag);
         if (owner != null) tag.putUUID("SilkOwner", owner);
         tag.putBoolean("SilkShielded", shielded);
+        tag.putInt("SilkNextAttack", Math.max(0, nextAttack - tickCount));
+        tag.putInt("SilkCloseActions", closeActionCount);
     }
 
     @Override
@@ -121,5 +168,7 @@ public class SilkDarkSlime extends Slime {
         super.readAdditionalSaveData(tag);
         owner = tag.hasUUID("SilkOwner") ? tag.getUUID("SilkOwner") : null;
         shielded = tag.getBoolean("SilkShielded");
+        nextAttack = tickCount + Math.max(0, tag.getInt("SilkNextAttack"));
+        closeActionCount = Math.max(0, tag.getInt("SilkCloseActions"));
     }
 }

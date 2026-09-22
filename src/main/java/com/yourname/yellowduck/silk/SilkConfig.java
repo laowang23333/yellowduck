@@ -33,6 +33,8 @@ public final class SilkConfig {
     private static final Path PATH = FMLPaths.CONFIGDIR.get().resolve("yellowduck-entities.toml");
     private static final String BOSS_SECTION = "silk_boss";
     private static final String BATTLE_SECTION = "silk_battle";
+    /** 启动时先冻结源码默认值；配置删字段时回默认，而不是沿用上一轮运行值。 */
+    private static final Values DEFAULTS = Values.current();
     private static volatile boolean loaded;
 
     private SilkConfig() {}
@@ -89,7 +91,7 @@ public final class SilkConfig {
 
             Parsed parsed = parse(lines);
             List<String> errors = new ArrayList<>(parsed.errors());
-            Values v = Values.current();
+            Values v = DEFAULTS.copy();
 
             Map<String, String> boss = parsed.sections().getOrDefault(BOSS_SECTION, Map.of());
             Map<String, String> battle = parsed.sections().getOrDefault(BATTLE_SECTION, Map.of());
@@ -228,6 +230,7 @@ public final class SilkConfig {
             set(boss, Attributes.KNOCKBACK_RESISTANCE, SilkBalance.BOSS_KNOCKBACK_RESISTANCE);
             boss.setBaseTier(SilkBalance.BOSS_TIER);
             boss.setBaseDamage(Math.round(SilkBalance.BASIC_DAMAGE));
+            boss.clampRuntimeMeters();
         } else if (entity instanceof SilkDarkTeddy teddy) {
             setHealth(teddy, SilkBalance.TEDDY_HEALTH);
             set(teddy, Attributes.ATTACK_DAMAGE, SilkBalance.TEDDY_DAMAGE);
@@ -481,7 +484,7 @@ public final class SilkConfig {
     private record Parsed(Map<String, Map<String, String>> sections, List<String> errors) {}
 
     /** 先完整解析到临时值，所有字段都合法才一次性 commit。 */
-    private static final class Values {
+    private static final class Values implements Cloneable {
         double health, bossMovementSpeed, bossFollowRange, bossKnockbackResistance, arenaRadius, leashRadius;
         int bossTier, bossMeleeDefense, bossRangedDefense, bossMagicDefense;
         float bossDamageReduction, basicDamage, batDamage, meteorDamage, sweepDamage, burstDamage, flameDamage,
@@ -505,6 +508,14 @@ public final class SilkConfig {
                 strengthenedFirePerStack, boilingBloodDamagePerStack, boilingBloodDamageCap;
         double madnessSpeedModifier;
         float phaseTwoHealth, phaseThreeHealth, phaseThreeMultiplier;
+
+        Values copy() {
+            try {
+                return (Values) clone();
+            } catch (CloneNotSupportedException ex) {
+                throw new AssertionError(ex);
+            }
+        }
 
         static Values current() {
             Values v = new Values();

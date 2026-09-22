@@ -1,5 +1,6 @@
 package com.yourname.yellowduck.silk;
 
+import com.yourname.yellowduck.particle.ModParticles;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
@@ -20,9 +21,13 @@ import java.util.UUID;
 public class SilkBlackWater extends Entity {
     private static final EntityDataAccessor<Integer> DEPTH =
             SynchedEntityData.defineId(SilkBlackWater.class, EntityDataSerializers.INT);
+    /** 原 NPC743/751 配置存在时间为 1800 秒；副本正常结束时会更早由 Boss 清理。 */
+    private static final int MAX_LIFE_TICKS = 1800 * 20;
 
     private UUID owner;
     private boolean split;
+    private int ageTicks;
+    private int ownerMissingTicks;
 
     public SilkBlackWater(EntityType<? extends SilkBlackWater> type, Level level) {
         super(type, level);
@@ -32,6 +37,8 @@ public class SilkBlackWater extends Entity {
     public void configure(SilkBoss boss, int depth) {
         owner = boss.getUUID();
         entityData.set(DEPTH, depth);
+        ageTicks = 0;
+        ownerMissingTicks = 0;
     }
 
     public int depth() {
@@ -50,27 +57,48 @@ public class SilkBlackWater extends Entity {
 
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
-        // 场地技能不跨重启继续扩散。
-        discard();
+        owner = tag.hasUUID("SilkOwner") ? tag.getUUID("SilkOwner") : null;
+        entityData.set(DEPTH, Math.max(0, tag.getInt("Depth")));
+        split = tag.getBoolean("SilkSplit");
+        ageTicks = Math.max(0, tag.getInt("SilkAge"));
+        ownerMissingTicks = 0;
     }
 
     @Override
     protected void addAdditionalSaveData(CompoundTag tag) {
         if (owner != null) tag.putUUID("SilkOwner", owner);
         tag.putInt("Depth", depth());
+        tag.putBoolean("SilkSplit", split);
+        tag.putInt("SilkAge", ageTicks);
     }
 
     @Override
     public void tick() {
         super.tick();
         if (level().isClientSide) return;
-        if (!(level() instanceof ServerLevel serverLevel)
-                || owner == null
-                || !(serverLevel.getEntity(owner) instanceof SilkBoss boss)
-                || !boss.isAlive()) {
+        if (!(level() instanceof ServerLevel serverLevel)) return;
+
+        ageTicks++;
+
+        SilkBoss boss = null;
+        if (owner != null && serverLevel.getEntity(owner) instanceof SilkBoss found) {
+            boss = found;
+        }
+        if (boss == null) {
+            // 区块加载顺序可能不同，给拥有者 5 秒加载宽限；之后清掉孤儿场地技能。
+            if (++ownerMissingTicks > 100) discard();
+            return;
+        }
+        if (!boss.isAlive()) {
             discard();
             return;
         }
+        if (!boss.isEncounterActive()) {
+            // 区块加载时 Boss 可能晚几个 tick 恢复；5 秒后仍未重新进入战斗才清理上一场黑水。
+            if (++ownerMissingTicks > 100) discard();
+            return;
+        }
+        ownerMissingTicks = 0;
 
         AABB area = getBoundingBox().inflate(SilkBalance.BLACK_WATER_RADIUS, 1.5D, SilkBalance.BLACK_WATER_RADIUS);
 
@@ -82,18 +110,23 @@ public class SilkBlackWater extends Entity {
             }
         }
 
-        if (tickCount % 20 == 0) {
+        if (ageTicks % 20 == 0) {
             for (ServerPlayer player : serverLevel.getEntitiesOfClass(ServerPlayer.class, area, boss::valid)) {
                 boss.corrupt(player, SilkBalance.BLACK_WATER_CORRUPTION);
             }
         }
 
-        if (!split && tickCount >= SilkBalance.BLACK_WATER_SPLIT_TICKS) {
+        // 2299：10 秒后在 X±3 / Z±3 各生成一滩 743；子黑水也按同一规则继续扩散。
+        if (!split && ageTicks >= SilkBalance.BLACK_WATER_SPLIT_TICKS) {
             split = true;
+            serverLevel.sendParticles(ModParticles.SILK_DARK_FIRE.get(), getX(), getY() + 0.08D, getZ(),
+                    26, SilkBalance.BLACK_WATER_SPREAD_DISTANCE * 0.55D, 0.08D,
+                    SilkBalance.BLACK_WATER_SPREAD_DISTANCE * 0.55D, 0.018D);
+            serverLevel.sendParticles(ModParticles.SILK_SMOKE.get(), getX(), getY() + 0.10D, getZ(),
+                    14, 1.4D, 0.06D, 1.4D, 0.01D);
             boss.spreadBlackWater(position(), depth() + 1);
         }
 
-        // 原版黑水可持续扩散；这里仅限制单格最长 90 秒，避免副本异常结束时无限残留。
-        if (tickCount >= 90 * 20) discard();
+        if (ageTicks >= MAX_LIFE_TICKS) discard();
     }
 }

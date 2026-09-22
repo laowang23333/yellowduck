@@ -11,10 +11,12 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 
-/** 只负责还原奶块紫色流星预警圈 / 红色火雨圈的客户端视觉。 */
+/** 奶块技能辅助视觉：流星圈、火雨圈、心火光柱、火元素。 */
 public class SilkVisualCircle extends Entity {
     public static final int PURPLE_METEOR = 0;
     public static final int RED_FIRE_RAIN = 1;
+    public static final int HEART_PILLAR = 2;
+    public static final int FIRE_ORB = 3;
 
     private static final EntityDataAccessor<Integer> STYLE =
             SynchedEntityData.defineId(SilkVisualCircle.class, EntityDataSerializers.INT);
