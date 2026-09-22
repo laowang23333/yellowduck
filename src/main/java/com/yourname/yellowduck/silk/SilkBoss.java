@@ -76,6 +76,23 @@ public class SilkBoss extends NetcraftBossBase {
     public static final EntityDataAccessor<Integer> SLIME_SECONDS =
             SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
 
+    /*
+     * 下列字段只用于血条下方“已从奶块 buff.txt 明确解析到”的 Buff 图标。
+     * 不再把普通攻击次数、下一技能、阶段文字、史莱姆倒计时等自定义信息冒充成 Buff。
+     */
+    /** 2279 腐蚀黑水：场上被点名玩家中最长剩余秒数。 */
+    public static final EntityDataAccessor<Integer> BLACK_WATER_SECONDS =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 2281 心火庇护：场上玩家当前最高层数。 */
+    public static final EntityDataAccessor<Integer> HEART_FIRE_STACKS =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 2283 强化火焰：场上玩家当前最高层数。 */
+    public static final EntityDataAccessor<Integer> STRENGTHENED_FIRE_STACKS =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /** 2293 能量爆发：场上残留能量最长剩余秒数。 */
+    public static final EntityDataAccessor<Integer> BURST_SECONDS =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+
     public static final int ACT_BASIC = 1;
     public static final int ACT_BATS = 2;
     public static final int ACT_METEOR = 3;
@@ -184,6 +201,10 @@ public class SilkBoss extends NetcraftBossBase {
         entityData.define(PLAGUE_SECONDS, 0);
         entityData.define(SUPPORT_FLAGS, 0);
         entityData.define(SLIME_SECONDS, 0);
+        entityData.define(BLACK_WATER_SECONDS, 0);
+        entityData.define(HEART_FIRE_STACKS, 0);
+        entityData.define(STRENGTHENED_FIRE_STACKS, 0);
+        entityData.define(BURST_SECONDS, 0);
     }
 
     @Override
@@ -355,6 +376,10 @@ public class SilkBoss extends NetcraftBossBase {
         entityData.set(PLAGUE_SECONDS, 0);
         entityData.set(SUPPORT_FLAGS, 0);
         entityData.set(SLIME_SECONDS, 0);
+        entityData.set(BLACK_WATER_SECONDS, 0);
+        entityData.set(HEART_FIRE_STACKS, 0);
+        entityData.set(STRENGTHENED_FIRE_STACKS, 0);
+        entityData.set(BURST_SECONDS, 0);
 
         // 战斗说明图：P1 协战为火元素 + 火雨；P2 是心火光柱；P3 是心火庇护。
         nextFireOrb = now + SilkBalance.SUPPORT_FIRE_ORB_COOLDOWN;
@@ -904,6 +929,15 @@ public class SilkBoss extends NetcraftBossBase {
                 hit(player, SilkBalance.BURST_DAMAGE * 0.6F * count,
                         SilkBalance.BURST_ECHO_CORRUPTION * count));
 
+        // 2293 能量爆发：只同步真实存在的 3 秒残留 Buff 倒计时。
+        int maxBurstSeconds = 0;
+        for (Echo echo : echoes) {
+            if (echo.due() <= tickCount) continue;
+            maxBurstSeconds = Math.max(maxBurstSeconds,
+                    Math.max(0, (echo.due() - tickCount + 19) / 20));
+        }
+        entityData.set(BURST_SECONDS, maxBurstSeconds);
+
         // 协战内容按阶段在 updateSupport 内部决定；P1 同样需要火元素/火圈。
         updateSupport(serverLevel);
 
@@ -1071,6 +1105,9 @@ public class SilkBoss extends NetcraftBossBase {
         if (!(level() instanceof ServerLevel serverLevel)) return;
 
         int maxPlagueSeconds = 0;
+        int maxBlackWaterSeconds = 0;
+        int maxHeartFireStacks = 0;
+        int maxStrengthenedFireStacks = 0;
 
         for (Map.Entry<UUID, Fighter> entry : new ArrayList<>(fighters.entrySet())) {
             ServerPlayer player = online(entry.getKey());
@@ -1102,6 +1139,10 @@ public class SilkBoss extends NetcraftBossBase {
                 transferPlague(player);
             }
 
+            if (fighter.blackWaterDue > tickCount) {
+                maxBlackWaterSeconds = Math.max(maxBlackWaterSeconds,
+                        Math.max(0, (fighter.blackWaterDue - tickCount + 19) / 20));
+            }
             if (fighter.blackWaterDue > 0 && tickCount >= fighter.blackWaterDue) {
                 fighter.blackWaterDue = 0;
                 spawnBlackWater(player.position(), 0);
@@ -1109,6 +1150,13 @@ public class SilkBoss extends NetcraftBossBase {
 
             if (fighter.heartFireUntil <= tickCount) fighter.heartFire = 0;
             if (fighter.fireUntil <= tickCount) fighter.fireStacks = 0;
+
+            if (fighter.heartFireUntil > tickCount && fighter.heartFire > 0) {
+                maxHeartFireStacks = Math.max(maxHeartFireStacks, fighter.heartFire);
+            }
+            if (fighter.fireUntil > tickCount && fighter.fireStacks > 0) {
+                maxStrengthenedFireStacks = Math.max(maxStrengthenedFireStacks, fighter.fireStacks);
+            }
 
             if (tickCount % 20 == 0) {
                 StringBuilder text = new StringBuilder()
@@ -1125,6 +1173,9 @@ public class SilkBoss extends NetcraftBossBase {
         }
 
         entityData.set(PLAGUE_SECONDS, maxPlagueSeconds);
+        entityData.set(BLACK_WATER_SECONDS, maxBlackWaterSeconds);
+        entityData.set(HEART_FIRE_STACKS, maxHeartFireStacks);
+        entityData.set(STRENGTHENED_FIRE_STACKS, maxStrengthenedFireStacks);
     }
 
     public void corrupt(ServerPlayer player, int amount) {
@@ -1314,6 +1365,10 @@ public class SilkBoss extends NetcraftBossBase {
         entityData.set(PLAGUE_SECONDS, 0);
         entityData.set(SUPPORT_FLAGS, 0);
         entityData.set(SLIME_SECONDS, 0);
+        entityData.set(BLACK_WATER_SECONDS, 0);
+        entityData.set(HEART_FIRE_STACKS, 0);
+        entityData.set(STRENGTHENED_FIRE_STACKS, 0);
+        entityData.set(BURST_SECONDS, 0);
     }
 
     @Override
