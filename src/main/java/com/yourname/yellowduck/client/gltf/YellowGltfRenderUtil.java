@@ -26,6 +26,18 @@ public final class YellowGltfRenderUtil {
                                    float animationSeconds,
                                    String animationName,
                                    boolean loop) {
+        renderModel(model, pose, buffers, packedLight, animationSeconds, animationName, loop, 0xFFFFFFFF);
+    }
+
+    /** Same renderer with an ARGB vertex tint, used by variants such as the dark teddy. */
+    public static void renderModel(YellowGltfModel model,
+                                   PoseStack pose,
+                                   MultiBufferSource buffers,
+                                   int packedLight,
+                                   float animationSeconds,
+                                   String animationName,
+                                   boolean loop,
+                                   int tintArgb) {
         if (model == null || model.texture == null) return;
 
         Map<Integer, Matrix4f> sampled = animationName != null
@@ -41,14 +53,14 @@ public final class YellowGltfRenderUtil {
             YellowGltfMesh mesh = model.meshes.get(meshIndex);
             if (mesh.hasSkinning()) {
                 Matrix4f[] bones = buildBoneMatrices(mesh, globals);
-                renderSkinnedMesh(vertex, poseMatrix, poseNormal, mesh, bones, packedLight);
+                renderSkinnedMesh(vertex, poseMatrix, poseNormal, mesh, bones, packedLight, tintArgb);
             } else {
                 Matrix4f meshGlobal = findMeshNodeGlobal(model, meshIndex, globals);
                 Matrix4f combined = new Matrix4f(poseMatrix);
                 if (meshGlobal != null) combined.mul(meshGlobal);
                 Matrix3f normal = new Matrix3f();
                 combined.normal(normal);
-                renderStaticMesh(vertex, combined, normal, mesh, packedLight);
+                renderStaticMesh(vertex, combined, normal, mesh, packedLight, tintArgb);
             }
         }
     }
@@ -112,7 +124,8 @@ public final class YellowGltfRenderUtil {
                                           Matrix3f poseNormal,
                                           YellowGltfMesh mesh,
                                           Matrix4f[] bones,
-                                          int packedLight) {
+                                          int packedLight,
+                                          int tintArgb) {
         if (mesh.indices != null && mesh.indices.length > 0) {
             int triangleCount = mesh.indices.length / 3;
             for (int triangle = 0; triangle < triangleCount; triangle++) {
@@ -120,16 +133,16 @@ public final class YellowGltfRenderUtil {
                 int b = mesh.indices[triangle * 3 + 1];
                 int c = mesh.indices[triangle * 3 + 2];
                 if (a == b || b == c || a == c) continue;
-                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, a, bones, packedLight);
-                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, b, bones, packedLight);
-                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, c, bones, packedLight);
+                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, a, bones, packedLight, tintArgb);
+                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, b, bones, packedLight, tintArgb);
+                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, c, bones, packedLight, tintArgb);
                 // Entity render types use QUADS. NetCraft renders GLTF triangles as a
                 // degenerate quad by repeating the third vertex; keep the exact behavior.
-                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, c, bones, packedLight);
+                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, c, bones, packedLight, tintArgb);
             }
         } else {
             for (int i = 0; i < mesh.vertexCount; i++) {
-                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, i, bones, packedLight);
+                emitSkinnedVertex(vertex, poseMatrix, poseNormal, mesh, i, bones, packedLight, tintArgb);
             }
         }
     }
@@ -140,7 +153,8 @@ public final class YellowGltfRenderUtil {
                                           YellowGltfMesh mesh,
                                           int vertexIndex,
                                           Matrix4f[] bones,
-                                          int packedLight) {
+                                          int packedLight,
+                                          int tintArgb) {
         int p = vertexIndex * 3;
         if (p + 2 >= mesh.positions.length) return;
 
@@ -197,7 +211,7 @@ public final class YellowGltfRenderUtil {
         }
 
         vertex.vertex(poseMatrix, position.x, position.y, position.z)
-                .color(255, 255, 255, 255)
+                .color(red(tintArgb), green(tintArgb), blue(tintArgb), alpha(tintArgb))
                 .uv(u, v)
                 .overlayCoords(OverlayTexture.NO_OVERLAY)
                 .uv2(packedLight)
@@ -209,7 +223,8 @@ public final class YellowGltfRenderUtil {
                                          Matrix4f matrix,
                                          Matrix3f normalMatrix,
                                          YellowGltfMesh mesh,
-                                         int packedLight) {
+                                         int packedLight,
+                                         int tintArgb) {
         if (mesh.indices != null && mesh.indices.length > 0) {
             int triangleCount = mesh.indices.length / 3;
             for (int triangle = 0; triangle < triangleCount; triangle++) {
@@ -217,14 +232,14 @@ public final class YellowGltfRenderUtil {
                 int b = mesh.indices[triangle * 3 + 1];
                 int c = mesh.indices[triangle * 3 + 2];
                 if (a == b || b == c || a == c) continue;
-                emitStaticVertex(vertex, matrix, normalMatrix, mesh, a, packedLight);
-                emitStaticVertex(vertex, matrix, normalMatrix, mesh, b, packedLight);
-                emitStaticVertex(vertex, matrix, normalMatrix, mesh, c, packedLight);
-                emitStaticVertex(vertex, matrix, normalMatrix, mesh, c, packedLight);
+                emitStaticVertex(vertex, matrix, normalMatrix, mesh, a, packedLight, tintArgb);
+                emitStaticVertex(vertex, matrix, normalMatrix, mesh, b, packedLight, tintArgb);
+                emitStaticVertex(vertex, matrix, normalMatrix, mesh, c, packedLight, tintArgb);
+                emitStaticVertex(vertex, matrix, normalMatrix, mesh, c, packedLight, tintArgb);
             }
         } else {
             for (int i = 0; i < mesh.vertexCount; i++) {
-                emitStaticVertex(vertex, matrix, normalMatrix, mesh, i, packedLight);
+                emitStaticVertex(vertex, matrix, normalMatrix, mesh, i, packedLight, tintArgb);
             }
         }
     }
@@ -234,7 +249,8 @@ public final class YellowGltfRenderUtil {
                                          Matrix3f normalMatrix,
                                          YellowGltfMesh mesh,
                                          int vertexIndex,
-                                         int packedLight) {
+                                         int packedLight,
+                                         int tintArgb) {
         int p = vertexIndex * 3;
         if (p + 2 >= mesh.positions.length) return;
         int uvIndex = vertexIndex * 2;
@@ -245,11 +261,16 @@ public final class YellowGltfRenderUtil {
         float nz = p + 2 < mesh.normals.length ? mesh.normals[p + 2] : 0.0F;
 
         vertex.vertex(matrix, mesh.positions[p], mesh.positions[p + 1], mesh.positions[p + 2])
-                .color(255, 255, 255, 255)
+                .color(red(tintArgb), green(tintArgb), blue(tintArgb), alpha(tintArgb))
                 .uv(u, v)
                 .overlayCoords(OverlayTexture.NO_OVERLAY)
                 .uv2(packedLight)
                 .normal(normalMatrix, nx, ny, nz)
                 .endVertex();
     }
+    private static int alpha(int argb) { return (argb >>> 24) & 0xFF; }
+    private static int red(int argb) { return (argb >>> 16) & 0xFF; }
+    private static int green(int argb) { return (argb >>> 8) & 0xFF; }
+    private static int blue(int argb) { return argb & 0xFF; }
+
 }
