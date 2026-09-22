@@ -92,6 +92,12 @@ public class SilkBoss extends NetcraftBossBase {
     /** 2293 能量爆发：场上残留能量最长剩余秒数。 */
     public static final EntityDataAccessor<Integer> BURST_SECONDS =
             SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
+    /**
+     * 2271 黑暗能量：斯尔克自身的 0~MAX_METER 能量。
+     * 原战斗说明明确这是 BOSS 状态，不再按“每个玩家各自一份黑暗能量”处理。
+     */
+    public static final EntityDataAccessor<Integer> BLACK_ENERGY_STACKS =
+            SynchedEntityData.defineId(SilkBoss.class, EntityDataSerializers.INT);
 
     public static final int ACT_BASIC = 1;
     public static final int ACT_BATS = 2;
@@ -106,7 +112,6 @@ public class SilkBoss extends NetcraftBossBase {
 
     private static final class Fighter {
         int corruption;
-        int blackEnergy;
         int rootUntil;
         Vec3 rootPoint;
         int plagueDue;
@@ -116,7 +121,6 @@ public class SilkBoss extends NetcraftBossBase {
         int heartFireUntil;
         int fireStacks;
         int fireUntil;
-        int madUntil;
         int lastPillarCleanse;
     }
 
@@ -158,6 +162,8 @@ public class SilkBoss extends NetcraftBossBase {
     private int p2Rotation;
     private int p3Rotation;
     private int blackBallWave;
+    /** 2271：教授自己的黑暗能量，而不是玩家身上的资源。 */
+    private int bossBlackEnergy;
 
     /** 助战小樱各阶段独立计时。 */
     private int nextFireOrb;
@@ -205,6 +211,7 @@ public class SilkBoss extends NetcraftBossBase {
         entityData.define(HEART_FIRE_STACKS, 0);
         entityData.define(STRENGTHENED_FIRE_STACKS, 0);
         entityData.define(BURST_SECONDS, 0);
+        entityData.define(BLACK_ENERGY_STACKS, 0);
     }
 
     @Override
@@ -254,9 +261,10 @@ public class SilkBoss extends NetcraftBossBase {
     /** /yd reload 调低层数上限时，立即把已经存在的战斗状态压回新上限。 */
     public void clampRuntimeMeters() {
         int max = Math.max(1, SilkBalance.MAX_METER);
+        bossBlackEnergy = Math.min(bossBlackEnergy, max);
+        entityData.set(BLACK_ENERGY_STACKS, bossBlackEnergy);
         for (Fighter fighter : fighters.values()) {
             fighter.corruption = Math.min(fighter.corruption, max);
-            fighter.blackEnergy = Math.min(fighter.blackEnergy, max);
             fighter.heartFire = Math.min(fighter.heartFire, max);
             fighter.fireStacks = Math.min(fighter.fireStacks, max);
         }
@@ -368,6 +376,7 @@ public class SilkBoss extends NetcraftBossBase {
         p2Rotation = 0;
         p3Rotation = 0;
         blackBallWave = 0;
+        bossBlackEnergy = 0;
 
         entityData.set(BASIC_CHAIN, 0);
         entityData.set(BASIC_REQUIRED, Math.max(1, SilkBalance.BASIC_ATTACKS_PER_SKILL));
@@ -380,6 +389,7 @@ public class SilkBoss extends NetcraftBossBase {
         entityData.set(HEART_FIRE_STACKS, 0);
         entityData.set(STRENGTHENED_FIRE_STACKS, 0);
         entityData.set(BURST_SECONDS, 0);
+        entityData.set(BLACK_ENERGY_STACKS, 0);
 
         // 战斗说明图：P1 协战为火元素 + 火雨；P2 是心火光柱；P3 是心火庇护。
         nextFireOrb = now + SilkBalance.SUPPORT_FIRE_ORB_COOLDOWN;
@@ -1161,13 +1171,12 @@ public class SilkBoss extends NetcraftBossBase {
             if (tickCount % 20 == 0) {
                 StringBuilder text = new StringBuilder()
                         .append("§5心智 ").append(fighter.corruption).append("/").append(SilkBalance.MAX_METER)
-                        .append(" §8黑暗能量 ").append(fighter.blackEnergy).append("/").append(SilkBalance.MAX_METER);
+                        .append(" §8斯尔克黑暗能量 ").append(bossBlackEnergy).append("/").append(SilkBalance.MAX_METER);
                 if (fighter.plagueDue > tickCount) {
                     text.append(" §4疫病 ").append((fighter.plagueDue - tickCount + 19) / 20).append("秒");
                 }
                 if (fighter.heartFire > 0) text.append(" §6心火×").append(fighter.heartFire);
                 if (fighter.fireStacks > 0) text.append(" §c强化火焰×").append(fighter.fireStacks);
-                if (fighter.madUntil > tickCount) text.append(" §d疯狂");
                 player.displayClientMessage(Component.literal(text.toString()), true);
             }
         }
@@ -1189,17 +1198,23 @@ public class SilkBoss extends NetcraftBossBase {
         }
     }
 
-    public void addBlackEnergy(ServerPlayer player, int amount) {
-        if (amount <= 0 || !valid(player)) return;
-        Fighter fighter = fighters.computeIfAbsent(player.getUUID(), ignored -> new Fighter());
-        if (fighter.madUntil > tickCount) return;
-        fighter.blackEnergy = Math.min(SilkBalance.MAX_METER, fighter.blackEnergy + amount);
-        if (fighter.blackEnergy >= SilkBalance.MAX_METER) {
-            fighter.blackEnergy = 0;
-            fighter.madUntil = tickCount + SilkBalance.MADNESS_TICKS;
-            SilkCombatEvents.setMadness(player, SilkBalance.MADNESS_TICKS);
-            player.displayClientMessage(Component.literal("§d黑暗能量达到" + SilkBalance.MAX_METER + "层：陷入疯狂"
-                    + Math.max(0, SilkBalance.MADNESS_TICKS / 20) + "秒，移速降低但伤害大幅提升！"), false);
+    /**
+     * 2271 黑暗能量属于斯尔克自身。
+     *
+     * 已解析到的技能链（例如 2285）仍然通过“技能命中玩家”触发能量增长，
+     * 但增长的是同一个 Boss 能量池。当前客户端资源没有给出每个技能的可靠耗能表，
+     * 因此这里只负责 0~MAX_METER 的真实积累与 HUD 同步，不凭空扣能量。
+     */
+    public void addBlackEnergy(ServerPlayer hitPlayer, int amount) {
+        if (amount <= 0 || hitPlayer == null || !valid(hitPlayer)) return;
+
+        int max = Math.max(1, SilkBalance.MAX_METER);
+        int before = bossBlackEnergy;
+        bossBlackEnergy = Math.min(max, bossBlackEnergy + amount);
+        entityData.set(BLACK_ENERGY_STACKS, bossBlackEnergy);
+
+        if (before < max && bossBlackEnergy >= max) {
+            announce("§5斯尔克的黑暗能量已达到 " + max + "！");
         }
     }
 
@@ -1350,6 +1365,7 @@ public class SilkBoss extends NetcraftBossBase {
         p2Rotation = 0;
         p3Rotation = 0;
         blackBallWave = 0;
+        bossBlackEnergy = 0;
         nextFireOrb = 0;
         nextFireRain = 0;
         nextPillar = 0;
@@ -1369,6 +1385,7 @@ public class SilkBoss extends NetcraftBossBase {
         entityData.set(HEART_FIRE_STACKS, 0);
         entityData.set(STRENGTHENED_FIRE_STACKS, 0);
         entityData.set(BURST_SECONDS, 0);
+        entityData.set(BLACK_ENERGY_STACKS, 0);
     }
 
     @Override
