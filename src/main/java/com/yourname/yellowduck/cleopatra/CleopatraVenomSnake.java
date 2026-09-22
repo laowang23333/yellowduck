@@ -16,11 +16,11 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -28,16 +28,22 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 /**
  * 艳后二阶段三蛇。
  *
- * 主要机制：完全站桩、三蛇共享仇恨、持续给范围内玩家增加原始仇恨；
- * 元素圈/炸弹是独立计时器，和普通攻击可以在同一 tick 同时触发。
+ * v1：仇恨改回 YellowDuck 已还原的 NetCraft 1.4.18 通用 HatredManager：
+ * - 不再每 tick 给范围内玩家硬加 +10 原始仇恨；
+ * - 不再“打任意一条蛇，就把原始伤害 1:1 同时加给三条蛇”；
+ * - 每条蛇只根据自己实际受到的伤害计算仇恨；
+ * - 伤害仇恨 = 实际扣血 × NetCraft 玩家仇恨倍率；
+ * - 保留 NetCraft 的距离仇恨、每秒 25% 衰减、10 秒过期、切换阈值/观察时间；
+ * - 三蛇仍保留站桩、元素圈、炸弹、献祭强化等原有战斗机制。
+ *
+ * 三蛇属于固定战斗阶段，因此额外使用 NetCraft 的 detection hook：
+ * 在 snake_target_range 内给玩家 1 点基础侦测仇恨，让蛇出生后能正常进入战斗。
  */
 public class CleopatraVenomSnake extends NetcraftBossBase {
     public static final int ANIM_IDLE = 0;
@@ -114,16 +120,40 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     }
 
     @Override public boolean isPushable() { return false; }
-    @Override public void knockback(double strength, double x, double z) {
+
+    @Override
+    public void knockback(double strength, double x, double z) {
         // 三蛇是固定炮台，禁止任何伤害击退。
     }
-    @Override public boolean useAutomaticHatredManagerTick() { return false; }
-    @Override public boolean isHatredLocked() { return true; }
+
+    /** 使用通用 NetCraft HatredManager，不再走三蛇自定义 raw hatred。 */
+    @Override public boolean useAutomaticHatredManagerTick() { return true; }
+
+    /**
+     * 必须取消锁定。
+     * HatredManager 在 isHatredLocked()==true 时不会执行距离仇恨、衰减和目标切换。
+     */
+    @Override public boolean isHatredLocked() { return false; }
+
+    /** 三蛇固定站桩，不因为离出生点判定回位。 */
     @Override public boolean shouldIgnoreSpawnDistanceLimit() { return true; }
+
+    /** 三蛇是副本阶段怪，不使用普通 Boss 的脱战回满流程。 */
     @Override public boolean shouldDisengageOnDistance() { return false; }
     @Override public boolean shouldDisengageOnLowHatred() { return false; }
     @Override public boolean shouldDisengageOnAttackTimeout() { return false; }
     @Override public double getNoPlayerDisengageRadius() { return 100000.0D; }
+
+    /**
+     * NetCraft detection hook：让三蛇在自己的配置攻击范围内建立最低 1 点侦测仇恨。
+     * 真正高仇恨仍主要来自实际伤害和 1/2/3 格的距离仇恨。
+     */
+    @Override public double getDetectionRadius() { return CleopatraConfig.snakeTargetRange.get(); }
+    @Override public double getDetectionHatred() { return 1.0D; }
+
+    /** 离开三蛇配置攻击范围后，从该蛇仇恨表中清掉。 */
+    @Override public double getHatredClearRadius() { return CleopatraConfig.snakeTargetRange.get(); }
+
     @Override public boolean isPlayingAttackAnimation() {
         int state = getAttackState();
         return state != ANIM_IDLE && state != ANIM_APPEAR && state != ANIM_DEATH;
@@ -202,6 +232,7 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             stationaryX = getX();
             stationaryZ = getZ();
         }
+
         // 强制站桩：允许 Y 方向受重力落地，但 X/Z 永远锁在出生点。
         getNavigation().stop();
         Vec3 motion = getDeltaMovement();
@@ -217,6 +248,7 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             appearPlaying = true;
             appearTimer = CleopatraConfig.snakeAppearTicks.get();
             poolCooldown = CleopatraConfig.snakeRingCd.get();
+
             // 出生第一 tick 立即生成一个元素圈。
             placePoolRing();
         }
@@ -235,7 +267,6 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         if (bombCooldown > 0) bombCooldown--;
 
         tickAttackAnimReset();
-        updateTargetingAndHatred();
         tickSkills();
     }
 
@@ -264,81 +295,18 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
                 snake -> snake.isAlive() && !snake.isRemoved());
     }
 
-    private List<Player> playersInTargetRange() {
-        List<CleopatraVenomSnake> pack = packSnakes();
-        List<Player> result = new ArrayList<>();
-        double packRange = CleopatraConfig.snakePackRange.get();
-        double targetRange = CleopatraConfig.snakeTargetRange.get();
-
-        for (Player player : level().getEntitiesOfClass(Player.class, getBoundingBox().inflate(packRange))) {
-            if (!CleopatraUtil.validPlayer(player)) continue;
-            for (CleopatraVenomSnake snake : pack) {
-                if (snake.distanceTo(player) <= targetRange) {
-                    result.add(player);
-                    break;
-                }
-            }
+    /**
+     * 直接使用这条蛇自己的 NetCraft 当前目标。
+     * 不再把三条蛇仇恨相加，也不再把一条蛇收到的伤害复制到其它两条蛇。
+     */
+    private Player pickNetcraftTarget() {
+        LivingEntity target = getAttackTargetEntity();
+        if (target instanceof Player player
+                && CleopatraUtil.validPlayer(player)
+                && distanceTo(player) <= CleopatraConfig.snakeTargetRange.get()) {
+            return player;
         }
-        return result;
-    }
-
-    @Override
-    public boolean hurt(DamageSource source, float amount) {
-        boolean hit = super.hurt(source, amount);
-        if (!level().isClientSide && hit && amount > 0.0F) {
-            Player attacker = null;
-            Entity sourceEntity = source.getEntity();
-            if (sourceEntity instanceof Player player) {
-                attacker = player;
-            } else if (sourceEntity instanceof Projectile projectile && projectile.getOwner() instanceof Player player) {
-                attacker = player;
-            } else if (source.getDirectEntity() instanceof Projectile projectile && projectile.getOwner() instanceof Player player) {
-                attacker = player;
-            }
-            if (CleopatraUtil.validPlayer(attacker)) {
-                for (CleopatraVenomSnake snake : packSnakes()) {
-                    snake.getHatredManager().addRawHatred(attacker, amount);
-                }
-            }
-        }
-        return hit;
-    }
-
-    private void updateTargetingAndHatred() {
-        List<Player> players = playersInTargetRange();
-        if (players.isEmpty()) {
-            setTarget(null);
-            getHatredManager().resetRawHatred();
-            if (getHealth() < getMaxHealth()) setHealth(getMaxHealth());
-            return;
-        }
-
-        Set<UUID> valid = new HashSet<>();
-        for (Player player : players) {
-            valid.add(player.getUUID());
-            // 每个服务器 tick 对范围内玩家增加原始仇恨。
-            getHatredManager().addRawHatred(player, 10.0D);
-        }
-        getHatredManager().retainHatred(valid);
-        setTarget(pickHatredTarget());
-    }
-
-    private Player pickHatredTarget() {
-        List<CleopatraVenomSnake> pack = packSnakes();
-        Player best = null;
-        double highest = -1.0D;
-        for (Player player : playersInTargetRange()) {
-            double total = 0.0D;
-            UUID id = player.getUUID();
-            for (CleopatraVenomSnake snake : pack) {
-                total += snake.getHatredManager().getHatred(id);
-            }
-            if (total > highest) {
-                highest = total;
-                best = player;
-            }
-        }
-        return best;
+        return null;
     }
 
     private void faceTargetInstant(Player player) {
@@ -352,7 +320,8 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
 
     private void tickSkills() {
         if (appearPlaying || attackAnimPlaying) return;
-        Player target = pickHatredTarget();
+
+        Player target = pickNetcraftTarget();
         if (target == null) {
             setAnimState(ANIM_IDLE);
             return;
@@ -363,9 +332,9 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             poolCooldown = CleopatraConfig.snakeRingCd.get();
             placePoolRing();
         }
+
         if (bombCooldown <= 0 && isBombCoordinator()) {
-            // 三蛇共享一轮炸弹：一轮只选一条活蛇作为施法者，并且只点名一个玩家。
-            // 施法蛇决定炸弹元素，因此毒/火/冰三种炸弹都会正常出现。
+            // 三蛇共享一轮炸弹仍保留；这只是技能协作，不再共享仇恨数值。
             List<CleopatraVenomSnake> pack = packSnakes();
             if (!hasActiveBombNearby()) {
                 CleopatraVenomSnake caster = pack.get(random.nextInt(pack.size()));
@@ -381,10 +350,12 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
                 bombCooldown = 20;
             }
         }
+
         if (normalAttackCooldown <= 0 && !attackAnimPlaying) {
             performNormalAttack(target);
             return;
         }
+
         setAnimState(ANIM_IDLE);
     }
 
@@ -435,6 +406,7 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         int maxRadius = Math.max(4, Math.min(16, (int) Math.ceil(diameter * 0.25D)));
         int baseX = (int) Math.floor(getX());
         int baseZ = (int) Math.floor(getZ());
+
         for (int radius = 0; radius <= maxRadius; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
@@ -497,11 +469,14 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             if (!hasAnyBombEffect(player)) candidates.add(player);
         }
         if (candidates.isEmpty()) return false;
+
         candidates.sort(Comparator.comparingDouble(player -> -distanceTo(player)));
 
         int topCount = Math.min(Math.max(1, CleopatraConfig.bombFarthestPoolSize.get()), candidates.size());
         int selectedIndex = random.nextInt(topCount);
-        Player hatredTarget = pickHatredTarget();
+
+        // 炸弹避坦继续读取“施法蛇自己的 NetCraft 当前仇恨目标”。
+        Player hatredTarget = pickNetcraftTarget();
         if (hatredTarget != null && topCount > 1 && candidates.get(selectedIndex) == hatredTarget
                 && random.nextInt(100) < CleopatraConfig.tankAvoidPercent.get()) {
             int alternate = random.nextInt(topCount - 1);
@@ -517,11 +492,13 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             case 2 -> CleopatraEntities.BOMB_MARK_FROZEN.get();
             default -> CleopatraEntities.BOMB_MARK_POISON.get();
         };
+
         CleopatraBombMark mark = markType.create(level());
         if (mark == null) {
             carrier.removeEffect(getBombEffect());
             return false;
         }
+
         mark.setCarrier(carrier);
         mark.setDamageMult(damageMult);
         mark.setPos(carrier.getX(), carrier.getY() + 2.6D, carrier.getZ());
@@ -554,14 +531,19 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
 
     private void cleanupBombs() {
         if (!(level() instanceof ServerLevel serverLevel)) return;
+
         for (UUID id : new ArrayList<>(bombMarks)) {
             Entity entity = serverLevel.getEntity(id);
             if (!(entity instanceof CleopatraBombMark mark) || mark.isRemoved()) continue;
+
             MobEffect effect = mark.getBombEffect();
             Player carrier = serverLevel.getServer().getPlayerList().getPlayer(mark.getCarrierUuid());
-            if (carrier != null && carrier.hasEffect(effect)) carrier.removeEffect(effect);
+            if (carrier != null && carrier.hasEffect(effect)) {
+                carrier.removeEffect(effect);
+            }
             mark.discard();
         }
+
         bombMarks.clear();
     }
 
@@ -577,12 +559,19 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
 
     private void grantSacrificeBuff() {
         double range = CleopatraConfig.snakeSacrificeRange.get();
-        List<CleopatraVenomSnake> others = level().getEntitiesOfClass(CleopatraVenomSnake.class,
-                getBoundingBox().inflate(range), snake -> snake != this && snake.isAlive());
+        List<CleopatraVenomSnake> others = level().getEntitiesOfClass(
+                CleopatraVenomSnake.class,
+                getBoundingBox().inflate(range),
+                snake -> snake != this && snake.isAlive()
+        );
+
         others.sort(Comparator.comparingDouble(snake -> snake.distanceToSqr(this)));
+
         int count = Math.min(CleopatraConfig.snakeSacrificeTargets.get(), others.size());
         float factor = CleopatraConfig.snakeDamageMultPerDeath.get().floatValue();
-        for (int i = 0; i < count; i++) others.get(i).damageMult *= factor;
+        for (int i = 0; i < count; i++) {
+            others.get(i).damageMult *= factor;
+        }
     }
 
     public void addBombMark(UUID id) {
@@ -592,10 +581,12 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
+
         if (stationaryAnchorSet) {
             tag.putDouble("StationaryX", stationaryX);
             tag.putDouble("StationaryZ", stationaryZ);
         }
+
         tag.putInt("NormalAttackCD", normalAttackCooldown);
         tag.putInt("PoolCD", poolCooldown);
         tag.putInt("BombCD", bombCooldown);
@@ -615,23 +606,31 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
+
         if (tag.contains("StationaryX") && tag.contains("StationaryZ")) {
             stationaryX = tag.getDouble("StationaryX");
             stationaryZ = tag.getDouble("StationaryZ");
             stationaryAnchorSet = true;
         }
+
         normalAttackCooldown = tag.getInt("NormalAttackCD");
         poolCooldown = tag.getInt("PoolCD");
         bombCooldown = tag.getInt("BombCD");
         damageMult = tag.contains("DamageMult") ? tag.getFloat("DamageMult") : 1.0F;
         appearTimer = tag.getInt("AppearTimer");
         appearPlaying = tag.getBoolean("AppearPlaying");
+
         bombMarks.clear();
         ListTag list = tag.getList("BombMarks", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
             CompoundTag entry = list.getCompound(i);
-            if (entry.hasUUID("Id")) bombMarks.add(entry.getUUID("Id"));
+            if (entry.hasUUID("Id")) {
+                bombMarks.add(entry.getUUID("Id"));
+            }
         }
-        if (!level().isClientSide) setAnimState(appearPlaying ? ANIM_APPEAR : ANIM_IDLE);
+
+        if (!level().isClientSide) {
+            setAnimState(appearPlaying ? ANIM_APPEAR : ANIM_IDLE);
+        }
     }
 }
