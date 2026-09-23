@@ -18,7 +18,6 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityAnchor;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -423,7 +422,6 @@ public final class GarmrBoss extends NetcraftBossBase {
                     Entity shooter = server.getEntity(p1SkeletonIds.get(i));
                     if (!(shooter instanceof GarmrHelperEntity archer) || !archer.isAlive()) continue;
                     ServerPlayer target = targets.get(i % shotCount);
-                    archer.lookAt(EntityAnchor.EYES, target.position());
                     fireProjectileFrom(archer, target, GarmrConfig.P1_AOE_DAMAGE);
                 }
             }
