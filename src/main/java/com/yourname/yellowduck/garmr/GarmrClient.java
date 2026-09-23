@@ -221,22 +221,38 @@ public final class GarmrClient {
                     float seconds = (entity.tickCount + partialTick) / 20.0F;
                     int first = 0;
                     int last = 20;
-                    // 亡灵夫人动画表已从原 config/represent/ani.txt 确认：stand 0-20 / walk 23-43。
-                    if ((entity.getVariant() == GarmrHelperEntity.LADY_ICE
-                            || entity.getVariant() == GarmrHelperEntity.LADY_FIRE
-                            || entity.getVariant() == GarmrHelperEntity.DEATH_GUARD)
-                            && entity.getDeltaMovement().horizontalDistanceSqr() > 0.0025D) {
-                        first = 23;
-                        last = 43;
+                    boolean loop = true;
+                    float sampleSeconds;
+                    if (entity.getVariant() == GarmrHelperEntity.P1_ARCHER) {
+                        float attackSeconds = entity.archerAttackSeconds(partialTick);
+                        if (attackSeconds >= 0.0F && attackSeconds < 1.70F) {
+                            // 射手 GLB 只有一个 Anim-1，已按原始帧段拆出：0-40待机、41-85行走、86-135拉弓/射击。
+                            sampleSeconds = sampleOnce(86, 135, attackSeconds);
+                            loop = false;
+                        } else {
+                            boolean moving = entity.isArcherMoving();
+                            first = moving ? 41 : 0;
+                            last = moving ? 85 : 40;
+                            sampleSeconds = sampleLoop(first, last, seconds);
+                        }
+                    } else {
+                        // 亡灵夫人动画表已从原 config/represent/ani.txt 确认：stand 0-20 / walk 23-43。
+                        if ((entity.getVariant() == GarmrHelperEntity.LADY_ICE
+                                || entity.getVariant() == GarmrHelperEntity.LADY_FIRE
+                                || entity.getVariant() == GarmrHelperEntity.DEATH_GUARD)
+                                && entity.getDeltaMovement().horizontalDistanceSqr() > 0.0025D) {
+                            first = 23;
+                            last = 43;
+                        }
+                        sampleSeconds = entity.getVariant() == GarmrHelperEntity.LAVA_GUARD
+                                ? seconds : sampleLoop(first, last, seconds);
                     }
-                    float sampleSeconds = entity.getVariant() == GarmrHelperEntity.LAVA_GUARD
-                            ? seconds : sampleLoop(first, last, seconds);
                     pose.pushPose();
                     try {
                         pose.mulPose(Axis.YP.rotationDegrees(180.0F - entityYaw));
                         pose.scale(spec.scale, spec.scale, spec.scale);
                         YellowGltfRenderUtil.renderModel(model, pose, buffers, packedLight,
-                                sampleSeconds, animation, true, spec.tintArgb);
+                                sampleSeconds, animation, loop, spec.tintArgb);
                     } finally {
                         pose.popPose();
                     }
@@ -265,6 +281,11 @@ public final class GarmrClient {
             float local = seconds % length;
             if (local < 0.0F) local += length;
             return firstFrame / FPS + local;
+        }
+
+        private static float sampleOnce(int firstFrame, int lastFrame, float seconds) {
+            float length = Math.max(1, lastFrame - firstFrame) / FPS;
+            return firstFrame / FPS + Math.max(0.0F, Math.min(length, seconds));
         }
 
         private static ModelSpec spec(int variant) {

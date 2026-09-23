@@ -399,7 +399,7 @@ public final class GarmrBoss extends NetcraftBossBase {
             skeleton.setVariant(GarmrHelperEntity.P1_ARCHER);
             skeleton.moveTo(homeX + Math.cos(angle) * 8.0D, homeY,
                     homeZ - 7.0D + Math.sin(angle) * 8.0D, 0F, 0F);
-            skeleton.setNoAi(true); // 射击由 Boss 的服务器权威 P1 投射物逻辑统一结算。
+            skeleton.setNoAi(true); // 移动和射击由 Boss 的服务器权威 P1 逻辑统一结算。
             skeleton.setPersistenceRequired();
             tagHelper(skeleton, ROLE_P1_SKELETON);
             applyMobStats(skeleton, GarmrConfig.P1_ARCHER_HEALTH, GarmrConfig.P1_ARCHER_ATTACK,
@@ -424,6 +424,15 @@ public final class GarmrBoss extends NetcraftBossBase {
             if (target != null) guard.setTarget(target);
         }
 
+        // 射手使用无 AI 承载实体，避免错误触发近战 Goal；这里让它们主动靠近玩家并保持远程距离。
+        ServerPlayer movementTarget = highestHatredTarget();
+        for (UUID id : p1SkeletonIds) {
+            Entity raw = server.getEntity(id);
+            if (raw instanceof GarmrHelperEntity archer && archer.isAlive()) {
+                moveArcherToward(archer, movementTarget);
+            }
+        }
+
         if (tickCount >= nextP1Projectile) {
             nextP1Projectile = tickCount + GarmrConfig.P1_PROJECTILE_INTERVAL_TICKS;
             List<ServerPlayer> targets = shuffledParticipants();
@@ -433,10 +442,38 @@ public final class GarmrBoss extends NetcraftBossBase {
                     Entity shooter = server.getEntity(p1SkeletonIds.get(i));
                     if (!(shooter instanceof GarmrHelperEntity archer) || !archer.isAlive()) continue;
                     ServerPlayer target = targets.get(i % shotCount);
+                    archer.triggerArcherAttack();
                     fireProjectileFrom(archer, target, GarmrConfig.P1_AOE_DAMAGE);
                 }
             }
         }
+    }
+
+    private void moveArcherToward(GarmrHelperEntity archer, ServerPlayer target) {
+        if (target == null || !target.isAlive()) {
+            archer.setArcherMoving(false);
+            archer.setDeltaMovement(Vec3.ZERO);
+            return;
+        }
+
+        double dx = target.getX() - archer.getX();
+        double dz = target.getZ() - archer.getZ();
+        double horizontal = Math.sqrt(dx * dx + dz * dz);
+        float yaw = (float) (Mth.atan2(dz, dx) * (180.0D / Math.PI)) - 90.0F;
+        archer.setYRot(yaw);
+        archer.yBodyRot = yaw;
+        archer.yHeadRot = yaw;
+
+        // 保持约 8 格射击距离；每 tick 直接移动，noAI 实体不会被 Mob#aiStep 清掉速度。
+        if (horizontal > 8.0D) {
+            double step = Math.min(0.12D, horizontal - 8.0D);
+            archer.setPos(archer.getX() + dx / horizontal * step,
+                    archer.getY(), archer.getZ() + dz / horizontal * step);
+            archer.setArcherMoving(true);
+        } else {
+            archer.setArcherMoving(false);
+        }
+        archer.setDeltaMovement(Vec3.ZERO);
     }
 
     private void beginLanding(ServerLevel server) {

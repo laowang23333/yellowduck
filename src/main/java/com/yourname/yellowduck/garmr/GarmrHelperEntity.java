@@ -26,6 +26,10 @@ import net.minecraft.world.level.Level;
 public final class GarmrHelperEntity extends Monster {
     private static final EntityDataAccessor<Integer> VARIANT =
             SynchedEntityData.defineId(GarmrHelperEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> ARCHER_ATTACK_START =
+            SynchedEntityData.defineId(GarmrHelperEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Boolean> ARCHER_MOVING =
+            SynchedEntityData.defineId(GarmrHelperEntity.class, EntityDataSerializers.BOOLEAN);
 
     public static final int ANUBIS = 1;
     public static final int DEVIL = 2;
@@ -71,6 +75,8 @@ public final class GarmrHelperEntity extends Monster {
     protected void defineSynchedData() {
         super.defineSynchedData();
         entityData.define(VARIANT, 0);
+        entityData.define(ARCHER_ATTACK_START, -100000);
+        entityData.define(ARCHER_MOVING, false);
     }
 
     public int getVariant() {
@@ -79,6 +85,25 @@ public final class GarmrHelperEntity extends Monster {
 
     public void setVariant(int variant) {
         entityData.set(VARIANT, variant);
+    }
+
+    /** 服务端射手发射投射物时调用，客户端据此播放一次拉弓/射击段。 */
+    public void triggerArcherAttack() {
+        if (getVariant() == P1_ARCHER) entityData.set(ARCHER_ATTACK_START, tickCount);
+    }
+
+    public float archerAttackSeconds(float partialTick) {
+        if (getVariant() != P1_ARCHER) return -1.0F;
+        int start = entityData.get(ARCHER_ATTACK_START);
+        return (tickCount + partialTick - start) / 20.0F;
+    }
+
+    public void setArcherMoving(boolean moving) {
+        if (getVariant() == P1_ARCHER) entityData.set(ARCHER_MOVING, moving);
+    }
+
+    public boolean isArcherMoving() {
+        return getVariant() == P1_ARCHER && entityData.get(ARCHER_MOVING);
     }
 
     @Override
