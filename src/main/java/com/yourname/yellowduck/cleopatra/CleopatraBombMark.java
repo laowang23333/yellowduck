@@ -73,7 +73,7 @@ public class CleopatraBombMark extends Entity {
         AABB area = new AABB(getX() - r, getY() - r, getZ() - r,
                 getX() + r, getY() + r, getZ() + r);
         for (Player player : level().getEntitiesOfClass(Player.class, area, CleopatraUtil::validPlayer)) {
-            player.hurt(player.damageSources().magic(), damage);
+            CleopatraUtil.magicHurt(player, null, damage);
         }
         serverLevel.sendParticles(ParticleTypes.POOF, getX(), getY(), getZ(), 6,
                 2.0D, 1.0D, 2.0D, 0.02D);

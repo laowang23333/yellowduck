@@ -63,7 +63,7 @@ public class CleopatraVenomRing extends Entity {
         AABB damageBox = new AABB(getX() - damageR, getY() - damageR, getZ() - damageR,
                 getX() + damageR, getY() + damageR, getZ() + damageR);
         for (Player player : level().getEntitiesOfClass(Player.class, damageBox, CleopatraUtil::validPlayer)) {
-            player.hurt(player.damageSources().magic(), damage);
+            CleopatraUtil.magicHurt(player, null, damage);
         }
 
         MobEffect effect = getClearedBombEffect();
