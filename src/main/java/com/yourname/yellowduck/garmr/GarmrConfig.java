@@ -111,7 +111,8 @@ public final class GarmrConfig {
     public static final double MELEE_RANGE = 4.8D;
     public static final double PROJECTILE_AOE_RADIUS = 3.5D; // 图片未写子弹爆炸半径
     public static final int BASIC_COOLDOWN_TICKS = 32;       // 图片未写普攻间隔
-    public static final int BASIC_ACTION_TICKS = 15;
+    // Anim-1 的普攻段为 44..66（22 帧），保持完整播放，避免动作被过快压缩到看不见。
+    public static final int BASIC_ACTION_TICKS = 22;
     public static final int RANGED_ACTION_TICKS = 20;
     public static final int LANDING_TICKS = 60;
     public static final double AIR_HEIGHT = 6.0D;

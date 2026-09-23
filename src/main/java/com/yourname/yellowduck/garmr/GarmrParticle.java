@@ -13,7 +13,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 /** 原 .pj 贴图的轻量客户端承载器；位置/扇形由服务端决定。 */
 @OnlyIn(Dist.CLIENT)
 public final class GarmrParticle extends TextureSheetParticle {
-    public enum Mode { BREATH, DEVIL_SMOKE }
+    public enum Mode { BREATH }
 
     private final float startAlpha;
 
@@ -21,19 +21,10 @@ public final class GarmrParticle extends TextureSheetParticle {
                           double xd, double yd, double zd, SpriteSet sprites, Mode mode) {
         super(level, x, y, z, xd, yd, zd);
         this.gravity = 0.0F;
-        if (mode == Mode.DEVIL_SMOKE) {
-            // garmr_devil_aoe.pj：2~5 秒寿命、100~200/次、smoke_03 2x2 图集。
-            this.friction = 0.96F;
-            this.quadSize = 1.35F + random.nextFloat() * 0.75F;
-            this.lifetime = 40 + random.nextInt(61);
-            this.startAlpha = 0.82F;
-        } else {
-            // garmr_fire/ice：约 800~1000ms。
-            this.friction = 0.92F;
-            this.quadSize = 0.85F + random.nextFloat() * 0.55F;
-            this.lifetime = 16 + random.nextInt(5);
-            this.startAlpha = 0.92F;
-        }
+        this.friction = 0.92F;
+        this.quadSize = 0.85F + random.nextFloat() * 0.55F;
+        this.lifetime = 16 + random.nextInt(5);
+        this.startAlpha = 0.92F;
         this.alpha = startAlpha;
         this.setSpriteFromAge(sprites);
     }

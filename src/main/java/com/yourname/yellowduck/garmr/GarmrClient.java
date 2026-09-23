@@ -41,8 +41,6 @@ public final class GarmrClient {
                 sprites -> new GarmrParticle.Provider(sprites, GarmrParticle.Mode.BREATH));
         event.registerSpriteSet(ModParticles.GARMR_ICE.get(),
                 sprites -> new GarmrParticle.Provider(sprites, GarmrParticle.Mode.BREATH));
-        event.registerSpriteSet(ModParticles.GARMR_DEVIL_SMOKE.get(),
-                sprites -> new GarmrParticle.Provider(sprites, GarmrParticle.Mode.DEVIL_SMOKE));
     }
 
     private static final class GarmrRenderer extends EntityRenderer<GarmrBoss> {

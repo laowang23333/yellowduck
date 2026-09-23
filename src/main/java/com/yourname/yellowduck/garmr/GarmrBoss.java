@@ -15,6 +15,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -337,7 +338,6 @@ public final class GarmrBoss extends NetcraftBossBase {
         takeoffAge = 0;
         actionUntilTick = 0;
         setAction(ACT_TAKEOFF);
-        announce("§4[恐惧之地] §c加姆受到攻击，进入空中无敌阶段！");
     }
 
     private void tickTakeoff() {
@@ -390,7 +390,6 @@ public final class GarmrBoss extends NetcraftBossBase {
             if (server.addFreshEntity(skeleton)) p1SkeletonIds.add(skeleton.getUUID());
         }
 
-        announce("§4[恐惧之地] §e熔岩卫士与三只骷髅射手已经出现！击败熔岩卫士即可让加姆落地。");
     }
 
     private void tickP1(ServerLevel server) {
@@ -431,7 +430,6 @@ public final class GarmrBoss extends NetcraftBossBase {
             if (entity != null && entity.isAlive()) entity.discard();
         }
         p1SkeletonIds.clear();
-        announce("§4[恐惧之地] §e熔岩卫士已被击败，加姆开始落地！");
     }
 
     private void tickLanding() {
@@ -465,7 +463,6 @@ public final class GarmrBoss extends NetcraftBossBase {
         nextLady = tickCount + GarmrConfig.LADY_INTERVAL_TICKS;
         nextLadyType = BREATH_ICE;
         nextAnubisAction = tickCount + GarmrConfig.ANUBIS_GUARD_INTERVAL_TICKS;
-        announce("§4[恐惧之地] §c加姆进入第二阶段：解除无敌，冰火幽灵与冰火扇形开始轮转。");
     }
 
     private void enterP3() {
@@ -476,14 +473,18 @@ public final class GarmrBoss extends NetcraftBossBase {
         cloneReadyTick = 0;
         nextAnubisAction = tickCount + GarmrConfig.ANUBIS_SACRIFICE_INTERVAL_TICKS;
         nextDevil = tickCount + GarmrConfig.DEVIL_INTERVAL_TICKS;
-        announce("§4[恐惧之地] §4加姆进入第三阶段：继承 P2 技能，小恶魔开始袭击阿努比斯！");
     }
 
     private void tickCurse() {
         if (tickCount % GarmrConfig.CURSE_INTERVAL_TICKS != 0) return;
         for (ServerPlayer player : participants()) {
             int stacks = curseStacks.merge(player.getUUID(), 1, Integer::sum);
-            player.displayClientMessage(Component.literal("§5索命 §f" + stacks + "/" + GarmrConfig.CURSE_KILL_STACKS), true);
+            // 只在玩家状态栏显示图标和层数，不再发送 actionbar/聊天提示。
+            player.removeEffect(com.yourname.yellowduck.registry.ModEffects.GARMR_DEATH_CURSE.get());
+            player.addEffect(new MobEffectInstance(
+                    com.yourname.yellowduck.registry.ModEffects.GARMR_DEATH_CURSE.get(),
+                    GarmrConfig.CURSE_INTERVAL_TICKS + 40,
+                    Math.max(0, stacks - 1), false, false, true));
             if (stacks >= GarmrConfig.CURSE_KILL_STACKS) {
                 player.hurt(player.damageSources().fellOutOfWorld(), Float.MAX_VALUE);
             }
@@ -536,7 +537,6 @@ public final class GarmrBoss extends NetcraftBossBase {
         if (nearest == null) return;
         blessingTargetId = nearest.getUUID();
         blessingUntilTick = tickCount + GarmrConfig.ANUBIS_BLESS_DURATION_TICKS;
-        nearest.sendSystemMessage(Component.literal("§6阿努比斯祝福：造成伤害提升100%，持续30秒。"));
     }
 
     private void tickAnubisGuard(ServerLevel server, LivingEntity anubis) {
@@ -547,7 +547,6 @@ public final class GarmrBoss extends NetcraftBossBase {
             if (nearest != null) {
                 carrierId = nearest.getUUID();
                 protectionUntilTick = tickCount + GarmrConfig.ANUBIS_GUARD_DURATION_TICKS;
-                nearest.sendSystemMessage(Component.literal("§f阿努比斯守护：15秒内受到伤害降低50%，白圈每秒清除1层索命。"));
             }
         }
         tickProtectionCircle(server);
@@ -562,7 +561,6 @@ public final class GarmrBoss extends NetcraftBossBase {
             if (target != null) {
                 carrierId = target.getUUID();
                 protectionUntilTick = tickCount + GarmrConfig.ANUBIS_CLONE_DURATION_TICKS;
-                target.sendSystemMessage(Component.literal("§f你已成为阿努比斯分身：30秒内减伤50%，白圈每秒清除1层索命。"));
             }
         }
 
@@ -580,7 +578,6 @@ public final class GarmrBoss extends NetcraftBossBase {
                 pendingCloneTargetId = nearest.getUUID();
                 cloneReadyTick = tickCount + GarmrConfig.ANUBIS_CLONE_DELAY_TICKS;
                 nextAnubisAction = cloneReadyTick + GarmrConfig.ANUBIS_CLONE_DURATION_TICKS;
-                nearest.sendSystemMessage(Component.literal("§4阿努比斯献祭：受到50%最大生命值伤害，5秒后成为分身。"));
             } else {
                 nextAnubisAction = tickCount + GarmrConfig.ANUBIS_SACRIFICE_INTERVAL_TICKS;
             }
@@ -635,10 +632,11 @@ public final class GarmrBoss extends NetcraftBossBase {
         protectionUntilTick = 0;
         pendingCloneTargetId = null;
         cloneReadyTick = 0;
-        announce("§4[恐惧之地] §4阿努比斯已经死亡，后续祝福/守护/分身净化全部失效！");
     }
 
     private void tickBreathAndBasic(ServerLevel server) {
+        int phase = entityData.get(PHASE);
+        if (phase != P2 && phase != P3) return;
         if (breathAge > 0) {
             tickBreath(server);
             return;
@@ -760,6 +758,8 @@ public final class GarmrBoss extends NetcraftBossBase {
     }
 
     private void tickLadies(ServerLevel server) {
+        int phase = entityData.get(PHASE);
+        if (phase != P2 && phase != P3) return;
         if (tickCount >= nextLady) {
             nextLady = tickCount + GarmrConfig.LADY_INTERVAL_TICKS;
             int type = nextLadyType;
@@ -826,6 +826,7 @@ public final class GarmrBoss extends NetcraftBossBase {
     }
 
     private void tickDevils(ServerLevel server) {
+        if (entityData.get(PHASE) != P3) return;
         if (anubisLost) return;
         if (tickCount >= nextDevil) {
             nextDevil = tickCount + GarmrConfig.DEVIL_INTERVAL_TICKS;
@@ -847,6 +848,7 @@ public final class GarmrBoss extends NetcraftBossBase {
                 continue;
             }
 
+            // 小恶魔从阿努比斯头顶缓慢下降，同时保留少量水平追踪，避免瞬移/直落。
             Vec3 delta = anubis.position().add(0.0D, 1.2D, 0.0D).subtract(devil.position());
             if (delta.lengthSqr() < 1.5D * 1.5D) {
                 explodeDevil(server, devil, anubis);
@@ -854,11 +856,12 @@ public final class GarmrBoss extends NetcraftBossBase {
                 return;
             }
             if (delta.lengthSqr() > 0.01D) {
-                devil.setDeltaMovement(delta.normalize().scale(GarmrConfig.DEVIL_MOVE_SPEED));
-            }
-            if (tickCount % 3 == 0) {
-                server.sendParticles(ModParticles.GARMR_DEVIL_SMOKE.get(), devil.getX(), devil.getY(), devil.getZ(),
-                        2, 0.15D, 0.15D, 0.15D, 0.0D);
+                double horizontalLength = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
+                double horizontalSpeed = Math.min(0.08D, horizontalLength * 0.12D);
+                double verticalSpeed = Mth.clamp(delta.y * 0.08D, -0.045D, 0.045D);
+                double dx = horizontalLength < 1.0E-4D ? 0.0D : delta.x / horizontalLength * horizontalSpeed;
+                double dz = horizontalLength < 1.0E-4D ? 0.0D : delta.z / horizontalLength * horizontalSpeed;
+                devil.setDeltaMovement(dx, verticalSpeed, dz);
             }
         }
     }
@@ -889,9 +892,6 @@ public final class GarmrBoss extends NetcraftBossBase {
                 damageNoKnockback(player, player.getMaxHealth() * GarmrConfig.DEVIL_EXPLOSION_MAX_HEALTH_RATIO);
             }
         }
-        // 原 garmr_devil_aoe.pj 是一次 100~200 个 smoke_03 粒子的爆发。
-        server.sendParticles(ModParticles.GARMR_DEVIL_SMOKE.get(),
-                devil.getX(), devil.getY(), devil.getZ(), 120, 1.6D, 1.0D, 1.6D, 0.02D);
         server.sendParticles(ParticleTypes.EXPLOSION_EMITTER,
                 devil.getX(), devil.getY(), devil.getZ(), 1, 0, 0, 0, 0);
         devil.discard();
@@ -976,15 +976,14 @@ public final class GarmrBoss extends NetcraftBossBase {
         entityData.set(ACTION_SERIAL, entityData.get(ACTION_SERIAL) + 1);
     }
 
-    private void announce(String text) {
-        for (ServerPlayer player : participants()) player.sendSystemMessage(Component.literal(text));
-    }
-
     @Override
     public void die(DamageSource source) {
         if (!level().isClientSide) {
             actionUntilTick = 0;
             setAction(ACT_DEATH);
+            for (ServerPlayer player : participants()) {
+                player.removeEffect(com.yourname.yellowduck.registry.ModEffects.GARMR_DEATH_CURSE.get());
+            }
             curseStacks.clear();
             blessingTargetId = null;
             carrierId = null;
