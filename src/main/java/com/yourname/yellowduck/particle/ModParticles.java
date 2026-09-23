@@ -37,5 +37,4 @@ public final class ModParticles {
 
     public static final RegistryObject<SimpleParticleType> GARMR_FIRE = PARTICLES.register("garmr_fire", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> GARMR_ICE = PARTICLES.register("garmr_ice", () -> new SimpleParticleType(true));
-    public static final RegistryObject<SimpleParticleType> GARMR_DEVIL_SMOKE = PARTICLES.register("garmr_devil_smoke", () -> new SimpleParticleType(true));
 }
