@@ -19,7 +19,6 @@ public final class ModParticles {
     public static final RegistryObject<SimpleParticleType> SAKURA_WARNING = PARTICLES.register("sakura_warning", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SAKURA_EXPLOSION = PARTICLES.register("sakura_explosion", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SAKURA_ERUPTION = PARTICLES.register("sakura_eruption", () -> new SimpleParticleType(true));
-
     public static final RegistryObject<SimpleParticleType> SAKURA_BEAR_RAGE_RING = PARTICLES.register("sakura_bear_rage_ring", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SAKURA_BEAR_RAGE_MIST = PARTICLES.register("sakura_bear_rage_mist", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SAKURA_BEAR_RAGE_SHARD = PARTICLES.register("sakura_bear_rage_shard", () -> new SimpleParticleType(true));
@@ -27,8 +26,6 @@ public final class ModParticles {
     public static final RegistryObject<SimpleParticleType> SAKURA_BEAR_RAGE_SLASH = PARTICLES.register("sakura_bear_rage_slash", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SAKURA_BEAR_RAGE_SPARK = PARTICLES.register("sakura_bear_rage_spark", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SAKURA_BEAR_RAGE_BURST = PARTICLES.register("sakura_bear_rage_burst", () -> new SimpleParticleType(true));
-
-    // Professor Silk / 斯尔克原素材贴图粒子
     public static final RegistryObject<SimpleParticleType> SILK_DARK_FIRE = PARTICLES.register("silk_dark_fire", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SILK_SOUL = PARTICLES.register("silk_soul", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SILK_SMOKE = PARTICLES.register("silk_smoke", () -> new SimpleParticleType(true));
@@ -37,4 +34,8 @@ public final class ModParticles {
     public static final RegistryObject<SimpleParticleType> SILK_FIRE = PARTICLES.register("silk_fire", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SILK_STONE_SMOKE = PARTICLES.register("silk_stone_smoke", () -> new SimpleParticleType(true));
     public static final RegistryObject<SimpleParticleType> SILK_GUSH = PARTICLES.register("silk_gush", () -> new SimpleParticleType(true));
+
+    public static final RegistryObject<SimpleParticleType> GARMR_FIRE = PARTICLES.register("garmr_fire", () -> new SimpleParticleType(true));
+    public static final RegistryObject<SimpleParticleType> GARMR_ICE = PARTICLES.register("garmr_ice", () -> new SimpleParticleType(true));
+    public static final RegistryObject<SimpleParticleType> GARMR_DEVIL_SMOKE = PARTICLES.register("garmr_devil_smoke", () -> new SimpleParticleType(true));
 }
