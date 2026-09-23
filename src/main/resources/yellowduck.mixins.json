@@ -4,7 +4,10 @@
   "package": "com.yourname.yellowduck.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "RescueManagerMixin"
+    "RescueManagerMixin",
+    "BossPhysicsMixin",
+    "ToyBearNoKnockbackMixin",
+    "TwoPhaseBossNoKnockbackMixin"
   ],
   "client": [],
   "injectors": {
