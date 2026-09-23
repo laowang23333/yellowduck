@@ -8,6 +8,9 @@ import com.yourname.yellowduck.entity.BambooHorseEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
+import com.yourname.yellowduck.entity.LockedSakurawitchEntity;
+import com.yourname.yellowduck.entity.LockedToyBearEntity;
+import com.yourname.yellowduck.entity.LockedTwoPhaseBossEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.registries.DeferredRegister;
@@ -20,7 +23,7 @@ public class ModEntities {
 
     public static final RegistryObject<EntityType<TwoPhaseBossEntity>> TWO_PHASE_BOSS =
             ENTITIES.register("two_phase_boss", () ->
-                    EntityType.Builder.<TwoPhaseBossEntity>of(TwoPhaseBossEntity::new, MobCategory.MONSTER)
+                    EntityType.Builder.<TwoPhaseBossEntity>of(LockedTwoPhaseBossEntity::new, MobCategory.MONSTER)
                             .sized(1.0F, 1.0F)
                             .build("two_phase_boss"));
 
@@ -61,7 +64,7 @@ public class ModEntities {
     // ==========================================
     public static final RegistryObject<EntityType<SakurawitchEntity>> SAKURA_WITCH =
             ENTITIES.register("sakurawitch", () ->
-                    EntityType.Builder.<SakurawitchEntity>of(SakurawitchEntity::new, MobCategory.MONSTER)
+                    EntityType.Builder.<SakurawitchEntity>of(LockedSakurawitchEntity::new, MobCategory.MONSTER)
                             .sized(1.3F, 2.8F)
                             .clientTrackingRange(10)
                             .updateInterval(1)
@@ -72,7 +75,7 @@ public class ModEntities {
     // ==========================================
     public static final RegistryObject<EntityType<ToyBearEntity>> TOY_BEAR =
             ENTITIES.register("toy_bear", () ->
-                    EntityType.Builder.<ToyBearEntity>of(ToyBearEntity::new, MobCategory.MONSTER)
+                    EntityType.Builder.<ToyBearEntity>of(LockedToyBearEntity::new, MobCategory.MONSTER)
                             .sized(1.15F, 1.75F)
                             .clientTrackingRange(10)
                             .updateInterval(1)
