@@ -30,10 +30,19 @@ public final class GarmrContent {
                     .updateInterval(1)
                     .build("garmr_projectile"));
 
+    public static final RegistryObject<EntityType<GarmrHelperEntity>> HELPER = ENTITY_TYPES.register("garmr_helper", () ->
+            EntityType.Builder.<GarmrHelperEntity>of(GarmrHelperEntity::new, MobCategory.MONSTER)
+                    .sized(0.9F, 2.0F)
+                    .clientTrackingRange(16)
+                    .updateInterval(1)
+                    .fireImmune()
+                    .build("garmr_helper"));
+
     private GarmrContent() {}
 
     @SubscribeEvent
     public static void attributes(EntityAttributeCreationEvent event) {
         event.put(BOSS.get(), GarmrBoss.createAttributes().build());
+        event.put(HELPER.get(), GarmrHelperEntity.createAttributes().build());
     }
 }
