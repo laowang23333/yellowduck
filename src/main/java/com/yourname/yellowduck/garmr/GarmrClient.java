@@ -183,6 +183,7 @@ public final class GarmrClient {
         private static final ResourceLocation DEVIL = model("little_devil.glb");
         private static final ResourceLocation ARCHER = model("skeleton_archer.glb");
         private static final ResourceLocation GUARD = model("skeleton_guards.glb");
+        private static final ResourceLocation LAVA_GUARD = model("entity_minion_t4_fireelement_embedded.glb");
         private static final ResourceLocation LADY_ICE = model("countess_ice.glb");
         private static final ResourceLocation LADY_FIRE = model("countess_fire.glb");
 
@@ -211,7 +212,12 @@ public final class GarmrClient {
             ModelSpec spec = spec(entity.getVariant());
             if (spec != null) {
                 YellowGltfModel model = load(spec.location);
-                if (model != null && model.animationByName.containsKey(ANIM)) {
+                String animation = spec.animation;
+                if (entity.getVariant() == GarmrHelperEntity.LAVA_GUARD) {
+                    animation = entity.getDeltaMovement().horizontalDistanceSqr() > 0.0025D
+                            ? "Anim-1_run" : "Anim-1_stand";
+                }
+                if (model != null && model.animationByName.containsKey(animation)) {
                     float seconds = (entity.tickCount + partialTick) / 20.0F;
                     int first = 0;
                     int last = 20;
@@ -223,13 +229,14 @@ public final class GarmrClient {
                         first = 23;
                         last = 43;
                     }
-                    float sampleSeconds = sampleLoop(first, last, seconds);
+                    float sampleSeconds = entity.getVariant() == GarmrHelperEntity.LAVA_GUARD
+                            ? seconds : sampleLoop(first, last, seconds);
                     pose.pushPose();
                     try {
                         pose.mulPose(Axis.YP.rotationDegrees(180.0F - entityYaw));
                         pose.scale(spec.scale, spec.scale, spec.scale);
                         YellowGltfRenderUtil.renderModel(model, pose, buffers, packedLight,
-                                sampleSeconds, ANIM, false, spec.tintArgb);
+                                sampleSeconds, animation, true, spec.tintArgb);
                     } finally {
                         pose.popPose();
                     }
@@ -262,19 +269,20 @@ public final class GarmrClient {
 
         private static ModelSpec spec(int variant) {
             return switch (variant) {
-                case GarmrHelperEntity.ANUBIS -> new ModelSpec(ANUBIS, 0.065F, 0xFFFFFFFF);
+                case GarmrHelperEntity.ANUBIS -> new ModelSpec(ANUBIS, 0.065F, 0xFFFFFFFF, ANIM);
                 // 小恶魔/骷髅两个上传包只有 .x，没有原贴图字节；V5 先用中性内嵌底图 + 顶点色，
                 // 保证真实几何/骨骼/动画可用，后续拿到原贴图只替换 GLB 内图即可。
-                case GarmrHelperEntity.DEVIL -> new ModelSpec(DEVIL, 0.11F, 0xFF9C62B8);
-                case GarmrHelperEntity.P1_ARCHER -> new ModelSpec(ARCHER, 0.10F, 0xFFD8D8D8);
-                case GarmrHelperEntity.DEATH_GUARD -> new ModelSpec(GUARD, 0.10F, 0xFFC8C8C8);
-                case GarmrHelperEntity.LADY_ICE -> new ModelSpec(LADY_ICE, 0.070F, 0xFFFFFFFF);
-                case GarmrHelperEntity.LADY_FIRE -> new ModelSpec(LADY_FIRE, 0.070F, 0xFFFFFFFF);
+                case GarmrHelperEntity.DEVIL -> new ModelSpec(DEVIL, 0.11F, 0xFF9C62B8, ANIM);
+                case GarmrHelperEntity.P1_ARCHER -> new ModelSpec(ARCHER, 0.10F, 0xFF5D6675, ANIM);
+                case GarmrHelperEntity.DEATH_GUARD -> new ModelSpec(GUARD, 0.10F, 0xFFC8C8C8, ANIM);
+                case GarmrHelperEntity.LADY_ICE -> new ModelSpec(LADY_ICE, 0.070F, 0xFFFFFFFF, ANIM);
+                case GarmrHelperEntity.LADY_FIRE -> new ModelSpec(LADY_FIRE, 0.070F, 0xFFFFFFFF, ANIM);
+                case GarmrHelperEntity.LAVA_GUARD -> new ModelSpec(LAVA_GUARD, 0.10F, 0xFFFFFFFF, "Anim-1_stand");
                 default -> null;
             };
         }
 
-        private record ModelSpec(ResourceLocation location, float scale, int tintArgb) {}
+        private record ModelSpec(ResourceLocation location, float scale, int tintArgb, String animation) {}
     }
 
     /** 投射物本体不画几何体，视觉由服务端同步粒子承担。 */

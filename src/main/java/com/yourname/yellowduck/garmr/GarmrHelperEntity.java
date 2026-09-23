@@ -33,6 +33,7 @@ public final class GarmrHelperEntity extends Monster {
     public static final int DEATH_GUARD = 4;
     public static final int LADY_ICE = 5;
     public static final int LADY_FIRE = 6;
+    public static final int LAVA_GUARD = 7;
 
     public GarmrHelperEntity(EntityType<? extends GarmrHelperEntity> type, Level level) {
         super(type, level);
@@ -47,6 +48,23 @@ public final class GarmrHelperEntity extends Monster {
                 .add(Attributes.MOVEMENT_SPEED, 0.28D)
                 .add(Attributes.FOLLOW_RANGE, 64.0D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D);
+    }
+
+    @Override
+    public boolean isPushable() {
+        return false;
+    }
+
+    @Override
+    public void push(Entity entity) {
+    }
+
+    @Override
+    public void push(double x, double y, double z) {
+    }
+
+    @Override
+    public void knockback(double strength, double x, double z) {
     }
 
     @Override
@@ -82,15 +100,14 @@ public final class GarmrHelperEntity extends Monster {
 
     @Override
     protected void registerGoals() {
-        // 只有玩家死亡生成的骷髅守卫允许使用这组 Goal；其它 variant 的 canAttack 会拒绝目标，
-        // 阿努比斯/小恶魔/P1 射手则由 Boss 直接 setNoAi(true)。
+        // 熔岩守卫、亡灵战士允许近战 Goal；骷髅射手由 Boss 统一发射远程投射物。
         goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0D, true));
         targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.player.Player.class, true));
     }
 
     @Override
     public boolean canAttack(LivingEntity target) {
-        if (getVariant() != DEATH_GUARD) return false;
+        if (getVariant() != DEATH_GUARD && getVariant() != LAVA_GUARD) return false;
         if (!(target instanceof ServerPlayer player)) return false;
         GarmrBoss boss = ownerBoss();
         return boss != null && boss.isParticipant(player) && super.canAttack(target);

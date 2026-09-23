@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.garmr;
 
 import com.yourname.yellowduck.boss.NetcraftBossBase;
+import com.yourname.yellowduck.config.EntityTuningConfig;
 import com.yourname.yellowduck.dungeon.DungeonManager;
 import com.yourname.yellowduck.particle.ModParticles;
 import com.yourname.yellowduck.registry.ModSounds;
@@ -17,6 +18,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityAnchor;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -24,7 +26,6 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
-import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
@@ -45,7 +46,7 @@ import java.util.UUID;
  * 3) 起飞结束后共生成 4 只怪：1 个熔岩卫士 + 3 只骷髅射手；
  * 4) P2/P3 的冰火幽灵、10 秒轮流吐息、阿努比斯守护/献祭、小恶魔爆炸按表执行。
  *
- * V5 已换入：阿努比斯、小恶魔、骷髅射手、骷髅守卫、冰/火亡灵夫人；熔岩卫士原模型仍未定位，暂保留 Zombie 逻辑承载。
+ * V6 已换入：熔岩守卫、阿努比斯、小恶魔、骷髅射手、骷髅守卫、冰/火亡灵夫人均使用独立辅助实体与原模型。
  */
 public final class GarmrBoss extends NetcraftBossBase {
     public static final EntityDataAccessor<Integer> PHASE =
@@ -111,6 +112,7 @@ public final class GarmrBoss extends NetcraftBossBase {
     private boolean p1WaveStarted;
     private UUID coreAddId;
     private int nextP1Projectile;
+    private float lastObservedHealth;
 
     private int nextBasicAttack;
     private int nextBreath;
@@ -266,6 +268,12 @@ public final class GarmrBoss extends NetcraftBossBase {
         if (!(level() instanceof ServerLevel server)) return;
 
         if (!initialized) initializeEncounter();
+        if (lastObservedHealth > 0.0F && getHealth() > lastObservedHealth + 0.5F) {
+            // 脱战/外部回血时，旧阶段召唤物全部清掉，避免幽灵和小恶魔留在场地。
+            clearOwnedSummons(server);
+            anubisLost = true;
+        }
+        lastObservedHealth = getHealth();
         lockHorizontalPosition();
         cleanupCurseOwners();
         expireTimedAction();
@@ -317,6 +325,7 @@ public final class GarmrBoss extends NetcraftBossBase {
 
         spawnAnubis();
         nextAnubisAction = tickCount + 20; // P1 第一次祝福尽快出现，之后按 30 秒持续轮转。
+        lastObservedHealth = getHealth();
     }
 
     private void lockHorizontalPosition() {
@@ -357,13 +366,13 @@ public final class GarmrBoss extends NetcraftBossBase {
         entityData.set(PHASE, P1_WAVE);
         nextP1Projectile = tickCount + GarmrConfig.P1_PROJECTILE_INTERVAL_TICKS;
 
-        // 熔岩卫士：原模型未解析，先用近战 Zombie 承载逻辑，避免 Blaze 的远程 AI 与表格冲突。
-        Zombie core = EntityType.ZOMBIE.create(server);
+        // 熔岩守卫使用用户提供的原始 GLB；实体本身保持近战 AI，并通过统一事件结算固定伤害。
+        GarmrHelperEntity core = GarmrContent.HELPER.get().create(server);
         if (core != null) {
+            core.setVariant(GarmrHelperEntity.LAVA_GUARD);
             core.moveTo(homeX, homeY, homeZ - 7.0D, 0F, 0F);
             core.setPersistenceRequired();
-            core.setCustomName(Component.literal("§6熔岩卫士（模型待原资源）"));
-            core.setCustomNameVisible(true);
+            core.setNoAi(false);
             tagHelper(core, ROLE_CORE_ADD);
             applyMobStats(core, GarmrConfig.LAVA_GUARD_HEALTH, GarmrConfig.LAVA_GUARD_ATTACK,
                     GarmrConfig.LAVA_GUARD_DEFENSE,
@@ -382,7 +391,6 @@ public final class GarmrBoss extends NetcraftBossBase {
                     homeZ - 7.0D + Math.sin(angle) * 8.0D, 0F, 0F);
             skeleton.setNoAi(true); // 射击由 Boss 的服务器权威 P1 投射物逻辑统一结算。
             skeleton.setPersistenceRequired();
-            skeleton.setCustomName(Component.literal("§7骷髅射手"));
             tagHelper(skeleton, ROLE_P1_SKELETON);
             applyMobStats(skeleton, GarmrConfig.P1_ARCHER_HEALTH, GarmrConfig.P1_ARCHER_ATTACK,
                     GarmrConfig.P1_ARCHER_DEFENSE,
@@ -400,18 +408,24 @@ public final class GarmrBoss extends NetcraftBossBase {
         }
 
         // 熔岩卫士始终攻击当前最高仇恨玩家。
-        if (core instanceof Zombie zombie && zombie.isAlive()) {
-            zombie.clearFire();
+        if (core instanceof GarmrHelperEntity guard && guard.isAlive()) {
+            guard.clearFire();
             ServerPlayer target = highestHatredTarget();
-            if (target != null) zombie.setTarget(target);
+            if (target != null) guard.setTarget(target);
         }
 
         if (tickCount >= nextP1Projectile) {
             nextP1Projectile = tickCount + GarmrConfig.P1_PROJECTILE_INTERVAL_TICKS;
-            beginTimedAction(ACT_RANGED, GarmrConfig.RANGED_ACTION_TICKS);
             List<ServerPlayer> targets = shuffledParticipants();
-            for (int i = 0; i < Math.min(GarmrConfig.P1_PROJECTILE_TARGET_COUNT, targets.size()); i++) {
-                fireProjectile(targets.get(i), GarmrConfig.P1_AOE_DAMAGE);
+            if (!targets.isEmpty()) {
+                int shotCount = Math.min(GarmrConfig.P1_PROJECTILE_TARGET_COUNT, targets.size());
+                for (int i = 0; i < p1SkeletonIds.size(); i++) {
+                    Entity shooter = server.getEntity(p1SkeletonIds.get(i));
+                    if (!(shooter instanceof GarmrHelperEntity archer) || !archer.isAlive()) continue;
+                    ServerPlayer target = targets.get(i % shotCount);
+                    archer.lookAt(EntityAnchor.EYES, target.position());
+                    fireProjectileFrom(archer, target, GarmrConfig.P1_AOE_DAMAGE);
+                }
             }
         }
     }
@@ -476,6 +490,7 @@ public final class GarmrBoss extends NetcraftBossBase {
     }
 
     private void tickCurse() {
+        if (entityData.get(PHASE) == P1_GROUND) return;
         if (tickCount % GarmrConfig.CURSE_INTERVAL_TICKS != 0) return;
         for (ServerPlayer player : participants()) {
             int stacks = curseStacks.merge(player.getUUID(), 1, Integer::sum);
@@ -499,8 +514,6 @@ public final class GarmrBoss extends NetcraftBossBase {
         anubis.moveTo(homeX, homeY, homeZ + GarmrConfig.ANUBIS_OFFSET_Z, 180F, 0F);
         anubis.setNoAi(true);
         anubis.setInvulnerable(true);
-        anubis.setCustomName(Component.literal("§f阿努比斯"));
-        anubis.setCustomNameVisible(true);
         tagHelper(anubis, ROLE_ANUBIS);
         if (server.addFreshEntity(anubis)) anubisId = anubis.getUUID();
     }
@@ -786,7 +799,9 @@ public final class GarmrBoss extends NetcraftBossBase {
             if (tickCount % 20 == 0) {
                 int born = lady.getPersistentData().getInt(TAG_LADY_SPAWN_TICK);
                 int elapsedSeconds = Math.max(0, (tickCount - born) / 20);
-                float damage = GarmrConfig.LADY_BASE_DAMAGE
+                String ladySection = entry.getValue() == BREATH_FIRE ? "garmr_fire_lady" : "garmr_ice_lady";
+                float damage = (float) EntityTuningConfig.configured(
+                        ladySection, "attack_damage", GarmrConfig.LADY_BASE_DAMAGE)
                         * (1.0F + elapsedSeconds * GarmrConfig.LADY_DAMAGE_GROWTH_PER_SECOND);
                 double radiusSq = GarmrConfig.LADY_AOE_RADIUS * GarmrConfig.LADY_AOE_RADIUS;
                 for (ServerPlayer player : participants()) {
@@ -808,8 +823,6 @@ public final class GarmrBoss extends NetcraftBossBase {
         lady.setVariant(type == BREATH_FIRE ? GarmrHelperEntity.LADY_FIRE : GarmrHelperEntity.LADY_ICE);
         lady.moveTo(x, homeY, z, 0F, 0F);
         lady.setPersistenceRequired();
-        lady.setCustomName(Component.literal(type == BREATH_FIRE ? "§c火幽灵" : "§b冰幽灵"));
-        lady.setCustomNameVisible(true);
         tagHelper(lady, ROLE_LADY);
         lady.getPersistentData().putInt(TAG_LADY_TYPE, type);
         lady.getPersistentData().putInt(TAG_LADY_SPAWN_TICK, tickCount);
@@ -861,7 +874,9 @@ public final class GarmrBoss extends NetcraftBossBase {
                 double verticalSpeed = Mth.clamp(delta.y * 0.08D, -0.045D, 0.045D);
                 double dx = horizontalLength < 1.0E-4D ? 0.0D : delta.x / horizontalLength * horizontalSpeed;
                 double dz = horizontalLength < 1.0E-4D ? 0.0D : delta.z / horizontalLength * horizontalSpeed;
-                devil.setDeltaMovement(dx, verticalSpeed, dz);
+                // 直接改位置，避免 Mob#aiStep 在 noAI 状态下把手动速度清零。
+                devil.setPos(devil.getX() + dx, devil.getY() + verticalSpeed, devil.getZ() + dz);
+                devil.setDeltaMovement(Vec3.ZERO);
             }
         }
     }
@@ -876,8 +891,6 @@ public final class GarmrBoss extends NetcraftBossBase {
         devil.setPersistenceRequired();
         devil.setNoAi(true);
         devil.setNoGravity(true);
-        devil.setCustomName(Component.literal("§5小恶魔"));
-        devil.setCustomNameVisible(true);
         tagHelper(devil, ROLE_DEVIL);
         applyMobStats(devil, GarmrConfig.DEVIL_HEALTH, GarmrConfig.DEVIL_ATTACK,
                 GarmrConfig.DEVIL_DEFENSE,
@@ -900,16 +913,43 @@ public final class GarmrBoss extends NetcraftBossBase {
     }
 
     private void fireProjectile(ServerPlayer target, float damage) {
+        fireProjectileFrom(this, target, damage);
+    }
+
+    private void fireProjectileFrom(Entity source, ServerPlayer target, float damage) {
         if (!(level() instanceof ServerLevel server) || target == null || !target.isAlive()) return;
         GarmrProjectile projectile = GarmrContent.PROJECTILE.get().create(server);
         if (projectile == null) return;
         projectile.setOwner(this);
         projectile.configure(damage, (float) GarmrConfig.PROJECTILE_AOE_RADIUS);
-        projectile.moveTo(getX(), getY() + 2.2D, getZ(), getYRot(), getXRot());
+        projectile.moveTo(source.getX(), source.getY() + source.getBbHeight() * 0.75D,
+                source.getZ(), source.getYRot(), source.getXRot());
         Vec3 aim = target.position().add(0, 0.6D, 0).subtract(projectile.position());
         projectile.shoot(aim.x, aim.y, aim.z, 0.65F, 0.0F);
         tagHelper(projectile, "projectile");
         server.addFreshEntity(projectile);
+    }
+
+    private void clearOwnedSummons(ServerLevel server) {
+        for (Entity entity : server.getAllEntities()) {
+            if (entity == this) continue;
+            if (entity.getPersistentData().hasUUID(TAG_OWNER)
+                    && getUUID().equals(entity.getPersistentData().getUUID(TAG_OWNER))) {
+                entity.discard();
+            }
+        }
+        coreAddId = null;
+        anubisId = null;
+        anubisLost = true;
+        p1SkeletonIds.clear();
+        ladies.clear();
+        devils.clear();
+        blessingTargetId = null;
+        blessingUntilTick = 0;
+        carrierId = null;
+        protectionUntilTick = 0;
+        pendingCloneTargetId = null;
+        cloneReadyTick = 0;
     }
 
     private List<ServerPlayer> shuffledParticipants() {
@@ -925,6 +965,17 @@ public final class GarmrBoss extends NetcraftBossBase {
 
     private void applyMobStats(Mob mob, double healthValue, float attackValue,
                                int defense, int attackLevel, int defenseLevel) {
+        String configSection = garmrConfigSection(mob);
+        if (configSection != null) {
+            healthValue = EntityTuningConfig.configured(configSection, "max_health", healthValue);
+            attackValue = (float) EntityTuningConfig.configured(configSection, "attack_damage", attackValue);
+            defense = (int) Math.round(EntityTuningConfig.configured(configSection, "armor", defense));
+            attackLevel = (int) Math.round(EntityTuningConfig.configured(configSection, "attack_level", attackLevel));
+            defenseLevel = (int) Math.round(EntityTuningConfig.configured(configSection, "defense_level", defenseLevel));
+            double knockback = EntityTuningConfig.configured(configSection, "knockback_resistance", 1.0D);
+            AttributeInstance resistance = mob.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+            if (resistance != null) resistance.setBaseValue(knockback);
+        }
         AttributeInstance health = mob.getAttribute(Attributes.MAX_HEALTH);
         if (health != null) {
             health.setBaseValue(healthValue);
@@ -935,6 +986,20 @@ public final class GarmrBoss extends NetcraftBossBase {
         mob.getPersistentData().putInt(TAG_DEFENSE, defense);
         mob.getPersistentData().putInt(TAG_ATTACK_LEVEL, attackLevel);
         mob.getPersistentData().putInt(TAG_DEFENSE_LEVEL, defenseLevel);
+    }
+
+    private String garmrConfigSection(Mob mob) {
+        String role = mob.getPersistentData().getString(TAG_ROLE);
+        if (ROLE_CORE_ADD.equals(role)) return "garmr_lava_guard";
+        if (ROLE_P1_SKELETON.equals(role)) return "garmr_p1_archer";
+        if (ROLE_ANUBIS.equals(role)) return "garmr_anubis";
+        if (ROLE_DEVIL.equals(role)) return "garmr_little_devil";
+        if (ROLE_DEATH_GUARD.equals(role)) return "garmr_death_guard";
+        if (ROLE_LADY.equals(role)) {
+            return mob.getPersistentData().getInt(TAG_LADY_TYPE) == BREATH_FIRE
+                    ? "garmr_fire_lady" : "garmr_ice_lady";
+        }
+        return null;
     }
 
     private void tagHelper(Entity entity, String role) {
@@ -981,6 +1046,7 @@ public final class GarmrBoss extends NetcraftBossBase {
         if (!level().isClientSide) {
             actionUntilTick = 0;
             setAction(ACT_DEATH);
+            if (level() instanceof ServerLevel server) clearOwnedSummons(server);
             for (ServerPlayer player : participants()) {
                 player.removeEffect(com.yourname.yellowduck.registry.ModEffects.GARMR_DEATH_CURSE.get());
             }

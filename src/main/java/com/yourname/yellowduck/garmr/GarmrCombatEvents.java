@@ -1,7 +1,7 @@
 package com.yourname.yellowduck.garmr;
 
 import com.yourname.yellowduck.YellowDuckMod;
-import net.minecraft.network.chat.Component;
+import com.yourname.yellowduck.config.EntityTuningConfig;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageTypes;
@@ -48,13 +48,16 @@ public final class GarmrCombatEvents {
         // 逻辑承载实体的原版攻击统一改为规则表固定伤害，并走 Boss 的无击退伤害接口。
         if (GarmrBoss.ROLE_CORE_ADD.equals(role)) {
             event.setCanceled(true);
-            boss.damageNoKnockback(player, GarmrConfig.LAVA_GUARD_ATTACK);
+            boss.damageNoKnockback(player, (float) EntityTuningConfig.configured(
+                    "garmr_lava_guard", "attack_damage", GarmrConfig.LAVA_GUARD_ATTACK));
         } else if (GarmrBoss.ROLE_P1_SKELETON.equals(role)) {
             event.setCanceled(true);
-            boss.damageNoKnockback(player, GarmrConfig.P1_ARCHER_ATTACK);
+            boss.damageNoKnockback(player, (float) EntityTuningConfig.configured(
+                    "garmr_p1_archer", "attack_damage", GarmrConfig.P1_ARCHER_ATTACK));
         } else if (GarmrBoss.ROLE_DEATH_GUARD.equals(role)) {
             event.setCanceled(true);
-            boss.damageNoKnockback(player, GarmrConfig.DEATH_GUARD_ATTACK);
+            boss.damageNoKnockback(player, (float) EntityTuningConfig.configured(
+                    "garmr_death_guard", "attack_damage", GarmrConfig.DEATH_GUARD_ATTACK));
             applyExactSlow(player);
         } else if (GarmrBoss.ROLE_LADY.equals(role) || GarmrBoss.ROLE_DEVIL.equals(role)) {
             // 幽灵伤害由每秒 AOE 逻辑结算；小恶魔只负责接触自爆。
@@ -110,25 +113,37 @@ public final class GarmrCombatEvents {
         guard.setVariant(GarmrHelperEntity.DEATH_GUARD);
         guard.moveTo(player.getX(), player.getY(), player.getZ(), player.getYRot(), 0.0F);
         guard.setPersistenceRequired();
-        guard.setCustomName(Component.literal("§8骷髅守卫"));
-        guard.setCustomNameVisible(true);
         guard.getPersistentData().putString(GarmrBoss.TAG_ROLE, GarmrBoss.ROLE_DEATH_GUARD);
         guard.getPersistentData().putUUID(GarmrBoss.TAG_OWNER, boss.getUUID());
-        guard.getPersistentData().putInt(GarmrBoss.TAG_DEFENSE, GarmrConfig.DEATH_GUARD_DEFENSE);
-        guard.getPersistentData().putInt(GarmrBoss.TAG_ATTACK_LEVEL, GarmrConfig.DEATH_GUARD_ATTACK_LEVEL);
-        guard.getPersistentData().putInt(GarmrBoss.TAG_DEFENSE_LEVEL, GarmrConfig.DEATH_GUARD_DEFENSE_LEVEL);
+        int guardDefense = (int) Math.round(EntityTuningConfig.configured(
+                "garmr_death_guard", "armor", GarmrConfig.DEATH_GUARD_DEFENSE));
+        int guardAttackLevel = (int) Math.round(EntityTuningConfig.configured(
+                "garmr_death_guard", "attack_level", GarmrConfig.DEATH_GUARD_ATTACK_LEVEL));
+        int guardDefenseLevel = (int) Math.round(EntityTuningConfig.configured(
+                "garmr_death_guard", "defense_level", GarmrConfig.DEATH_GUARD_DEFENSE_LEVEL));
+        guard.getPersistentData().putInt(GarmrBoss.TAG_DEFENSE, guardDefense);
+        guard.getPersistentData().putInt(GarmrBoss.TAG_ATTACK_LEVEL, guardAttackLevel);
+        guard.getPersistentData().putInt(GarmrBoss.TAG_DEFENSE_LEVEL, guardDefenseLevel);
         if (boss.getPersistentData().hasUUID("YellowDuckDungeon")) {
             guard.getPersistentData().putUUID("YellowDuckDungeon",
                     boss.getPersistentData().getUUID("YellowDuckDungeon"));
         }
 
         AttributeInstance damage = guard.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (damage != null) damage.setBaseValue(GarmrConfig.DEATH_GUARD_ATTACK);
+        if (damage != null) damage.setBaseValue(EntityTuningConfig.configured(
+                "garmr_death_guard", "attack_damage", GarmrConfig.DEATH_GUARD_ATTACK));
         AttributeInstance health = guard.getAttribute(Attributes.MAX_HEALTH);
         if (health != null) {
-            health.setBaseValue(GarmrConfig.DEATH_GUARD_HEALTH);
-            guard.setHealth((float) GarmrConfig.DEATH_GUARD_HEALTH);
+            double maxHealth = EntityTuningConfig.configured(
+                    "garmr_death_guard", "max_health", GarmrConfig.DEATH_GUARD_HEALTH);
+            health.setBaseValue(maxHealth);
+            guard.setHealth((float) maxHealth);
         }
+        AttributeInstance armor = guard.getAttribute(Attributes.ARMOR);
+        if (armor != null) armor.setBaseValue(guardDefense);
+        AttributeInstance knockback = guard.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+        if (knockback != null) knockback.setBaseValue(EntityTuningConfig.configured(
+                "garmr_death_guard", "knockback_resistance", 1.0D));
         level.addFreshEntity(guard);
     }
 
