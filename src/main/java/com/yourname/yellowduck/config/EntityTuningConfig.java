@@ -54,7 +54,8 @@ public final class EntityTuningConfig {
     private static final List<String> NUMERIC_KEYS = List.of(
             "max_health", "attack_damage", "movement_speed", "attack_speed",
             "armor", "armor_toughness", "knockback_resistance", "follow_range",
-            "attack_knockback", "flying_speed", "jump_strength", "netcraft_tier"
+            "attack_knockback", "flying_speed", "jump_strength", "netcraft_tier",
+            "attack_level", "defense_level"
     );
 
     private static final Map<String, SectionInfo> SECTION_INFO = new LinkedHashMap<>();
@@ -84,6 +85,26 @@ public final class EntityTuningConfig {
                 "生命=200000，攻击=18，移动速度=0.35，攻击击退=0，击退抗性=1，跟随范围=64。");
         section("silk_summoned_slime", "疯狂教授斯尔克召唤物：不稳定史莱姆",
                 "实体ID仍为 minecraft:slime；只有带 SilkProfessorSlime 标记的史莱姆读取这一段。");
+
+        // 恐惧之地：同一个 garmr_helper 实体按 variant 分成多个可独立调数值的生物。
+        section("garmr", "BOSS：地狱双头犬·加姆",
+                "生命=40000，攻击=180，防御=360，击退抗性=1，NetCraft等级=5。");
+        section("garmr_helper", "恐惧之地辅助实体共同默认",
+                "同一实体类型承载熔岩守卫、射手、阿努比斯、小恶魔、亡灵战士和冰火幽灵；具体 variant 见下方分组。");
+        section("garmr_lava_guard", "双头犬P1召唤物：熔岩守卫",
+                "生命=8000，攻击=90，防御=120，攻击等级=5，防御等级=10，击退抗性=1。");
+        section("garmr_p1_archer", "双头犬P1召唤物：骷髅射手",
+                "生命=150，攻击=66，防御=0，攻击等级=5，防御等级=10，击退抗性=1。");
+        section("garmr_anubis", "双头犬协战：阿努比斯",
+                "生命=1，攻击=0，防御=0，击退抗性=1；无敌、不可直接攻击。");
+        section("garmr_ice_lady", "双头犬P2召唤物：冰幽灵",
+                "生命=99999，攻击=44，防御=1，攻击等级=3，防御等级=10，击退抗性=1。");
+        section("garmr_fire_lady", "双头犬P2召唤物：火幽灵",
+                "生命=99999，攻击=44，防御=1，攻击等级=3，防御等级=10，击退抗性=1。");
+        section("garmr_little_devil", "双头犬P3召唤物：小恶魔",
+                "生命=400，攻击=1，防御=0，攻击等级=5，防御等级=10，击退抗性=1。");
+        section("garmr_death_guard", "双头犬玩家死亡召唤物：亡灵战士",
+                "生命=1000，攻击=66，防御=68，攻击等级=4，防御等级=10，击退抗性=1。");
     }
 
     private static volatile Snapshot snapshot = emptySnapshot();
@@ -294,6 +315,19 @@ public final class EntityTuningConfig {
                 }
             }
 
+            // 老版本配置没有 Garmr 分组时，只在文件末尾追加缺失分组，不改动玩家已有数值。
+            for (Map.Entry<String, SectionInfo> entry : SECTION_INFO.entrySet()) {
+                String header = "[" + entry.getKey() + "]";
+                boolean exists = out.stream().anyMatch(line -> line.trim().equalsIgnoreCase(header));
+                if (exists) continue;
+                out.add("");
+                StringBuilder added = new StringBuilder();
+                appendEntitySection(added, entry.getKey(), entry.getValue());
+                String[] lines = added.toString().split("\\R", -1);
+                Collections.addAll(out, lines);
+                changed = true;
+            }
+
             if (changed) {
                 Files.write(PATH, out, StandardCharsets.UTF_8,
                         StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
@@ -327,6 +361,15 @@ public final class EntityTuningConfig {
     public static void reapply(LivingEntity entity) {
         Entry entry = entryFor(entity);
         if (entry != null) applyAttributes(entity, entry);
+    }
+
+    /** Garmr 的同类辅助实体按 variant 使用独立配置分组。 */
+    public static double configured(String section, String key, double fallback) {
+        ensureLoaded();
+        Entry entry = snapshot.entries().get(section == null ? "" : section.toLowerCase(Locale.ROOT));
+        if (entry == null) return fallback;
+        Double value = entry.value(key);
+        return value != null && Double.isFinite(value) ? value : fallback;
     }
 
     private static void applyAttributes(LivingEntity entity, Entry entry) {
@@ -506,6 +549,8 @@ public final class EntityTuningConfig {
         out.append("flying_speed = \"\"\n");
         out.append("jump_strength = \"\"\n");
         out.append("netcraft_tier = \"\"\n");
+        out.append("attack_level = \"\"\n");
+        out.append("defense_level = \"\"\n");
         out.append("# 留空=保留原掉落；非空=完全使用这里的掉落。\n");
         out.append("items = \"\"\n");
     }
