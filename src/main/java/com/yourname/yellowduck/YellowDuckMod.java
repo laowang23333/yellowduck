@@ -8,6 +8,8 @@ import com.yourname.yellowduck.entity.AlpacaMountEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
+import com.yourname.yellowduck.garmr.GarmrContent;
+import com.yourname.yellowduck.garmr.GarmrDungeonBootstrap;
 import com.yourname.yellowduck.network.MountNetwork;
 import com.yourname.yellowduck.particle.ModParticles;
 import com.yourname.yellowduck.registry.ModEffects;
@@ -34,29 +36,22 @@ public class YellowDuckMod {
         ModEntities.ENTITIES.register(bus);
         CleopatraEntities.TYPES.register(bus);
         SilkContent.ENTITY_TYPES.register(bus);
+        GarmrContent.ENTITY_TYPES.register(bus);
         com.yourname.yellowduck.registry.ModItems.ITEMS.register(bus);
         ModParticles.PARTICLES.register(bus);
 
-        // 注册音效
         ModSounds.SOUND_EVENTS.register(bus);
-
-        // 注册自定义 MobEffect
         ModEffects.EFFECTS.register(bus);
         CleopatraEffects.EFFECTS.register(bus);
         MountNetwork.init();
 
-        /*
-         * 生物属性 + 掉落 + 艳后战斗参数仍然共用 config/yellowduck-entities.toml，
-         * 但不再注册 ForgeConfigSpec，彻底避免 Forge 自动 Correcting 后把用户值改回默认。
-         */
         EntityTuningConfig.ensureLoaded();
 
-        // 独立副本配置：config/yellowduck-dungeons.toml。
+        // 先让原副本配置正常生成/读取，再只追加缺失的 Garmr 段；已有配置值绝不覆盖。
         DungeonConfig.ensureLoaded();
+        if (GarmrDungeonBootstrap.ensureDungeonSection()) DungeonConfig.reload();
 
-        // 教授战斗配置也写入 config/yellowduck-entities.toml，同样不经过 ForgeConfigSpec。
         SilkConfig.ensureLoaded();
-
         bus.addListener(this::registerAttributes);
     }
 
