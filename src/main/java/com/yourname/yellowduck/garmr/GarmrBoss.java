@@ -21,6 +21,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -177,6 +178,11 @@ public final class GarmrBoss extends NetcraftBossBase {
 
     @Override public Component getName() { return Component.literal("地狱双头犬·加姆"); }
     @Override public boolean removeWhenFarAway(double distance) { return false; }
+    @Override
+    public void setTarget(LivingEntity target) {
+        // 加姆只允许把玩家写入 vanilla target；召唤物、动物和其他生物不能触发 Boss 仇恨。
+        super.setTarget(target instanceof Player ? target : null);
+    }
     @Override public boolean isPushable() { return false; }
     @Override public void push(Entity entity) { }
     @Override public void push(double x, double y, double z) { }
@@ -267,10 +273,15 @@ public final class GarmrBoss extends NetcraftBossBase {
         if (!(level() instanceof ServerLevel server)) return;
 
         if (!initialized) initializeEncounter();
-        if (lastObservedHealth > 0.0F && getHealth() > lastObservedHealth + 0.5F) {
-            // 脱战/外部回血时，旧阶段召唤物全部清掉，避免幽灵和小恶魔留在场地。
-            clearOwnedSummons(server);
-            anubisLost = true;
+        int currentPhase = entityData.get(PHASE);
+        boolean atFullHealth = getHealth() >= getMaxHealth() - 0.5F;
+        // P1_TAKEOFF 是首击后、Boss 仍满血的正常过渡，不能在这里被误判为回血重置。
+        if (currentPhase >= P1_WAVE
+                && lastObservedHealth > 0.0F
+                && (getHealth() > lastObservedHealth + 0.5F
+                || (currentPhase >= P2 && atFullHealth))) {
+            // 回满血只重置 Boss 战斗阶段和阶段召唤物；阿努比斯由 Boss 持有，回血时必须保留。
+            resetForNewFight(server);
         }
         lastObservedHealth = getHealth();
         lockHorizontalPosition();
@@ -700,6 +711,8 @@ public final class GarmrBoss extends NetcraftBossBase {
     }
 
     private void startBreath(int type, ServerPlayer target) {
+        int phase = entityData.get(PHASE);
+        if (phase != P2 && phase != P3) return;
         breathType = type;
         breathAge = 1;
         actionUntilTick = 0;
@@ -712,6 +725,16 @@ public final class GarmrBoss extends NetcraftBossBase {
     }
 
     private void tickBreath(ServerLevel server) {
+        int phase = entityData.get(PHASE);
+        if (phase != P2 && phase != P3) {
+            breathAge = 0;
+            breathType = BREATH_NONE;
+            entityData.set(BREATH_TYPE, BREATH_NONE);
+            if (entityData.get(ACTION) == ACT_FIRE_BREATH || entityData.get(ACTION) == ACT_ICE_BREATH) {
+                setIdleAction();
+            }
+            return;
+        }
         breathAge++;
         spawnBreathParticles(server, breathType);
 
@@ -948,6 +971,66 @@ public final class GarmrBoss extends NetcraftBossBase {
         protectionUntilTick = 0;
         pendingCloneTargetId = null;
         cloneReadyTick = 0;
+    }
+
+    /** 回血/脱战后的新一轮：清理阶段召唤物，但保留仍存活的阿努比斯。 */
+    private void resetForNewFight(ServerLevel server) {
+        clearPhaseSummons(server);
+        getHatredManager().resetRawHatred();
+        curseStacks.clear();
+        for (ServerPlayer player : participants()) {
+            player.removeEffect(com.yourname.yellowduck.registry.ModEffects.GARMR_DEATH_CURSE.get());
+        }
+        blessingTargetId = null;
+        blessingUntilTick = 0;
+        carrierId = null;
+        protectionUntilTick = 0;
+        pendingCloneTargetId = null;
+        cloneReadyTick = 0;
+        p1WaveStarted = false;
+        takeoffAge = 0;
+        landingAge = 0;
+        breathAge = 0;
+        breathType = BREATH_NONE;
+        actionUntilTick = 0;
+        nextBreathType = BREATH_ICE;
+        nextLadyType = BREATH_ICE;
+        nextBasicAttack = tickCount + 30;
+        nextBreath = tickCount + GarmrConfig.BREATH_INTERVAL_TICKS;
+        nextLady = tickCount + GarmrConfig.LADY_INTERVAL_TICKS;
+        nextAnubisAction = tickCount + 20;
+        nextDevil = tickCount + GarmrConfig.DEVIL_INTERVAL_TICKS;
+        entityData.set(PHASE, P1_GROUND);
+        entityData.set(AIRBORNE, false);
+        entityData.set(BREATH_TYPE, BREATH_NONE);
+        setNoGravity(false);
+        setPos(homeX, homeY, homeZ);
+        setDeltaMovement(Vec3.ZERO);
+        setIdleAction();
+    }
+
+    /** 清理除阿努比斯外的所有本 Boss 阶段召唤物。 */
+    private void clearPhaseSummons(ServerLevel server) {
+        for (Entity entity : server.getAllEntities()) {
+            if (entity == this) continue;
+            if (!entity.getPersistentData().hasUUID(TAG_OWNER)
+                    || !getUUID().equals(entity.getPersistentData().getUUID(TAG_OWNER))) continue;
+            if (ROLE_ANUBIS.equals(entity.getPersistentData().getString(TAG_ROLE))) continue;
+            entity.discard();
+        }
+        coreAddId = null;
+        p1SkeletonIds.clear();
+        ladies.clear();
+        devils.clear();
+    }
+
+    @Override
+    public void remove(RemovalReason reason) {
+        // 只有真正销毁/消失时清理阿努比斯；区块卸载不应提前清理它。
+        if (!level().isClientSide && reason.shouldDestroy()) {
+            if (level() instanceof ServerLevel server) clearOwnedSummons(server);
+        }
+        super.remove(reason);
     }
 
     private List<ServerPlayer> shuffledParticipants() {
