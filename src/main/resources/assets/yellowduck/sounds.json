@@ -17,5 +17,7 @@
   "silk_att4": { "sounds": ["yellowduck:silk_att4"] },
   "silk_death": { "sounds": ["yellowduck:silk_death"] },
   "silk_bear_roar": { "sounds": ["yellowduck:silk_bear_roar"] },
-  "silk_bear_hurt": { "sounds": ["yellowduck:silk_bear_hurt"] }
+  "silk_bear_hurt": { "sounds": ["yellowduck:silk_bear_hurt"] },
+  "garmr_breath_fire": { "sounds": ["yellowduck:garmr_breath_fire"] },
+  "garmr_breath_ice": { "sounds": ["yellowduck:garmr_breath_ice"] }
 }
