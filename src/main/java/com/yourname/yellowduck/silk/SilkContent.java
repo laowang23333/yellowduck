@@ -3,7 +3,6 @@ package com.yourname.yellowduck.silk;
 import com.yourname.yellowduck.YellowDuckMod;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -19,7 +18,7 @@ public final class SilkContent {
 
     public static final RegistryObject<EntityType<SilkBoss>> BOSS =
             ENTITY_TYPES.register("silk_boss", () ->
-                    EntityType.Builder.<SilkBoss>of(SilkBoss::new, MobCategory.MONSTER)
+                    EntityType.Builder.<SilkBoss>of(LockedSilkBoss::new, MobCategory.MONSTER)
                             .sized(1.8F, 4.4F)
                             .clientTrackingRange(12)
                             .updateInterval(1)
