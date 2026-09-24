@@ -52,6 +52,9 @@ public final class MountNetwork {
         if (MountData.hasMount(player, "ghost_wolf_stars")) {
             owned.add("ghost_wolf_stars");
         }
+        if (MountData.hasMount(player, "tengu")) {
+            owned.add("tengu");
+        }
         if (MountData.hasMount(player, "alpaca")) {
             owned.add("alpaca");
         }
@@ -116,6 +119,7 @@ public final class MountNetwork {
                 if (player == null) return;
                 syncTo(player);
                 if (!MountData.hasMount(player, "ghost_wolf_stars")
+                        && !MountData.hasMount(player, "tengu")
                         && !MountData.hasMount(player, "alpaca")
                         && !MountData.hasMount(player, "rabbit")
                         && !MountData.hasMount(player, "bamboo_horse")) {
@@ -126,7 +130,6 @@ public final class MountNetwork {
             c.setPacketHandled(true);
         }
     }
-
 
     public static void sendSilkReviveLock(ServerPlayer player, int ticks) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new SilkReviveLockPacket(ticks));
@@ -159,6 +162,7 @@ public final class MountNetwork {
             c.setPacketHandled(true);
         }
     }
+
     /** 副本战斗HUD同步。仅服务端发送给处于对应实例中的玩家。 */
     public record DungeonHudMember(String name, int status) {
         // status: 0=存活，1=死亡/旁观，2=离线
