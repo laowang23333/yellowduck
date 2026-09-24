@@ -46,6 +46,15 @@ public class ModCreativeTabs {
                         output.accept(ModItems.ALPACA_MOUNT.get());
                         output.accept(ModItems.RABBIT_MOUNT.get());
                         output.accept(ModItems.BAMBOO_HORSE_MOUNT.get());
+
+                        // Boss / 生物头颅展示方块
+                        output.accept(ModBlocks.EARL_HEAD_ITEM.get());
+                        output.accept(ModBlocks.SAKURA_HEAD_ITEM.get());
+                        output.accept(ModBlocks.TOY_BEAR_HEAD_ITEM.get());
+                        output.accept(ModBlocks.ALPACA_HEAD_ITEM.get());
+                        output.accept(ModBlocks.CLEOPATRA_HEAD_ITEM.get());
+                        output.accept(ModBlocks.SNAKE_HEAD_ITEM.get());
+                        output.accept(ModBlocks.SNOW_MONSTER_HEAD_ITEM.get());
                     })
                     .build());
 }

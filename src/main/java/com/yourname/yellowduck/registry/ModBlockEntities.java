@@ -2,6 +2,7 @@ package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.block.BigChestBlockEntity;
+import com.yourname.yellowduck.block.BossHeadBlockEntity;
 import com.yourname.yellowduck.block.MeetStoneBlockEntity;
 import com.yourname.yellowduck.block.ProfessorSilkBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -39,4 +40,14 @@ public class ModBlockEntities {
                     () -> BlockEntityType.Builder.of(
                             (pos, state) -> new ProfessorSilkBlockEntity(ModBlockEntities.PROFESSOR_SILK.get(), pos, state),
                             ModBlocks.PROFESSOR_SILK.get()).build(null));
+
+    // 7 个头颅方块共用一个轻量 BlockEntity，客户端渲染器按注册类型选择对应 GLB。
+    public static final RegistryObject<BlockEntityType<BossHeadBlockEntity>> BOSS_HEAD =
+            BLOCK_ENTITIES.register("boss_head",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> new BossHeadBlockEntity(ModBlockEntities.BOSS_HEAD.get(), pos, state),
+                            ModBlocks.EARL_HEAD.get(), ModBlocks.SAKURA_HEAD.get(),
+                            ModBlocks.TOY_BEAR_HEAD.get(), ModBlocks.ALPACA_HEAD.get(),
+                            ModBlocks.CLEOPATRA_HEAD.get(), ModBlocks.SNAKE_HEAD.get(),
+                            ModBlocks.SNOW_MONSTER_HEAD.get()).build(null));
 }

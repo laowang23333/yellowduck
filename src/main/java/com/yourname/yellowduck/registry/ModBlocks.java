@@ -2,6 +2,7 @@ package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.block.BigChestBlock;
+import com.yourname.yellowduck.block.BossHeadBlock;
 import com.yourname.yellowduck.block.IndStatueBlock;
 import com.yourname.yellowduck.block.MeetStoneBlock;
 import com.yourname.yellowduck.item.MeetStoneItem;
@@ -10,6 +11,7 @@ import com.yourname.yellowduck.block.SakuraEruptionMarkerBlock;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.RecordItem;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
@@ -175,4 +177,57 @@ public class ModBlocks {
 
     public static final RegistryObject<Item> DUNGEON_BOSS_SPAWN_MARKER_ITEM = ITEMS.register("dungeon_boss_spawn_marker",
             () -> new BlockItem(DUNGEON_BOSS_SPAWN_MARKER.get(), new Item.Properties()));
+
+    // =========================
+    // Boss / 生物头颅展示方块
+    // =========================
+
+    private static BlockBehaviour.Properties headProperties() {
+        return BlockBehaviour.Properties.of()
+                .mapColor(MapColor.COLOR_GRAY)
+                .strength(1.5F)
+                .noOcclusion();
+    }
+
+    public static final RegistryObject<Block> EARL_HEAD = BLOCKS.register("earl_head",
+            () -> new BossHeadBlock(headProperties()));
+    public static final RegistryObject<Item> EARL_HEAD_ITEM = ITEMS.register("earl_head",
+            () -> new com.yourname.yellowduck.item.BossHeadItem(EARL_HEAD.get(), new Item.Properties(),
+                    new ResourceLocation(YellowDuckMod.MOD_ID, "boss_head/earl_head")));
+
+    public static final RegistryObject<Block> SAKURA_HEAD = BLOCKS.register("sakura_head",
+            () -> new BossHeadBlock(headProperties()));
+    public static final RegistryObject<Item> SAKURA_HEAD_ITEM = ITEMS.register("sakura_head",
+            () -> new com.yourname.yellowduck.item.BossHeadItem(SAKURA_HEAD.get(), new Item.Properties(),
+                    new ResourceLocation(YellowDuckMod.MOD_ID, "boss_head/sakura_head")));
+
+    public static final RegistryObject<Block> TOY_BEAR_HEAD = BLOCKS.register("toy_bear_head",
+            () -> new BossHeadBlock(headProperties()));
+    public static final RegistryObject<Item> TOY_BEAR_HEAD_ITEM = ITEMS.register("toy_bear_head",
+            () -> new com.yourname.yellowduck.item.BossHeadItem(TOY_BEAR_HEAD.get(), new Item.Properties(),
+                    new ResourceLocation(YellowDuckMod.MOD_ID, "boss_head/toy_bear_head")));
+
+    public static final RegistryObject<Block> ALPACA_HEAD = BLOCKS.register("alpaca_head",
+            () -> new BossHeadBlock(headProperties()));
+    public static final RegistryObject<Item> ALPACA_HEAD_ITEM = ITEMS.register("alpaca_head",
+            () -> new com.yourname.yellowduck.item.BossHeadItem(ALPACA_HEAD.get(), new Item.Properties(),
+                    new ResourceLocation(YellowDuckMod.MOD_ID, "boss_head/alpaca_head")));
+
+    public static final RegistryObject<Block> CLEOPATRA_HEAD = BLOCKS.register("cleopatra_head",
+            () -> new BossHeadBlock(headProperties()));
+    public static final RegistryObject<Item> CLEOPATRA_HEAD_ITEM = ITEMS.register("cleopatra_head",
+            () -> new com.yourname.yellowduck.item.BossHeadItem(CLEOPATRA_HEAD.get(), new Item.Properties(),
+                    new ResourceLocation(YellowDuckMod.MOD_ID, "boss_head/cleopatra_head")));
+
+    public static final RegistryObject<Block> SNAKE_HEAD = BLOCKS.register("snake_head",
+            () -> new BossHeadBlock(headProperties()));
+    public static final RegistryObject<Item> SNAKE_HEAD_ITEM = ITEMS.register("snake_head",
+            () -> new com.yourname.yellowduck.item.BossHeadItem(SNAKE_HEAD.get(), new Item.Properties(),
+                    new ResourceLocation(YellowDuckMod.MOD_ID, "boss_head/snake_head")));
+
+    public static final RegistryObject<Block> SNOW_MONSTER_HEAD = BLOCKS.register("snow_monster_head",
+            () -> new BossHeadBlock(headProperties()));
+    public static final RegistryObject<Item> SNOW_MONSTER_HEAD_ITEM = ITEMS.register("snow_monster_head",
+            () -> new com.yourname.yellowduck.item.BossHeadItem(SNOW_MONSTER_HEAD.get(), new Item.Properties(),
+                    new ResourceLocation(YellowDuckMod.MOD_ID, "boss_head/snow_monster_head")));
 }
