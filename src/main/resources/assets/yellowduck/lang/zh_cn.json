@@ -81,5 +81,10 @@
   "block.yellowduck.snake_head": "蛇头颅",
   "item.yellowduck.snake_head": "蛇头颅",
   "block.yellowduck.snow_monster_head": "雪怪头颅",
-  "item.yellowduck.snow_monster_head": "雪怪头颅"
+  "item.yellowduck.snow_monster_head": "雪怪头颅",
+  "item.yellowduck.red_moon_crystal": "红月晶石",
+  "item.yellowduck.high_saddle": "高鞍",
+  "entity.yellowduck.tengu_boss": "天狗",
+  "entity.yellowduck.tengu_wild_mount": "天狗",
+  "entity.yellowduck.tengu_mount": "天狗"
 }
