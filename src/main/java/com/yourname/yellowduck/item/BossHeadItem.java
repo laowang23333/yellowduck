@@ -1,19 +1,18 @@
 package com.yourname.yellowduck.item;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.math.Axis;
 import com.yourname.yellowduck.client.gltf.YellowGltfModel;
 import com.yourname.yellowduck.client.gltf.YellowGltfModelCache;
 import com.yourname.yellowduck.client.gltf.YellowGltfRenderUtil;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.model.geom.EntityModelSet;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
-import net.minecraft.client.model.geom.EntityModelSet;
-import net.minecraft.world.item.ItemDisplayContext;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraftforge.client.extensions.common.IClientItemExtensions;
 
@@ -65,10 +64,12 @@ public class BossHeadItem extends BlockItem {
             poseStack.pushPose();
             try {
                 poseStack.translate(0.5D, 0.08D, 0.5D);
-                // GUI/item transforms view the GLB from the opposite side of the
-                // world-facing renderer, so turn it around to show the face.
-                poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+
+                // boss_head 的 GLB 原始正面就是 SOUTH(+Z)。
+                // GUI/创造物品栏已经从 +Z 一侧观察 builtin/entity，旧代码再转 180°
+                // 会把头颅背面转到镜头前。这里不再额外反转，让创造栏直接显示正脸。
                 poseStack.scale(0.1F, 0.1F, 0.1F);
+
                 YellowGltfRenderUtil.renderModel(model, poseStack, buffer, packedLight,
                         0.0F, null, false);
             } finally {
