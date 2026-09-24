@@ -17,6 +17,7 @@ import com.yourname.yellowduck.registry.ModEntities;
 import com.yourname.yellowduck.registry.ModSounds;
 import com.yourname.yellowduck.silk.SilkConfig;
 import com.yourname.yellowduck.silk.SilkContent;
+import com.yourname.yellowduck.tengu.TenguContent;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
@@ -37,6 +38,7 @@ public class YellowDuckMod {
         CleopatraEntities.TYPES.register(bus);
         SilkContent.ENTITY_TYPES.register(bus);
         GarmrContent.ENTITY_TYPES.register(bus);
+        TenguContent.ENTITY_TYPES.register(bus);
         com.yourname.yellowduck.registry.ModItems.ITEMS.register(bus);
         ModParticles.PARTICLES.register(bus);
 
