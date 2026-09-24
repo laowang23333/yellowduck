@@ -2,6 +2,9 @@ package com.yourname.yellowduck.tengu;
 
 import com.yourname.yellowduck.boss.NetcraftBossBase;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -20,11 +23,16 @@ import net.minecraft.world.level.Level;
 /**
  * 主世界夜间随机刷新的世界 Boss：天狗。
  *
- * 基础规则：100000 血 / 120 攻击；击杀时 10% 生成一只未驯服天狗。
- * 未驯服天狗 3 分钟后自动消失；真正的驯服交互逻辑留到后续版本接入。
+ * 100000 血 / 120 攻击；击杀时 10% 生成一只未驯服天狗。
  */
 public final class TenguBoss extends NetcraftBossBase {
+    public static final EntityDataAccessor<Boolean> ATTACKING =
+            SynchedEntityData.defineId(TenguBoss.class, EntityDataSerializers.BOOLEAN);
+    public static final EntityDataAccessor<Integer> ATTACK_SERIAL =
+            SynchedEntityData.defineId(TenguBoss.class, EntityDataSerializers.INT);
+
     private boolean mountRewardRolled;
+    private int attackAnimationTicks;
 
     public TenguBoss(EntityType<? extends TenguBoss> type, Level level) {
         super(type, level);
@@ -43,6 +51,13 @@ public final class TenguBoss extends NetcraftBossBase {
     }
 
     @Override
+    protected void defineSynchedData() {
+        super.defineSynchedData();
+        entityData.define(ATTACKING, false);
+        entityData.define(ATTACK_SERIAL, 0);
+    }
+
+    @Override
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0D, true));
@@ -53,6 +68,31 @@ public final class TenguBoss extends NetcraftBossBase {
     @Override
     public Component getName() {
         return Component.literal("天狗");
+    }
+
+    public boolean isAttackAnimating() {
+        return entityData.get(ATTACKING);
+    }
+
+    public int getAttackAnimationSerial() {
+        return entityData.get(ATTACK_SERIAL);
+    }
+
+    @Override
+    public boolean isPlayingAttackAnimation() {
+        return isAttackAnimating();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+
+        if (!level().isClientSide && attackAnimationTicks > 0) {
+            attackAnimationTicks--;
+            if (attackAnimationTicks <= 0) {
+                entityData.set(ATTACKING, false);
+            }
+        }
     }
 
     @Override
@@ -108,8 +148,20 @@ public final class TenguBoss extends NetcraftBossBase {
         if (!(target instanceof LivingEntity living) || !living.isAlive()) {
             return false;
         }
+
         faceTargetForAttack(living);
-        return hurtWithoutKnockback(living, damageSources().mobAttack(this), getNetcraftAttackDamage());
+
+        if (!level().isClientSide) {
+            entityData.set(ATTACKING, true);
+            entityData.set(ATTACK_SERIAL, entityData.get(ATTACK_SERIAL) + 1);
+            attackAnimationTicks = TenguConfig.ATTACK_ANIMATION_TICKS;
+        }
+
+        return hurtWithoutKnockback(
+                living,
+                damageSources().mobAttack(this),
+                getNetcraftAttackDamage()
+        );
     }
 
     @Override

@@ -3,6 +3,8 @@ package com.yourname.yellowduck.tengu;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.yourname.yellowduck.YellowDuckMod;
+import com.yourname.yellowduck.client.ClientEntityMotionState;
+import com.yourname.yellowduck.client.MountAnimationState;
 import com.yourname.yellowduck.client.gltf.YellowNativeEntityRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -51,7 +53,12 @@ public final class TenguClient {
 
         @Override
         protected AnimationSpec animationFor(TenguBoss entity) {
-            return loop("Anim-1");
+            if (entity.isAttackAnimating()) {
+                return once("tengu_attack", entity.getAttackAnimationSerial());
+            }
+
+            boolean moving = ClientEntityMotionState.isMoving(entity, false, 4);
+            return loop(moving ? "tengu_walk" : "tengu_idle");
         }
 
         @Override
@@ -69,7 +76,8 @@ public final class TenguClient {
 
         @Override
         protected AnimationSpec animationFor(TenguWildMountEntity entity) {
-            return loop("Anim-1");
+            boolean moving = ClientEntityMotionState.isMoving(entity, false, 4);
+            return loop(moving ? "tengu_walk" : "tengu_idle");
         }
     }
 
@@ -80,7 +88,7 @@ public final class TenguClient {
 
         @Override
         protected AnimationSpec animationFor(TenguMountEntity entity) {
-            return loop("Anim-1");
+            return loop(MountAnimationState.isWalking(entity) ? "tengu_walk" : "tengu_idle");
         }
 
         @Override
@@ -94,7 +102,7 @@ public final class TenguClient {
     }
 
     /**
-     * 头顶世界空间血条：复用项目现有 NetCraft 血条贴图，不再占用屏幕顶部 HUD。
+     * 头顶世界空间血条：复用项目现有 NetCraft 血条贴图，不占用屏幕顶部 HUD。
      */
     private static void renderOverHeadHealth(TenguBoss boss, PoseStack pose, MultiBufferSource buffers) {
         Minecraft mc = Minecraft.getInstance();
