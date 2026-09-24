@@ -54,6 +54,7 @@ public final class GarmrHelperEntity extends Monster {
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D);
     }
 
+
     @Override
     public boolean isPushable() {
         return false;
@@ -69,6 +70,21 @@ public final class GarmrHelperEntity extends Monster {
 
     @Override
     public void knockback(double strength, double x, double z) {
+    }
+
+    /**
+     * 阿努比斯平时是无敌的，但 P3 小恶魔命中时 Boss 会调用 kill()。
+     * 原实现因为 invulnerable=true 可能让 kill 伤害被无敌判定拦掉，表现为小恶魔爆炸后阿努比斯仍站着。
+     * 阿努比斯没有普通死亡来源，因此这里对该 variant 直接 discard，保证机制结算与视觉一致。
+     */
+    @Override
+    public void kill() {
+        if (getVariant() == ANUBIS) {
+            setInvulnerable(false);
+            discard();
+            return;
+        }
+        super.kill();
     }
 
     @Override
@@ -87,7 +103,6 @@ public final class GarmrHelperEntity extends Monster {
         entityData.set(VARIANT, variant);
     }
 
-    /** 服务端射手发射投射物时调用，客户端据此播放一次拉弓/射击段。 */
     public void triggerArcherAttack() {
         if (getVariant() == P1_ARCHER) entityData.set(ARCHER_ATTACK_START, tickCount);
     }

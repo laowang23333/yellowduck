@@ -50,19 +50,6 @@ public final class GarmrClient {
         private static final ResourceLocation WING =
                 new ResourceLocation(YellowDuckMod.MOD_ID, "models/gltf/garmr_wing_embedded.glb");
         private static final float SCALE = 0.10F;
-        private static final float FPS = 30.0F;
-        private static final String SOURCE_ANIMATION = "Anim-1";
-
-        private static final FrameRange IDLE = new FrameRange(0, 20, false);
-        private static final FrameRange BASIC = new FrameRange(44, 66, false);
-        private static final FrameRange ICE_BREATH = new FrameRange(93, 117, false);
-        private static final FrameRange FIRE_BREATH = new FrameRange(121, 142, false);
-        private static final FrameRange RANGED = new FrameRange(143, 172, false);
-        private static final FrameRange DEATH = new FrameRange(176, 200, false);
-        private static final FrameRange TAKEOFF = new FrameRange(274, 303, false);
-        private static final FrameRange AIR_IDLE = new FrameRange(304, 330, false);
-        private static final FrameRange AIR_RANGED = new FrameRange(331, 354, false);
-        private static final FrameRange LANDING = new FrameRange(274, 303, true);
 
         private YellowGltfModel body;
         private YellowGltfModel wing;
@@ -91,23 +78,24 @@ public final class GarmrClient {
             }
 
             if (!failed && body != null && wing != null) {
-                if (!body.animationByName.containsKey(SOURCE_ANIMATION)
-                        || !wing.animationByName.containsKey(SOURCE_ANIMATION)) {
-                    failed = true;
-                    LOGGER.error("[YellowDuck/Garmr] body/wing GLB missing original Anim-1");
-                } else {
-                    AnimationState animation = selectAnimation(entity, partialTick);
-                    pose.pushPose();
-                    try {
-                        pose.mulPose(Axis.YP.rotationDegrees(180.0F - entityYaw));
-                        pose.scale(SCALE, SCALE, SCALE);
-                        YellowGltfRenderUtil.renderModel(body, pose, buffers, packedLight,
-                                animation.sampleSeconds, SOURCE_ANIMATION, false);
-                        YellowGltfRenderUtil.renderModel(wing, pose, buffers, packedLight,
-                                animation.sampleSeconds, SOURCE_ANIMATION, false);
-                    } finally {
-                        pose.popPose();
-                    }
+                AnimationState animation = selectAnimation(entity, partialTick);
+                if (!body.animationByName.containsKey(animation.clip)
+                        || !wing.animationByName.containsKey(animation.clip)) {
+                    LOGGER.error("[YellowDuck/Garmr] missing animation clip {} in body/wing GLB", animation.clip);
+                    animation = new AnimationState(entity.isVisualAirborne() ? "air_idle" : "idle",
+                            (entity.tickCount + partialTick) / 20.0F, true);
+                }
+
+                pose.pushPose();
+                try {
+                    pose.mulPose(Axis.YP.rotationDegrees(180.0F - entityYaw));
+                    pose.scale(SCALE, SCALE, SCALE);
+                    YellowGltfRenderUtil.renderModel(body, pose, buffers, packedLight,
+                            animation.seconds, animation.clip, animation.loop);
+                    YellowGltfRenderUtil.renderModel(wing, pose, buffers, packedLight,
+                            animation.seconds, animation.clip, animation.loop);
+                } finally {
+                    pose.popPose();
                 }
             }
             super.render(entity, entityYaw, partialTick, pose, buffers, packedLight);
@@ -119,59 +107,32 @@ public final class GarmrClient {
                     (entity.tickCount + partialTick - entity.visualActionStartTick()) / 20.0F);
 
             return switch (action) {
-                case GarmrBoss.ACT_BASIC -> state(BASIC, actionSeconds, GarmrConfig.BASIC_ACTION_TICKS, false);
-                case GarmrBoss.ACT_FIRE_BREATH -> state(FIRE_BREATH, actionSeconds,
-                        GarmrConfig.BREATH_DURATION_TICKS, false);
-                case GarmrBoss.ACT_ICE_BREATH -> state(ICE_BREATH, actionSeconds,
-                        GarmrConfig.BREATH_DURATION_TICKS, false);
-                case GarmrBoss.ACT_RANGED -> state(entity.isVisualAirborne() ? AIR_RANGED : RANGED,
-                        actionSeconds, GarmrConfig.RANGED_ACTION_TICKS, false);
-                case GarmrBoss.ACT_TAKEOFF -> state(TAKEOFF, actionSeconds,
-                        GarmrConfig.TAKEOFF_TICKS, false);
-                case GarmrBoss.ACT_LANDING -> state(LANDING, actionSeconds,
-                        GarmrConfig.LANDING_TICKS, false);
-                case GarmrBoss.ACT_DEATH -> naturalState(DEATH, actionSeconds, false);
-                default -> loopState(entity.isVisualAirborne() ? AIR_IDLE : IDLE,
-                        (entity.tickCount + partialTick) / 20.0F);
+                case GarmrBoss.ACT_BASIC -> new AnimationState("basic_attack", actionSeconds, false);
+                case GarmrBoss.ACT_FIRE_BREATH -> new AnimationState("fire_breath",
+                        scaleToLogicalDuration("fire_breath", actionSeconds, GarmrConfig.BREATH_DURATION_TICKS), false);
+                case GarmrBoss.ACT_ICE_BREATH -> new AnimationState("ice_breath",
+                        scaleToLogicalDuration("ice_breath", actionSeconds, GarmrConfig.BREATH_DURATION_TICKS), false);
+                case GarmrBoss.ACT_RANGED -> new AnimationState(
+                        entity.isVisualAirborne() ? "air_ranged" : "ranged_attack", actionSeconds, false);
+                case GarmrBoss.ACT_TAKEOFF -> new AnimationState("takeoff",
+                        scaleToLogicalDuration("takeoff", actionSeconds, GarmrConfig.TAKEOFF_TICKS), false);
+                case GarmrBoss.ACT_LANDING -> new AnimationState("landing",
+                        scaleToLogicalDuration("landing", actionSeconds, GarmrConfig.LANDING_TICKS), false);
+                case GarmrBoss.ACT_DEATH -> new AnimationState("death", actionSeconds, false);
+                default -> new AnimationState(entity.isVisualAirborne() ? "air_idle" : "idle",
+                        (entity.tickCount + partialTick) / 20.0F, true);
             };
         }
 
-        private AnimationState state(FrameRange range, float actionSeconds, int logicalTicks, boolean loop) {
-            float rangeSeconds = range.lengthSeconds();
+        private float scaleToLogicalDuration(String clip, float actionSeconds, int logicalTicks) {
+            float clipDuration = com.yourname.yellowduck.client.gltf.YellowGltfAnimationPlayer
+                    .getAnimationDuration(body, clip);
             float logicalSeconds = Math.max(0.05F, logicalTicks / 20.0F);
-            float progressSeconds = actionSeconds * rangeSeconds / logicalSeconds;
-            if (loop) progressSeconds = wrap(progressSeconds, rangeSeconds);
-            else progressSeconds = Math.max(0.0F, Math.min(rangeSeconds, progressSeconds));
-            return new AnimationState(range.sample(progressSeconds));
+            if (clipDuration <= 0.0F) return actionSeconds;
+            return actionSeconds * clipDuration / logicalSeconds;
         }
 
-        private AnimationState naturalState(FrameRange range, float seconds, boolean loop) {
-            float local = loop ? wrap(seconds, range.lengthSeconds())
-                    : Math.max(0.0F, Math.min(range.lengthSeconds(), seconds));
-            return new AnimationState(range.sample(local));
-        }
-
-        private AnimationState loopState(FrameRange range, float seconds) {
-            return new AnimationState(range.sample(wrap(seconds, range.lengthSeconds())));
-        }
-
-        private float wrap(float value, float length) {
-            if (length <= 1.0E-6F) return 0.0F;
-            float result = value % length;
-            return result < 0.0F ? result + length : result;
-        }
-
-        private record AnimationState(float sampleSeconds) {}
-
-        private record FrameRange(int firstFrame, int lastFrame, boolean reverse) {
-            float lengthSeconds() { return Math.max(1, lastFrame - firstFrame) / FPS; }
-            float sample(float localSeconds) {
-                float first = firstFrame / FPS;
-                float last = lastFrame / FPS;
-                float clamped = Math.max(0.0F, Math.min(lengthSeconds(), localSeconds));
-                return reverse ? last - clamped : first + clamped;
-            }
-        }
+        private record AnimationState(String clip, float seconds, boolean loop) {}
     }
 
     /** V5 原资源辅助实体渲染。每个 GLB 都只保留原始 Anim-1，避免重复动画导致文件膨胀。 */
@@ -226,7 +187,6 @@ public final class GarmrClient {
                     if (entity.getVariant() == GarmrHelperEntity.P1_ARCHER) {
                         float attackSeconds = entity.archerAttackSeconds(partialTick);
                         if (attackSeconds >= 0.0F && attackSeconds < 1.70F) {
-                            // 射手 GLB 只有一个 Anim-1，已按原始帧段拆出：0-40待机、41-85行走、86-135拉弓/射击。
                             sampleSeconds = sampleOnce(86, 135, attackSeconds);
                             loop = false;
                         } else {
@@ -236,7 +196,6 @@ public final class GarmrClient {
                             sampleSeconds = sampleLoop(first, last, seconds);
                         }
                     } else {
-                        // 亡灵夫人动画表已从原 config/represent/ani.txt 确认：stand 0-20 / walk 23-43。
                         if ((entity.getVariant() == GarmrHelperEntity.LADY_ICE
                                 || entity.getVariant() == GarmrHelperEntity.LADY_FIRE
                                 || entity.getVariant() == GarmrHelperEntity.DEATH_GUARD)
