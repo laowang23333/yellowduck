@@ -8,6 +8,7 @@ import com.yourname.yellowduck.client.gltf.YellowGltfRenderUtil;
 import com.yourname.yellowduck.item.GltfModelItem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -20,7 +21,7 @@ import java.util.Map;
 
 /**
  * YellowDuck Native GLTF 通用物品渲染器。
- * 全 Mod 共用一个 BEWLR，根据 ItemStack 自己决定使用哪个 GLB。
+ * 修复：GUI / 地面 / 展示框中过暗发黑，改为 FULL_BRIGHT。
  */
 @OnlyIn(Dist.CLIENT)
 public final class GltfItemRenderer extends BlockEntityWithoutLevelRenderer {
@@ -67,10 +68,13 @@ public final class GltfItemRenderer extends BlockEntityWithoutLevelRenderer {
         Bounds b = bounds.get(modelLocation);
         if (b == null || b.maxExtent <= 1.0E-6F) return;
 
+        int renderLight = switch (displayContext) {
+            case GUI, GROUND, FIXED -> LightTexture.FULL_BRIGHT;
+            default -> packedLight;
+        };
+
         pose.pushPose();
         try {
-            // builtin/entity 已经处理当前显示场景的基础变换。
-            // 这里只把真实 GLB 居中并按包围盒统一缩放。
             pose.translate(0.5D, 0.5D, 0.5D);
 
             float contextScale = switch (displayContext) {
@@ -91,7 +95,7 @@ public final class GltfItemRenderer extends BlockEntityWithoutLevelRenderer {
                     current,
                     pose,
                     buffers,
-                    packedLight,
+                    renderLight,
                     0.0F,
                     null,
                     false
