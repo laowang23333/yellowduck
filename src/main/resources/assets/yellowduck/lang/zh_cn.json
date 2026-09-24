@@ -67,5 +67,19 @@
   "item.yellowduck.dungeon_boss_spawn_marker": "Boss出生点方块",
   "entity.yellowduck.silk_black_ball": "黑暗能量球",
   "entity.yellowduck.silk_black_water": "腐蚀黑水",
-  "entity.yellowduck.silk_visual_circle": "斯尔克技能预警圈"
+  "entity.yellowduck.silk_visual_circle": "斯尔克技能预警圈",
+  "block.yellowduck.earl_head": "伯爵头颅",
+  "item.yellowduck.earl_head": "伯爵头颅",
+  "block.yellowduck.sakura_head": "小樱头颅",
+  "item.yellowduck.sakura_head": "小樱头颅",
+  "block.yellowduck.toy_bear_head": "布偶熊头颅",
+  "item.yellowduck.toy_bear_head": "布偶熊头颅",
+  "block.yellowduck.alpaca_head": "羊驼头颅",
+  "item.yellowduck.alpaca_head": "羊驼头颅",
+  "block.yellowduck.cleopatra_head": "艳后头颅",
+  "item.yellowduck.cleopatra_head": "艳后头颅",
+  "block.yellowduck.snake_head": "蛇头颅",
+  "item.yellowduck.snake_head": "蛇头颅",
+  "block.yellowduck.snow_monster_head": "雪怪头颅",
+  "item.yellowduck.snow_monster_head": "雪怪头颅"
 }
