@@ -2,6 +2,7 @@ package com.yourname.yellowduck.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.yourname.yellowduck.YellowDuckMod;
+import com.yourname.yellowduck.block.BossHeadBlock;
 import com.yourname.yellowduck.block.BossHeadBlockEntity;
 import com.yourname.yellowduck.client.gltf.YellowGltfModel;
 import com.yourname.yellowduck.client.gltf.YellowGltfModelCache;
@@ -11,7 +12,9 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Block;
+import com.mojang.math.Axis;
 
 import java.util.Map;
 
@@ -48,6 +51,8 @@ public final class BossHeadRenderer implements BlockEntityRenderer<BossHeadBlock
         poseStack.pushPose();
         try {
             poseStack.translate(0.5D, 0.0D, 0.5D);
+            Direction facing = blockEntity.getBlockState().getValue(BossHeadBlock.FACING);
+            poseStack.mulPose(Axis.YP.rotationDegrees(facing.toYRot()));
             poseStack.scale(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
             YellowGltfRenderUtil.renderModel(model, poseStack, buffer, packedLight,
                     0.0F, null, false);
