@@ -19,17 +19,17 @@ public abstract class GarmrConfiguredDefenseMixin {
                 "garmr", "armor", GarmrConfig.BOSS_DEFENSE)));
     }
 
-    @Inject(method = "getMeleeDefense", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getMeleeDefense", at = @At("HEAD"), cancellable = true, remap = false)
     private void yellowduck$melee(CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(yellowduck$configDefense());
     }
 
-    @Inject(method = "getRangedDefense", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getRangedDefense", at = @At("HEAD"), cancellable = true, remap = false)
     private void yellowduck$ranged(CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(yellowduck$configDefense());
     }
 
-    @Inject(method = "getMagicDefense", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getMagicDefense", at = @At("HEAD"), cancellable = true, remap = false)
     private void yellowduck$magic(CallbackInfoReturnable<Integer> cir) {
         cir.setReturnValue(yellowduck$configDefense());
     }
