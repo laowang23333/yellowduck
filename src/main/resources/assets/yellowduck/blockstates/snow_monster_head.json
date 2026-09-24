@@ -1,6 +1,15 @@
 {
   "variants": {
-    "": {
+    "facing=north": {
+      "model": "yellowduck:block/snow_monster_head"
+    },
+    "facing=south": {
+      "model": "yellowduck:block/snow_monster_head"
+    },
+    "facing=west": {
+      "model": "yellowduck:block/snow_monster_head"
+    },
+    "facing=east": {
       "model": "yellowduck:block/snow_monster_head"
     }
   }

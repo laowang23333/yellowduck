@@ -1,6 +1,15 @@
 {
   "variants": {
-    "": {
+    "facing=north": {
+      "model": "yellowduck:block/snake_head"
+    },
+    "facing=south": {
+      "model": "yellowduck:block/snake_head"
+    },
+    "facing=west": {
+      "model": "yellowduck:block/snake_head"
+    },
+    "facing=east": {
       "model": "yellowduck:block/snake_head"
     }
   }

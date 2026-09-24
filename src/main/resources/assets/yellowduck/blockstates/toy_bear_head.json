@@ -1,6 +1,15 @@
 {
   "variants": {
-    "": {
+    "facing=north": {
+      "model": "yellowduck:block/toy_bear_head"
+    },
+    "facing=south": {
+      "model": "yellowduck:block/toy_bear_head"
+    },
+    "facing=west": {
+      "model": "yellowduck:block/toy_bear_head"
+    },
+    "facing=east": {
       "model": "yellowduck:block/toy_bear_head"
     }
   }
