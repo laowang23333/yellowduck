@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /** 恐惧之地 Native GLTF 渲染：加姆主体/翅膀 + V5 已解析的辅助实体原模型。 */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -54,6 +55,13 @@ public final class GarmrClient {
         private YellowGltfModel body;
         private YellowGltfModel wing;
         private boolean failed;
+
+        // ACTION_START_TICK 是服务端 Entity#tickCount，而客户端 Entity#tickCount
+        // 并不保证与服务端处于同一时间轴。直接相减会让动作时间长期为 0，
+        // 表现为“技能正常结算，但模型永远停在动作第一帧”。
+        // ACTION_SERIAL 每次服务端 setAction 都会 +1，因此以它作为动作重启信号，
+        // 再使用纯客户端 tickCount 记录本地起始时间，彻底避免跨端 tick 偏移。
+        private final Map<UUID, ActionClock> actionClocks = new HashMap<>();
 
         GarmrRenderer(EntityRendererProvider.Context context) {
             super(context);
@@ -103,8 +111,19 @@ public final class GarmrClient {
 
         private AnimationState selectAnimation(GarmrBoss entity, float partialTick) {
             int action = entity.visualAction();
-            float actionSeconds = Math.max(0.0F,
-                    (entity.tickCount + partialTick - entity.visualActionStartTick()) / 20.0F);
+
+            // 不再拿客户端 entity.tickCount 去减服务端同步过来的 ACTION_START_TICK。
+            // 两边实体创建时刻可以不同，那个差值会永久存在，导致 actionSeconds
+            // 一直被 Math.max 压成 0，所有攻击/起飞/吐息都只显示第一帧。
+            int serial = entity.getEntityData().get(GarmrBoss.ACTION_SERIAL);
+            float nowTicks = entity.tickCount + partialTick;
+            UUID id = entity.getUUID();
+            ActionClock clock = actionClocks.get(id);
+            if (clock == null || clock.serial != serial) {
+                clock = new ActionClock(serial, nowTicks);
+                actionClocks.put(id, clock);
+            }
+            float actionSeconds = Math.max(0.0F, (nowTicks - clock.localStartTick) / 20.0F);
 
             return switch (action) {
                 case GarmrBoss.ACT_BASIC -> new AnimationState("basic_attack", actionSeconds, false);
@@ -133,6 +152,8 @@ public final class GarmrClient {
         }
 
         private record AnimationState(String clip, float seconds, boolean loop) {}
+
+        private record ActionClock(int serial, float localStartTick) {}
     }
 
     /** V5 原资源辅助实体渲染。每个 GLB 都只保留原始 Anim-1，避免重复动画导致文件膨胀。 */
