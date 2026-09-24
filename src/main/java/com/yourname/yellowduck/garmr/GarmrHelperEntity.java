@@ -18,10 +18,6 @@ import net.minecraft.world.level.Level;
 
 /**
  * 恐惧之地专用的原资源模型承载实体。
- *
- * <p>V5 把阿努比斯、小恶魔、骷髅射手、死亡召唤骷髅守卫、冰/火亡灵夫人
- * 从 vanilla 占位实体换到同一个轻量实体类型；真正战斗状态仍由 {@link GarmrBoss}
- * 服务器权威逻辑控制，客户端只根据 variant 选择对应 Native GLTF。</p>
  */
 public final class GarmrHelperEntity extends Monster {
     private static final EntityDataAccessor<Integer> VARIANT =
@@ -49,11 +45,11 @@ public final class GarmrHelperEntity extends Monster {
         return Monster.createMonsterAttributes()
                 .add(Attributes.MAX_HEALTH, 1024.0D)
                 .add(Attributes.ATTACK_DAMAGE, 100.0D)
+                .add(Attributes.ATTACK_SPEED, 4.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.28D)
                 .add(Attributes.FOLLOW_RANGE, 64.0D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D);
     }
-
 
     @Override
     public boolean isPushable() {
@@ -72,11 +68,6 @@ public final class GarmrHelperEntity extends Monster {
     public void knockback(double strength, double x, double z) {
     }
 
-    /**
-     * 阿努比斯平时是无敌的，但 P3 小恶魔命中时 Boss 会调用 kill()。
-     * 原实现因为 invulnerable=true 可能让 kill 伤害被无敌判定拦掉，表现为小恶魔爆炸后阿努比斯仍站着。
-     * 阿努比斯没有普通死亡来源，因此这里对该 variant 直接 discard，保证机制结算与视觉一致。
-     */
     @Override
     public void kill() {
         if (getVariant() == ANUBIS) {
@@ -104,7 +95,9 @@ public final class GarmrHelperEntity extends Monster {
     }
 
     public void triggerArcherAttack() {
-        if (getVariant() == P1_ARCHER) entityData.set(ARCHER_ATTACK_START, tickCount);
+        if (getVariant() == P1_ARCHER) {
+            entityData.set(ARCHER_ATTACK_START, tickCount);
+        }
     }
 
     public float archerAttackSeconds(float partialTick) {
@@ -114,7 +107,9 @@ public final class GarmrHelperEntity extends Monster {
     }
 
     public void setArcherMoving(boolean moving) {
-        if (getVariant() == P1_ARCHER) entityData.set(ARCHER_MOVING, moving);
+        if (getVariant() == P1_ARCHER) {
+            entityData.set(ARCHER_MOVING, moving);
+        }
     }
 
     public boolean isArcherMoving() {
@@ -130,7 +125,9 @@ public final class GarmrHelperEntity extends Monster {
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
-        if (tag.contains("GarmrVariant")) setVariant(tag.getInt("GarmrVariant"));
+        if (tag.contains("GarmrVariant")) {
+            setVariant(tag.getInt("GarmrVariant"));
+        }
     }
 
     public boolean isLady() {
@@ -142,22 +139,36 @@ public final class GarmrHelperEntity extends Monster {
     protected void registerGoals() {
         // 熔岩守卫、亡灵战士允许近战 Goal；骷髅射手由 Boss 统一发射远程投射物。
         goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0D, true));
-        targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, net.minecraft.world.entity.player.Player.class, true));
+        targetSelector.addGoal(2,
+                new NearestAttackableTargetGoal<>(
+                        this,
+                        net.minecraft.world.entity.player.Player.class,
+                        true
+                ));
     }
 
     @Override
     public boolean canAttack(LivingEntity target) {
         if (getVariant() != DEATH_GUARD && getVariant() != LAVA_GUARD) return false;
         if (!(target instanceof ServerPlayer player)) return false;
+
         GarmrBoss boss = ownerBoss();
-        return boss != null && boss.isParticipant(player) && super.canAttack(target);
+        return boss != null
+                && boss.isParticipant(player)
+                && super.canAttack(target);
     }
 
     public GarmrBoss ownerBoss() {
         if (!(level() instanceof ServerLevel server)) return null;
         if (!getPersistentData().hasUUID(GarmrBoss.TAG_OWNER)) return null;
-        Entity owner = server.getEntity(getPersistentData().getUUID(GarmrBoss.TAG_OWNER));
-        return owner instanceof GarmrBoss boss && boss.isAlive() ? boss : null;
+
+        Entity owner = server.getEntity(
+                getPersistentData().getUUID(GarmrBoss.TAG_OWNER)
+        );
+
+        return owner instanceof GarmrBoss boss && boss.isAlive()
+                ? boss
+                : null;
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.config.EntityTuningConfig;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraftforge.event.TickEvent;
@@ -13,6 +14,10 @@ import net.minecraftforge.fml.common.Mod;
 /**
  * Garmr helper 共用一个 entity id，普通 EntityTuningConfig 只能命中 garmr_helper。
  * 这里按 variant 每秒重新同步一次各自独立配置，/yd reload 后无需重生怪物。
+ *
+ * v1.0.2：
+ * 任何可选属性都先检查 AttributeInstance，绝不再对未注册属性调用
+ * LivingEntity#getAttributeValue，避免 "Can't find attribute ..." 直接崩服。
  */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID)
 public final class GarmrVariantConfigSyncEvents {
@@ -35,13 +40,20 @@ public final class GarmrVariantConfigSyncEvents {
     }
 
     private static void syncBoss(GarmrBoss boss) {
+        AttributeInstance attackAttr = boss.getAttribute(Attributes.ATTACK_DAMAGE);
+        double currentAttack = attackAttr != null
+                ? attackAttr.getBaseValue()
+                : GarmrConfig.BASIC_DAMAGE;
+
         double attack = EntityTuningConfig.configured(
-                "garmr", "attack_damage", boss.getAttributeValue(Attributes.ATTACK_DAMAGE));
-        set(boss.getAttribute(Attributes.ATTACK_DAMAGE), attack);
+                "garmr", "attack_damage", currentAttack);
+        set(attackAttr, attack);
 
         int attackLevel = (int) Math.round(EntityTuningConfig.configured(
                 "garmr", "attack_level",
-                EntityTuningConfig.configured("garmr", "netcraft_tier", GarmrConfig.BOSS_ATTACK_LEVEL)));
+                EntityTuningConfig.configured(
+                        "garmr", "netcraft_tier", GarmrConfig.BOSS_ATTACK_LEVEL)));
+
         int defenseLevel = (int) Math.round(EntityTuningConfig.configured(
                 "garmr", "defense_level", GarmrConfig.BOSS_DEFENSE_LEVEL));
 
@@ -62,40 +74,70 @@ public final class GarmrVariantConfigSyncEvents {
         AttributeInstance max = helper.getAttribute(Attributes.MAX_HEALTH);
         if (max != null && Math.abs(max.getBaseValue() - maxHealth) > 1.0E-9D) {
             max.setBaseValue(maxHealth);
-            helper.setHealth((float)Math.max(0.1D, Math.min(maxHealth, maxHealth * ratio)));
+            helper.setHealth((float) Math.max(
+                    0.1D,
+                    Math.min(maxHealth, maxHealth * ratio)
+            ));
         }
 
-        set(helper.getAttribute(Attributes.ATTACK_DAMAGE),
-                EntityTuningConfig.configured(section, "attack_damage",
-                        helper.getAttributeValue(Attributes.ATTACK_DAMAGE)));
-        set(helper.getAttribute(Attributes.MOVEMENT_SPEED),
-                EntityTuningConfig.configured(section, "movement_speed",
-                        helper.getAttributeValue(Attributes.MOVEMENT_SPEED)));
-        set(helper.getAttribute(Attributes.ATTACK_SPEED),
-                EntityTuningConfig.configured(section, "attack_speed",
-                        helper.getAttributeValue(Attributes.ATTACK_SPEED)));
-        set(helper.getAttribute(Attributes.ARMOR),
-                EntityTuningConfig.configured(section, "armor",
-                        helper.getAttributeValue(Attributes.ARMOR)));
-        set(helper.getAttribute(Attributes.ARMOR_TOUGHNESS),
-                EntityTuningConfig.configured(section, "armor_toughness",
-                        helper.getAttributeValue(Attributes.ARMOR_TOUGHNESS)));
-        set(helper.getAttribute(Attributes.KNOCKBACK_RESISTANCE),
-                EntityTuningConfig.configured(section, "knockback_resistance",
-                        helper.getAttributeValue(Attributes.KNOCKBACK_RESISTANCE)));
-        set(helper.getAttribute(Attributes.FOLLOW_RANGE),
-                EntityTuningConfig.configured(section, "follow_range",
-                        helper.getAttributeValue(Attributes.FOLLOW_RANGE)));
+        syncAttribute(helper, section, "attack_damage", Attributes.ATTACK_DAMAGE);
+        syncAttribute(helper, section, "movement_speed", Attributes.MOVEMENT_SPEED);
+        syncAttribute(helper, section, "attack_speed", Attributes.ATTACK_SPEED);
+        syncAttribute(helper, section, "armor", Attributes.ARMOR);
+        syncAttribute(helper, section, "armor_toughness", Attributes.ARMOR_TOUGHNESS);
+        syncAttribute(helper, section, "knockback_resistance", Attributes.KNOCKBACK_RESISTANCE);
+        syncAttribute(helper, section, "follow_range", Attributes.FOLLOW_RANGE);
+        syncAttribute(helper, section, "attack_knockback", Attributes.ATTACK_KNOCKBACK);
 
-        helper.getPersistentData().putInt(GarmrBoss.TAG_DEFENSE,
-                (int)Math.round(EntityTuningConfig.configured(
-                        section, "armor", helper.getPersistentData().getInt(GarmrBoss.TAG_DEFENSE))));
-        helper.getPersistentData().putInt(GarmrBoss.TAG_ATTACK_LEVEL,
-                (int)Math.round(EntityTuningConfig.configured(
-                        section, "attack_level", helper.getPersistentData().getInt(GarmrBoss.TAG_ATTACK_LEVEL))));
-        helper.getPersistentData().putInt(GarmrBoss.TAG_DEFENSE_LEVEL,
-                (int)Math.round(EntityTuningConfig.configured(
-                        section, "defense_level", helper.getPersistentData().getInt(GarmrBoss.TAG_DEFENSE_LEVEL))));
+        /*
+         * Garmr 自己的战斗事件使用这三个 TAG 进行固定防御和等级结算。
+         * 即使某个 vanilla Attribute 没有注册，这里仍然可以正常工作。
+         */
+        helper.getPersistentData().putInt(
+                GarmrBoss.TAG_DEFENSE,
+                (int) Math.round(EntityTuningConfig.configured(
+                        section,
+                        "armor",
+                        helper.getPersistentData().getInt(GarmrBoss.TAG_DEFENSE)
+                ))
+        );
+
+        helper.getPersistentData().putInt(
+                GarmrBoss.TAG_ATTACK_LEVEL,
+                (int) Math.round(EntityTuningConfig.configured(
+                        section,
+                        "attack_level",
+                        helper.getPersistentData().getInt(GarmrBoss.TAG_ATTACK_LEVEL)
+                ))
+        );
+
+        helper.getPersistentData().putInt(
+                GarmrBoss.TAG_DEFENSE_LEVEL,
+                (int) Math.round(EntityTuningConfig.configured(
+                        section,
+                        "defense_level",
+                        helper.getPersistentData().getInt(GarmrBoss.TAG_DEFENSE_LEVEL)
+                ))
+        );
+    }
+
+    private static void syncAttribute(
+            GarmrHelperEntity helper,
+            String section,
+            String key,
+            Attribute attribute
+    ) {
+        AttributeInstance instance = helper.getAttribute(attribute);
+
+        // 关键修复：该实体没有注册此属性时直接跳过，绝不能 getAttributeValue(attribute)。
+        if (instance == null) return;
+
+        double configured = EntityTuningConfig.configured(
+                section,
+                key,
+                instance.getBaseValue()
+        );
+        set(instance, configured);
     }
 
     private static String section(GarmrHelperEntity helper) {
@@ -112,7 +154,8 @@ public final class GarmrVariantConfigSyncEvents {
     }
 
     private static void set(AttributeInstance attr, double value) {
-        if (attr != null && Double.isFinite(value)
+        if (attr != null
+                && Double.isFinite(value)
                 && Math.abs(attr.getBaseValue() - value) > 1.0E-9D) {
             attr.setBaseValue(value);
         }
