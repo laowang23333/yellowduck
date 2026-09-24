@@ -5,6 +5,8 @@ import com.yourname.yellowduck.entity.BambooHorseEntity;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.entity.RabbitMountEntity;
 import com.yourname.yellowduck.registry.ModEntities;
+import com.yourname.yellowduck.tengu.TenguContent;
+import com.yourname.yellowduck.tengu.TenguMountEntity;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -39,7 +41,6 @@ public final class MountManager {
             return;
         }
 
-        // 服务端持久化唯一记录是权威状态：即使旧坐骑在 3000 格外或其它维度也不能重复召唤。
         MountSavedData.ActiveMount active = MountSavedData.get(player.server).getActive(player.getUUID());
         if (active != null) {
             player.displayClientMessage(Component.literal(
@@ -63,7 +64,6 @@ public final class MountManager {
             return;
         }
 
-        // 先清除持久化记录。即使实体所在区块当前没加载，它以后重新加载时也会自动自毁。
         data.clear(player.getUUID());
         MountEntity loaded = findLoadedByUuid(player.server, active.entityId());
         if (loaded != null && player.getUUID().equals(loaded.getOwnerUUID())) {
@@ -79,10 +79,6 @@ public final class MountManager {
         return findOwnedMount(player, null);
     }
 
-    /**
-     * 只按持久化 UUID 查当前唯一坐骑，不再用 256 格 AABB。
-     * 如果对应区块未加载会返回 null，但唯一记录仍存在，因此不会允许重复召唤。
-     */
     public static MountEntity findOwnedMount(ServerPlayer player, String mountId) {
         MountSavedData.ActiveMount active = MountSavedData.get(player.server).getActive(player.getUUID());
         if (active == null) return null;
@@ -95,11 +91,6 @@ public final class MountManager {
         return player.getUUID().equals(entity.getOwnerUUID()) ? entity : null;
     }
 
-    /**
-     * MountEntity 每秒调用一次。
-     * 旧版本遗留、重复召唤、跨维度残留的坐骑只要重新加载，就会与 SavedData 权威 UUID 对比；
-     * 不是当前唯一实体的直接清理。
-     */
     public static boolean validateActiveMount(MountEntity mount) {
         if (mount == null || mount.level().isClientSide) return true;
         if (!(mount.level() instanceof ServerLevel level)) return true;
@@ -118,7 +109,6 @@ public final class MountManager {
         return true;
     }
 
-    /** 实体死亡/被清理时只清除与它自身匹配的唯一记录。 */
     public static void onMountRemoved(MountEntity mount) {
         if (mount == null || mount.level().isClientSide) return;
         if (!(mount.level() instanceof ServerLevel level)) return;
@@ -131,7 +121,6 @@ public final class MountManager {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || COUNTDOWNS.isEmpty()) return;
 
-        // ConcurrentHashMap 不使用 iterator.remove，统一按 UUID 删除，避免混合端实现差异。
         for (var entry : COUNTDOWNS.entrySet()) {
             UUID uuid = entry.getKey();
             ServerPlayer player = event.getServer().getPlayerList().getPlayer(uuid);
@@ -174,6 +163,8 @@ public final class MountManager {
             mount = ModEntities.ALPACA_MOUNT.get().create(level);
         } else if ("bamboo_horse".equals(id)) {
             mount = ModEntities.BAMBOO_HORSE_MOUNT.get().create(level);
+        } else if ("tengu".equals(id)) {
+            mount = TenguContent.MOUNT.get().create(level);
         } else if ("ghost_wolf_stars".equals(id)) {
             mount = ModEntities.MOUNT.get().create(level);
         } else {
@@ -184,7 +175,6 @@ public final class MountManager {
         mount.moveTo(player.getX(), player.getY(), player.getZ(), player.getYRot(), 0.0F);
         mount.setOwner(player);
 
-        // 只有真正成功加入世界后才登记唯一 UUID，避免生成被其它 Mod/插件取消后留下“幽灵激活记录”。
         if (!level.addFreshEntity(mount)) {
             player.displayClientMessage(Component.literal("§c坐骑生成失败，请稍后再试。"), true);
             return;
@@ -208,6 +198,7 @@ public final class MountManager {
     }
 
     public static String mountIdOf(MountEntity mount) {
+        if (mount instanceof TenguMountEntity) return "tengu";
         if (mount instanceof BambooHorseEntity) return "bamboo_horse";
         if (mount instanceof RabbitMountEntity) return "rabbit";
         if (mount instanceof AlpacaMountEntity) return "alpaca";
@@ -225,6 +216,7 @@ public final class MountManager {
             case "rabbit" -> "玉兔";
             case "alpaca" -> "羊驼";
             case "bamboo_horse" -> "竹马";
+            case "tengu" -> "天狗";
             case "ghost_wolf_stars" -> "魔化天狗";
             default -> "坐骑";
         };
