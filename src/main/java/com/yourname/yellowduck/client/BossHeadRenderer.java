@@ -1,6 +1,7 @@
 package com.yourname.yellowduck.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.block.BossHeadBlock;
 import com.yourname.yellowduck.block.BossHeadBlockEntity;
@@ -11,10 +12,9 @@ import com.yourname.yellowduck.registry.ModBlocks;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Block;
-import com.mojang.math.Axis;
 
 import java.util.Map;
 
@@ -52,7 +52,15 @@ public final class BossHeadRenderer implements BlockEntityRenderer<BossHeadBlock
         try {
             poseStack.translate(0.5D, 0.0D, 0.5D);
             Direction facing = blockEntity.getBlockState().getValue(BossHeadBlock.FACING);
-            poseStack.mulPose(Axis.YP.rotationDegrees(facing.toYRot()));
+
+            // 这些头颅 GLB 的原始正面朝 SOUTH(+Z)。
+            // Minecraft Direction#toYRot 的正角方向与这里 GLB 绕 Y 轴的朝向相反：
+            // 原来直接使用 +toYRot 会导致 EAST/WEST 两个方向互换。
+            // 使用负角后，FACING 就严格表示“模型正面朝向”，配合
+            // BossHeadBlock#getStateForPlacement 的 playerDirection.opposite()，
+            // 无论玩家从东南西北哪边放置，头颅都会正面朝向放置玩家。
+            poseStack.mulPose(Axis.YP.rotationDegrees(-facing.toYRot()));
+
             poseStack.scale(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
             YellowGltfRenderUtil.renderModel(model, poseStack, buffer, packedLight,
                     0.0F, null, false);
