@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.yourname.yellowduck.boss.NetcraftBossBase;
+import com.yourname.yellowduck.tengu.TenguBoss;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -22,7 +23,7 @@ import java.util.Locale;
 
 /**
  * 所有继承 NetcraftBossBase 的 Boss 共用的 NetCraft 1.4.18 风格 HUD。
- * 后续新增 Boss 只需要覆写图集 U/V/W/H，不需要再写一套血条渲染器。
+ * 天狗是例外：按需求只在实体头顶显示世界空间血条，因此这里排除。
  */
 public final class NetcraftBossHud {
     private static final ResourceLocation BLOOD_BG =
@@ -50,7 +51,7 @@ public final class NetcraftBossHud {
         List<NetcraftBossBase> bosses = mc.level.getEntitiesOfClass(
                 NetcraftBossBase.class,
                 searchBox,
-                e -> e.isAlive() && !e.isRemoved()
+                e -> e.isAlive() && !e.isRemoved() && !(e instanceof TenguBoss)
         );
         if (bosses.isEmpty()) return;
 

@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.network.MountNetwork;
 import com.yourname.yellowduck.registry.ModEntities;
+import com.yourname.yellowduck.tengu.TenguContent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -12,7 +13,7 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
-/** 奶块式通用坐骑收藏界面：只显示已拥有坐骑蛋，右侧直接渲染真实 GLB 实体。 */
+/** 奶块式通用坐骑收藏界面：只显示已拥有坐骑，右侧直接渲染真实 GLB 实体。 */
 public class MountScreen extends Screen {
     private static final ResourceLocation DISPLAY_ICON =
             new ResourceLocation("yellowduck", "textures/item/mount_ghost_wolf_stars_display.png");
@@ -67,6 +68,8 @@ public class MountScreen extends Screen {
                 previewEntity = ModEntities.ALPACA_MOUNT.get().create(mc.level);
             } else if ("bamboo_horse".equals(selected.id())) {
                 previewEntity = ModEntities.BAMBOO_HORSE_MOUNT.get().create(mc.level);
+            } else if ("tengu".equals(selected.id())) {
+                previewEntity = TenguContent.MOUNT.get().create(mc.level);
             } else {
                 previewEntity = ModEntities.MOUNT.get().create(mc.level);
             }
@@ -142,7 +145,7 @@ public class MountScreen extends Screen {
 
         graphics.drawCenteredString(this.font, Component.literal("移动鼠标查看模型"),
                 px + 120, bottom - 61, 0xFF718AB0);
-        graphics.drawString(this.font, Component.literal("点击坐骑蛋可切换预览"),
+        graphics.drawString(this.font, Component.literal("点击坐骑头像可切换预览"),
                 left + 18, bottom - 15, 0xFF718AB0, false);
 
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -152,11 +155,12 @@ public class MountScreen extends Screen {
         if (previewEntity == null || Minecraft.getInstance().level == null || selected == null) return;
         int centerX = panelLeft + 378;
         int baseY = panelTop + 184;
-        // 参数必须为相对预览中心的鼠标偏移，不是屏幕绝对坐标。
         float lookX = net.minecraft.util.Mth.clamp((float) (centerX - mouseX), -35.0F, 35.0F);
         float lookY = net.minecraft.util.Mth.clamp((float) (baseY - 55 - mouseY), -12.0F, 12.0F);
         int scale = "ghost_wolf_stars".equals(selected.id()) ? 34
-                : "alpaca".equals(selected.id()) ? 42 : "bamboo_horse".equals(selected.id()) ? 58 : 60;
+                : "tengu".equals(selected.id()) ? 30
+                : "alpaca".equals(selected.id()) ? 42
+                : "bamboo_horse".equals(selected.id()) ? 58 : 60;
         graphics.enableScissor(panelLeft + 262, panelTop + 67, panelLeft + 493, panelTop + 188);
         try {
             InventoryScreen.renderEntityInInventoryFollowsMouse(
@@ -194,11 +198,10 @@ public class MountScreen extends Screen {
 
             RenderSystem.enableBlend();
             if ("ghost_wolf_stars".equals(mount.id())) {
-                // 完整展示图为1536x1024，按原比例缩放，不截取左上角。
                 graphics.blit(DISPLAY_ICON, x + 6, y + 14, 56, 37,
                         0.0F, 0.0F, 1536, 1024, 1536, 1024);
             } else {
-                // 归一化UV覆盖整张贴图：64x64羊驼与1536x1536玉兔均适用。
+                // 天狗头像也走这里：完整正方形原图，不裁剪、不重绘。
                 graphics.blit(mount.eggTexture(), x + 6, y + 5, 56, 56,
                         0.0F, 0.0F, 1, 1, 1, 1);
             }
