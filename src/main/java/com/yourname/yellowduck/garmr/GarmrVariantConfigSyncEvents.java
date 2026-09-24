@@ -4,6 +4,7 @@ import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.config.EntityTuningConfig;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -11,14 +12,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * Garmr helper 共用一个 entity id，普通 EntityTuningConfig 只能命中 garmr_helper。
- * 这里按 variant 每秒重新同步一次各自独立配置，/yd reload 后无需重生怪物。
- *
- * v1.0.2：
- * 任何可选属性都先检查 AttributeInstance，绝不再对未注册属性调用
- * LivingEntity#getAttributeValue，避免 "Can't find attribute ..." 直接崩服。
- */
+/** Garmr Boss / helper 运行时配置同步。 */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID)
 public final class GarmrVariantConfigSyncEvents {
     private GarmrVariantConfigSyncEvents() {}
@@ -40,19 +34,26 @@ public final class GarmrVariantConfigSyncEvents {
     }
 
     private static void syncBoss(GarmrBoss boss) {
+        syncMaxHealth(boss, EntityTuningConfig.configured(
+                "garmr", "max_health", boss.getMaxHealth()));
+
         AttributeInstance attackAttr = boss.getAttribute(Attributes.ATTACK_DAMAGE);
         double currentAttack = attackAttr != null
-                ? attackAttr.getBaseValue()
-                : GarmrConfig.BASIC_DAMAGE;
-
+                ? attackAttr.getBaseValue() : GarmrConfig.BASIC_DAMAGE;
         double attack = EntityTuningConfig.configured(
                 "garmr", "attack_damage", currentAttack);
         set(attackAttr, attack);
 
+        syncAttribute(boss, "garmr", "knockback_resistance",
+                Attributes.KNOCKBACK_RESISTANCE);
+        syncAttribute(boss, "garmr", "follow_range",
+                Attributes.FOLLOW_RANGE);
+
         int attackLevel = (int) Math.round(EntityTuningConfig.configured(
                 "garmr", "attack_level",
                 EntityTuningConfig.configured(
-                        "garmr", "netcraft_tier", GarmrConfig.BOSS_ATTACK_LEVEL)));
+                        "garmr", "netcraft_tier",
+                        GarmrConfig.BOSS_ATTACK_LEVEL)));
 
         int defenseLevel = (int) Math.round(EntityTuningConfig.configured(
                 "garmr", "defense_level", GarmrConfig.BOSS_DEFENSE_LEVEL));
@@ -66,19 +67,8 @@ public final class GarmrVariantConfigSyncEvents {
         String section = section(helper);
         if (section == null) return;
 
-        double oldMax = helper.getMaxHealth();
-        float oldHealth = helper.getHealth();
-        double ratio = oldMax > 0.0D ? oldHealth / oldMax : 1.0D;
-
-        double maxHealth = EntityTuningConfig.configured(section, "max_health", oldMax);
-        AttributeInstance max = helper.getAttribute(Attributes.MAX_HEALTH);
-        if (max != null && Math.abs(max.getBaseValue() - maxHealth) > 1.0E-9D) {
-            max.setBaseValue(maxHealth);
-            helper.setHealth((float) Math.max(
-                    0.1D,
-                    Math.min(maxHealth, maxHealth * ratio)
-            ));
-        }
+        syncMaxHealth(helper, EntityTuningConfig.configured(
+                section, "max_health", helper.getMaxHealth()));
 
         syncAttribute(helper, section, "attack_damage", Attributes.ATTACK_DAMAGE);
         syncAttribute(helper, section, "movement_speed", Attributes.MOVEMENT_SPEED);
@@ -89,54 +79,47 @@ public final class GarmrVariantConfigSyncEvents {
         syncAttribute(helper, section, "follow_range", Attributes.FOLLOW_RANGE);
         syncAttribute(helper, section, "attack_knockback", Attributes.ATTACK_KNOCKBACK);
 
-        /*
-         * Garmr 自己的战斗事件使用这三个 TAG 进行固定防御和等级结算。
-         * 即使某个 vanilla Attribute 没有注册，这里仍然可以正常工作。
-         */
         helper.getPersistentData().putInt(
                 GarmrBoss.TAG_DEFENSE,
                 (int) Math.round(EntityTuningConfig.configured(
-                        section,
-                        "armor",
-                        helper.getPersistentData().getInt(GarmrBoss.TAG_DEFENSE)
-                ))
-        );
+                        section, "armor",
+                        helper.getPersistentData().getInt(GarmrBoss.TAG_DEFENSE))));
 
         helper.getPersistentData().putInt(
                 GarmrBoss.TAG_ATTACK_LEVEL,
                 (int) Math.round(EntityTuningConfig.configured(
-                        section,
-                        "attack_level",
-                        helper.getPersistentData().getInt(GarmrBoss.TAG_ATTACK_LEVEL)
-                ))
-        );
+                        section, "attack_level",
+                        helper.getPersistentData().getInt(GarmrBoss.TAG_ATTACK_LEVEL))));
 
         helper.getPersistentData().putInt(
                 GarmrBoss.TAG_DEFENSE_LEVEL,
                 (int) Math.round(EntityTuningConfig.configured(
-                        section,
-                        "defense_level",
-                        helper.getPersistentData().getInt(GarmrBoss.TAG_DEFENSE_LEVEL)
-                ))
-        );
+                        section, "defense_level",
+                        helper.getPersistentData().getInt(GarmrBoss.TAG_DEFENSE_LEVEL))));
+    }
+
+    private static void syncMaxHealth(LivingEntity entity, double maxHealth) {
+        AttributeInstance attr = entity.getAttribute(Attributes.MAX_HEALTH);
+        if (attr == null || !Double.isFinite(maxHealth) || maxHealth <= 0.0D) return;
+        if (Math.abs(attr.getBaseValue() - maxHealth) <= 1.0E-9D) return;
+
+        double oldMax = Math.max(1.0D, entity.getMaxHealth());
+        double ratio = entity.getHealth() / oldMax;
+        attr.setBaseValue(maxHealth);
+        entity.setHealth((float) Math.max(
+                0.1D, Math.min(maxHealth, maxHealth * ratio)));
     }
 
     private static void syncAttribute(
-            GarmrHelperEntity helper,
+            LivingEntity entity,
             String section,
             String key,
-            Attribute attribute
-    ) {
-        AttributeInstance instance = helper.getAttribute(attribute);
-
-        // 关键修复：该实体没有注册此属性时直接跳过，绝不能 getAttributeValue(attribute)。
+            Attribute attribute) {
+        AttributeInstance instance = entity.getAttribute(attribute);
         if (instance == null) return;
 
         double configured = EntityTuningConfig.configured(
-                section,
-                key,
-                instance.getBaseValue()
-        );
+                section, key, instance.getBaseValue());
         set(instance, configured);
     }
 

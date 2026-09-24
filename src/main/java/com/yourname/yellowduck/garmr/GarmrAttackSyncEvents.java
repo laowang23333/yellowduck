@@ -18,12 +18,8 @@ import java.util.UUID;
 /**
  * 加姆普通攻击动画/命中帧同步。
  *
- * v1.4.23 bridge：
- * - 初始攻击事件只负责启动/截获；
- * - 待命中伤害直接读取 yellowduck-entities.toml 的 garmr.attack_damage；
- * - P3 保留原 1.25 倍；
- * - 命中前补 NetCraft 1.4.23 原生 Boss 同款 T级压制；
- * - 之后仍进入 NetCraft 自己的玩家防御/闪避/骑士套/盾牌结算。
+ * v2：只拦截 GarmrBoss 真正的基础普攻，避免把亡灵夫人等借
+ * boss.damageNoKnockback() 造成的伤害误当成 Boss 普攻取消。
  */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID)
 public final class GarmrAttackSyncEvents {
@@ -44,21 +40,25 @@ public final class GarmrAttackSyncEvents {
         if (boss.visualAction() != GarmrBoss.ACT_BASIC) return;
         if (!boss.isParticipant(player)) return;
 
+        float expectedOriginal = GarmrConfig.BASIC_DAMAGE;
+        if (boss.getEntityData().get(GarmrBoss.PHASE) == GarmrBoss.P3) {
+            expectedOriginal *= GarmrConfig.PHASE_THREE_BASIC_MULTIPLIER;
+        }
+
+        // 不是 GarmrBoss#tickBreathAndBasic 发出的原始普攻，就不要拦。
+        if (Math.abs(event.getAmount() - expectedOriginal) > 0.01F) return;
+
         event.setCanceled(true);
 
         float configuredDamage = (float) EntityTuningConfig.configured(
-                "garmr",
-                "attack_damage",
-                GarmrConfig.BASIC_DAMAGE
-        );
+                "garmr", "attack_damage", GarmrConfig.BASIC_DAMAGE);
         if (boss.getEntityData().get(GarmrBoss.PHASE) == GarmrBoss.P3) {
             configuredDamage *= GarmrConfig.PHASE_THREE_BASIC_MULTIPLIER;
         }
 
         int now = ((ServerLevel) boss.level()).getServer().getTickCount();
         PENDING.put(boss.getUUID(), new PendingHit(
-                boss.getUUID(),
-                player.getUUID(),
+                boss.getUUID(), player.getUUID(),
                 Math.max(0.0F, configuredDamage),
                 now + BASIC_HIT_DELAY_TICKS
         ));
@@ -83,7 +83,6 @@ public final class GarmrAttackSyncEvents {
             if (boss == null || !boss.isAlive()) continue;
             if (player == null || !player.isAlive() || player.isRemoved()) continue;
             if (!boss.isParticipant(player)) continue;
-
             if (boss.visualAction() != GarmrBoss.ACT_BASIC) continue;
 
             double maxRange = GarmrConfig.MELEE_RANGE;
@@ -93,9 +92,7 @@ public final class GarmrAttackSyncEvents {
 
             float finalRawDamage =
                     Netcraft123CombatBridge.applyBossTierSuppression(
-                            player,
-                            pending.damage()
-                    );
+                            player, pending.damage());
 
             applyingDelayedHit = true;
             try {
@@ -106,12 +103,8 @@ public final class GarmrAttackSyncEvents {
         }
     }
 
-    private static GarmrBoss findBoss(
-            TickEvent.ServerTickEvent event,
-            UUID id
-    ) {
+    private static GarmrBoss findBoss(TickEvent.ServerTickEvent event, UUID id) {
         if (id == null) return null;
-
         for (ServerLevel level : event.getServer().getAllLevels()) {
             var entity = level.getEntity(id);
             if (entity instanceof GarmrBoss boss) return boss;
@@ -120,9 +113,5 @@ public final class GarmrAttackSyncEvents {
     }
 
     private record PendingHit(
-            UUID bossId,
-            UUID targetId,
-            float damage,
-            int hitServerTick
-    ) {}
+            UUID bossId, UUID targetId, float damage, int hitServerTick) {}
 }
