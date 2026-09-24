@@ -47,6 +47,10 @@ public class ModCreativeTabs {
                         output.accept(ModItems.RABBIT_MOUNT.get());
                         output.accept(ModItems.BAMBOO_HORSE_MOUNT.get());
 
+                        // 天狗驯服材料：没有天狗坐骑蛋。
+                        output.accept(ModItems.RED_MOON_CRYSTAL.get());
+                        output.accept(ModItems.HIGH_SADDLE.get());
+
                         // Boss / 生物头颅展示方块
                         output.accept(ModBlocks.EARL_HEAD_ITEM.get());
                         output.accept(ModBlocks.SAKURA_HEAD_ITEM.get());

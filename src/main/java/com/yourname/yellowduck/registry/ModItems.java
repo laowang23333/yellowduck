@@ -1,7 +1,9 @@
 package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
+import com.yourname.yellowduck.item.GltfModelItem;
 import com.yourname.yellowduck.item.MountSummonItem;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -38,6 +40,24 @@ public final class ModItems {
     public static final RegistryObject<Item> BAMBOO_HORSE_MOUNT =
             ITEMS.register("mount_egg_bamboo_horse",
                     () -> new MountSummonItem(new Item.Properties(), "bamboo_horse"));
+
+    /** 天狗驯服材料：每个随机增加 5 / 10 点信任值。 */
+    public static final RegistryObject<Item> RED_MOON_CRYSTAL =
+            ITEMS.register("red_moon_crystal",
+                    () -> new GltfModelItem(
+                            new Item.Properties(),
+                            new ResourceLocation("yellowduck", "models/gltf/item/red_moon_crystal.glb"),
+                            0.95F
+                    ));
+
+    /** 天狗信任值达到 100 后，用高鞍完成捕捉。 */
+    public static final RegistryObject<Item> HIGH_SADDLE =
+            ITEMS.register("high_saddle",
+                    () -> new GltfModelItem(
+                            new Item.Properties().stacksTo(1),
+                            new ResourceLocation("yellowduck", "models/gltf/item/high_saddle.glb"),
+                            0.90F
+                    ));
 
     private ModItems() {}
 }
