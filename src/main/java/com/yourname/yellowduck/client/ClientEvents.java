@@ -48,6 +48,8 @@ public class ClientEvents {
         event.registerBlockEntityRenderer(
                 ModBlockEntities.PROFESSOR_SILK.get(),
                 ProfessorSilkRenderer::new);
+
+        event.registerBlockEntityRenderer(ModBlockEntities.BOSS_HEAD.get(), BossHeadRenderer::new);
     }
 
     @SubscribeEvent
