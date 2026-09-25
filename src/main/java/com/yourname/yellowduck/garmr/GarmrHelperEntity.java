@@ -35,6 +35,10 @@ public final class GarmrHelperEntity extends Monster {
     public static final int LADY_FIRE = 6;
     public static final int LAVA_GUARD = 7;
 
+    private static final double LAVA_GUARD_ATTACK_RANGE = 3.0D;
+    private static final double LAVA_GUARD_ATTACK_RANGE_SQR =
+            LAVA_GUARD_ATTACK_RANGE * LAVA_GUARD_ATTACK_RANGE;
+
     public GarmrHelperEntity(EntityType<? extends GarmrHelperEntity> type, Level level) {
         super(type, level);
         setPersistenceRequired();
@@ -138,7 +142,17 @@ public final class GarmrHelperEntity extends Monster {
     @Override
     protected void registerGoals() {
         // 熔岩守卫、亡灵战士允许近战 Goal；骷髅射手由 Boss 统一发射远程投射物。
-        goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0D, true));
+        // 熔岩守卫固定使用 3 格攻击距离；亡灵战士仍保持原版攻击距离。
+        goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0D, true) {
+            @Override
+            protected double getAttackReachSqr(LivingEntity target) {
+                if (GarmrHelperEntity.this.getVariant() == LAVA_GUARD) {
+                    return LAVA_GUARD_ATTACK_RANGE_SQR;
+                }
+                return super.getAttackReachSqr(target);
+            }
+        });
+
         targetSelector.addGoal(2,
                 new NearestAttackableTargetGoal<>(
                         this,
