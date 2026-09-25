@@ -1,7 +1,6 @@
 package com.yourname.yellowduck.entity;
 
 import com.yourname.yellowduck.event.ToyBearEntangleEvents;
-import com.yourname.yellowduck.registry.ModEffects;
 import com.yourname.yellowduck.registry.ModEntities;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
@@ -9,7 +8,6 @@ import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
@@ -76,20 +74,11 @@ public class RootVineEntity extends PathfinderMob {
             return;
         }
 
-        // 和原 RootVineEntity 一样，根须始终贴着被缠绕玩家移动。
+        // 根须始终贴着被缠绕玩家移动。
         moveTo(target.getX(), target.getY(), target.getZ(), target.getYRot(), 0.0F);
 
-        // 牛奶等方式不能单独把 Boss 技能洗掉；根须还活着就刷新效果。
-        if (!target.hasEffect(ModEffects.ROOT_ENTANGLE.get())) {
-            target.addEffect(new MobEffectInstance(
-                    ModEffects.ROOT_ENTANGLE.get(),
-                    Integer.MAX_VALUE,
-                    0,
-                    false,
-                    false,
-                    true
-            ));
-        }
+        // 根须活着时只续一个很短的 2 秒 Buff；死亡后不会再留下数万小时的效果。
+        ToyBearEntangleEvents.refreshRootEffect(target);
     }
 
     @Override
@@ -99,6 +88,7 @@ public class RootVineEntity extends PathfinderMob {
         Entity attacker = source.getEntity();
         if (!(attacker instanceof Player player)) return false;
 
+        // 被缠绕者本人不能攻击自己的根须，只能由队友救援。
         if (targetUUID != null && targetUUID.equals(player.getUUID())) return false;
 
         return super.hurt(source, amount);
@@ -113,6 +103,15 @@ public class RootVineEntity extends PathfinderMob {
     }
 
     @Override
+    public void remove(RemovalReason reason) {
+        // KILLED / DISCARDED 等真正销毁路径再兜底清一次；区块卸载不误清技能状态。
+        if (!level().isClientSide && reason.shouldDestroy()) {
+            ToyBearEntangleEvents.releaseByRoot(this);
+        }
+        super.remove(reason);
+    }
+
+    @Override
     public boolean isPickable() {
         return true;
     }
@@ -121,7 +120,6 @@ public class RootVineEntity extends PathfinderMob {
     public boolean isPushable() {
         return false;
     }
-
 
     @Override
     public boolean removeWhenFarAway(double distanceToClosestPlayer) {
