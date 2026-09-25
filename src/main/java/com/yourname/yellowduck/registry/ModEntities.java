@@ -5,6 +5,7 @@ import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.entity.RabbitMountEntity;
 import com.yourname.yellowduck.entity.AlpacaMountEntity;
 import com.yourname.yellowduck.entity.BambooHorseEntity;
+import com.yourname.yellowduck.entity.RootVineEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
@@ -80,4 +81,13 @@ public class ModEntities {
                             .clientTrackingRange(10)
                             .updateInterval(1)
                             .build("toy_bear"));
+
+    // 布偶熊 P3 根须缠绕实体。实体本身贴在被点名玩家身上，由队友击破。
+    public static final RegistryObject<EntityType<RootVineEntity>> ROOT_VINE =
+            ENTITIES.register("root_vine", () ->
+                    EntityType.Builder.<RootVineEntity>of(RootVineEntity::new, MobCategory.MISC)
+                            .sized(1.8F, 2.2F)
+                            .clientTrackingRange(10)
+                            .updateInterval(1)
+                            .build("root_vine"));
 }
