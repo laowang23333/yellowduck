@@ -33,13 +33,18 @@ public final class DungeonCompletionControllers {
                 if (!isSakura(instance)) return;
 
                 // 小樱使用自定义延迟死亡动画：die() 先把血量设为 0，
-                // 之后才调用 LivingEntity#die。不要只依赖 LivingDeathEvent，
-                // 否则某些环境下 mainBossDead 永远不会被置为 true。
+                // 之后才调用 LivingEntity#die。只在“实体仍然真实加载且进入死亡状态”时补记 Boss 死亡。
+                // 绝不能把 ServerLevel#getEntity(UUID)==null 当成死亡：单人玩家死亡/重生时，
+                // 副本区块可能短暂卸载，此时 Boss 只是未加载，并没有被击败。
                 if (!instance.mainBossDead && sakuraHasBeenDefeated(instance, level)) {
                     instance.mainBossDead = true;
                 }
 
-                if (instance.mainBossDead && !hasLivingSakuraBear(instance, level)) {
+                // 没有任何仍在副本里作战的玩家时，不允许自动结算通关。
+                // 这样单人死亡导致区块卸载时，只会进入复活/团灭流程，不会误弹奖励。
+                if (instance.mainBossDead
+                        && hasCombatReadyParticipant(instance, server, level)
+                        && !hasLivingSakuraBear(instance, level)) {
                     DungeonManager.completeFromController(instance, server);
                 }
             }
@@ -60,7 +65,9 @@ public final class DungeonCompletionControllers {
                 if (!instance.mainBossDead && sakuraHasBeenDefeated(instance, level)) {
                     instance.mainBossDead = true;
                 }
-                if (instance.mainBossDead && !hasLivingSakuraBear(instance, level)) {
+                if (instance.mainBossDead
+                        && hasCombatReadyParticipant(instance, server, level)
+                        && !hasLivingSakuraBear(instance, level)) {
                     DungeonManager.completeFromController(instance, server);
                 }
             }
@@ -101,17 +108,35 @@ public final class DungeonCompletionControllers {
                 && "yellowduck:sakurawitch".equalsIgnoreCase(instance.definition.bossEntity());
     }
 
+    /**
+     * 只接受“已加载的小樱实体明确进入死亡状态”。
+     * entity == null 代表当前区块/实体未加载，不能推断为 Boss 已死亡。
+     */
     private static boolean sakuraHasBeenDefeated(DungeonInstance instance, ServerLevel level) {
         if (instance == null || level == null || instance.mainBossId == null) return false;
 
         Entity entity = level.getEntity(instance.mainBossId);
-        // Boss 已经被真正移除，也应视为死亡，避免实例永久卡住。
-        if (entity == null || entity.isRemoved()) return true;
+        if (!(entity instanceof SakurawitchEntity sakura)) {
+            return false;
+        }
 
-        if (entity instanceof SakurawitchEntity sakura) {
-            return sakura.getEntityData().get(SakurawitchEntity.IS_DYING)
-                    || !sakura.isAlive()
-                    || sakura.getHealth() <= 0.0F;
+        return sakura.getEntityData().get(SakurawitchEntity.IS_DYING)
+                || !sakura.isAlive()
+                || sakura.getHealth() <= 0.0F;
+    }
+
+    /**
+     * 至少有一名参与者仍真实存活并处于本副本维度时，才允许 tick 逻辑自动进入奖励阶段。
+     * 玩家死亡/重生造成的短暂离开副本不会再被当成通关时机。
+     */
+    private static boolean hasCombatReadyParticipant(
+            DungeonInstance instance, MinecraftServer server, ServerLevel level) {
+        if (instance == null || server == null || level == null) return false;
+
+        for (UUID uuid : instance.participants) {
+            ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+            if (player == null || !player.isAlive() || player.isDeadOrDying() || player.isSpectator()) continue;
+            if (player.level() == level) return true;
         }
         return false;
     }
