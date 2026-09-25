@@ -27,15 +27,18 @@ import java.util.UUID;
 /**
  * 布偶熊“根须缠绕”。
  *
- * YellowDuck main 原来用 NetCraft 精英骷髅/原版骷髅充当 500 血守卫；
- * 本版在不修改 ToyBearEntity 技能调度的前提下，把刚生成的守卫无缝替换成 RootVineEntity。
- * 被缠绕者本人不能攻击；队友击破根须后解除效果。
+ * 根须存活时只给玩家一个很短的根须缠绕效果并持续刷新；根须死亡后立即清除。
+ * 即使 Mohist/其它事件环境漏掉一次死亡清理，效果也会在很短时间内自然到期，
+ * 不再使用 Integer.MAX_VALUE 导致 Buff 显示数万小时甚至永久残留。
  */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID)
 public final class ToyBearEntangleEvents {
     public static final String GUARD_TARGET_KEY = "yellowduck_entangle_target";
     public static final String GUARD_OWNER_KEY = "yellowduck_entangle_owner";
     public static final String PLAYER_GUARD_KEY = "yellowduck_entangle_guard";
+
+    /** 根须存活时 Buff 始终刷新为 2 秒；根须死亡后即使主动清理漏掉，也最多残留约 2 秒。 */
+    public static final int ROOT_EFFECT_REFRESH_TICKS = 40;
 
     private ToyBearEntangleEvents() {}
 
@@ -53,7 +56,7 @@ public final class ToyBearEntangleEvents {
 
     /**
      * ToyBearEntity 在临时骷髅入场后会调用这里。
-     * 我们直接把临时骷髅换成真正的 RootVineEntity，因此无需改 ToyBearEntity 本体。
+     * 直接把临时守卫换成 RootVineEntity，不修改布偶熊本体的技能调度。
      */
     public static void entangle(Player player, LivingEntity temporaryGuard) {
         if (!(player instanceof ServerPlayer serverPlayer)
@@ -79,11 +82,28 @@ public final class ToyBearEntangleEvents {
         }
 
         serverPlayer.getPersistentData().putUUID(PLAYER_GUARD_KEY, activeGuard.getUUID());
+        refreshRootEffect(serverPlayer);
+    }
 
-        // 原包 ROOT_ENTANGLE 的粒子是隐藏的，但用户需要看 Buff 图标，因此 showIcon=true。
-        serverPlayer.addEffect(new MobEffectInstance(
+    public static boolean isEntangled(Player player) {
+        return player != null && player.getPersistentData().hasUUID(PLAYER_GUARD_KEY);
+    }
+
+    /**
+     * 把根须效果维持在短时长。
+     * 同时兼容旧版本已经留下的 Integer.MAX_VALUE Buff：发现异常长持续时间时先删后重加。
+     */
+    public static void refreshRootEffect(Player player) {
+        if (player == null || player.level().isClientSide) return;
+
+        MobEffectInstance current = player.getEffect(ModEffects.ROOT_ENTANGLE.get());
+        if (current != null && current.getDuration() > ROOT_EFFECT_REFRESH_TICKS * 3) {
+            player.removeEffect(ModEffects.ROOT_ENTANGLE.get());
+        }
+
+        player.addEffect(new MobEffectInstance(
                 ModEffects.ROOT_ENTANGLE.get(),
-                Integer.MAX_VALUE,
+                ROOT_EFFECT_REFRESH_TICKS,
                 0,
                 false,
                 false,
@@ -91,16 +111,12 @@ public final class ToyBearEntangleEvents {
         ));
     }
 
-    public static boolean isEntangled(Player player) {
-        return player != null && player.getPersistentData().hasUUID(PLAYER_GUARD_KEY);
-    }
-
     private static boolean isGuard(Entity entity) {
         return entity instanceof RootVineEntity
                 || (entity != null && entity.getPersistentData().hasUUID(GUARD_TARGET_KEY));
     }
 
-    /** 对齐被根须缠绕的玩家不能对外造成伤害。 */
+    /** 被根须缠绕的玩家不能对外造成伤害。 */
     @SubscribeEvent
     public static void onLivingHurt(LivingHurtEvent event) {
         Entity sourceEntity = event.getSource().getEntity();
@@ -168,16 +184,8 @@ public final class ToyBearEntangleEvents {
         player.setDeltaMovement(0.0D, Math.min(0.0D, motion.y), 0.0D);
         player.hurtMarked = true;
 
-        if (!player.hasEffect(ModEffects.ROOT_ENTANGLE.get())) {
-            player.addEffect(new MobEffectInstance(
-                    ModEffects.ROOT_ENTANGLE.get(),
-                    Integer.MAX_VALUE,
-                    0,
-                    false,
-                    false,
-                    true
-            ));
-        }
+        // 每 tick 刷新为 2 秒，而不是永久时长。
+        refreshRootEffect(player);
     }
 
     public static void clearGuardsOwnedBy(ToyBearEntity bear) {
