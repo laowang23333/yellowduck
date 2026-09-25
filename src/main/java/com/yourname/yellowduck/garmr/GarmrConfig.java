@@ -77,12 +77,12 @@ public final class GarmrConfig {
     public static final double BREATH_RANGE = 32.0D; // 冰/火吐息统一 32 格有效距离
     public static final int BREATH_DURATION_TICKS = 40;
 
-    // P2 阿努比斯守护：进入黄血阶段先必出 1 次，之后每 30 秒最近玩家获得 15 秒守护，减伤 50%，圈内每秒 -1 索命。
+    // P2 阿努比斯守护：进入黄血阶段先必出 1 次，之后每 30 秒最近玩家获得 15 秒守护，减伤 50%，圈内每秒清 5 层索命。
     public static final int ANUBIS_GUARD_INTERVAL_TICKS = 600;
     public static final int ANUBIS_GUARD_DURATION_TICKS = 300;
     public static final float ANUBIS_PROTECTION_MULTIPLIER = 0.50F;
     public static final int CLEANSE_INTERVAL_TICKS = 20;
-    public static final int CLEANSE_STACKS_PER_TICK = 1;
+    public static final int CLEANSE_STACKS_PER_TICK = 5;
     public static final double CLEANSE_RADIUS = 3.25D; // 图片只写“一定区域”，半径仍保留可调
 
     // ===== P3：50% ~ 0% =====
