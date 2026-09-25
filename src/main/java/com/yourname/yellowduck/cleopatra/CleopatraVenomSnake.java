@@ -456,7 +456,6 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         }
         return Double.NaN;
     }
-
     private boolean placeBombOnFarthest() {
         double radius = CleopatraConfig.bombCandidateRadius.get();
         AABB box = new AABB(getX() - radius, getY() - radius, getZ() - radius,
@@ -464,26 +463,36 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         List<Player> all = level().getEntitiesOfClass(Player.class, box, CleopatraUtil::validPlayer);
         if (all.isEmpty()) return false;
 
-        List<Player> candidates = new ArrayList<>();
+        // BossIce2 1.1.3：盾牌武器/龙爪副手玩家优先免点；
+        // 只有场上所有可选玩家都属于这类职业时才允许点到他们。
+        List<Player> normal = new ArrayList<>();
+        List<Player> immune = new ArrayList<>();
         for (Player player : all) {
+            (isBombImmune(player) ? immune : normal).add(player);
+        }
+        List<Player> base = normal.isEmpty() ? immune : normal;
+        if (base.isEmpty()) return false;
+
+        // 优先排除身上已经存在任意元素炸弹的玩家；如果全都有才退回原候选池。
+        List<Player> candidates = new ArrayList<>();
+        for (Player player : base) {
             if (!hasAnyBombEffect(player)) candidates.add(player);
         }
-        if (candidates.isEmpty()) return false;
+        if (candidates.isEmpty()) candidates = base;
 
-        candidates.sort(Comparator.comparingDouble(player -> -distanceTo(player)));
-
-        int topCount = Math.min(Math.max(1, CleopatraConfig.bombFarthestPoolSize.get()), candidates.size());
-        int selectedIndex = random.nextInt(topCount);
-
-        // 炸弹避坦继续读取“施法蛇自己的 NetCraft 当前仇恨目标”。
+        // 原版不是“最远3人随机”，而是权重随机：当前主要仇恨目标权重1，其余玩家权重10。
         Player hatredTarget = pickNetcraftTarget();
-        if (hatredTarget != null && topCount > 1 && candidates.get(selectedIndex) == hatredTarget
-                && random.nextInt(100) < CleopatraConfig.tankAvoidPercent.get()) {
-            int alternate = random.nextInt(topCount - 1);
-            selectedIndex = alternate < selectedIndex ? alternate : alternate + 1;
+        int totalWeight = 0;
+        for (Player player : candidates) totalWeight += player == hatredTarget ? 1 : 10;
+        if (totalWeight <= 0) return false;
+        int roll = random.nextInt(totalWeight);
+        Player carrier = candidates.get(0);
+        for (Player player : candidates) {
+            int weight = player == hatredTarget ? 1 : 10;
+            if (roll < weight) { carrier = player; break; }
+            roll -= weight;
         }
 
-        Player carrier = candidates.get(selectedIndex);
         carrier.addEffect(new MobEffectInstance(getBombEffect(), CleopatraConfig.bombEffectDuration.get(),
                 0, false, false, true));
 
@@ -492,19 +501,24 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
             case 2 -> CleopatraEntities.BOMB_MARK_FROZEN.get();
             default -> CleopatraEntities.BOMB_MARK_POISON.get();
         };
-
         CleopatraBombMark mark = markType.create(level());
         if (mark == null) {
             carrier.removeEffect(getBombEffect());
             return false;
         }
-
         mark.setCarrier(carrier);
         mark.setDamageMult(damageMult);
         mark.setPos(carrier.getX(), carrier.getY() + 2.6D, carrier.getZ());
         level().addFreshEntity(mark);
         bombMarks.add(mark.getUUID());
         return true;
+    }
+
+    private static boolean isBombImmune(Player player) {
+        if (player == null) return false;
+        // 避免 YellowDuck 编译期强依赖 NetCraft 具体类；运行时按原类名兼容 1.4.x。
+        String className = player.getOffhandItem().getItem().getClass().getName();
+        return className.endsWith(".ShieldWeapon") || className.endsWith(".DragonClawWeapon");
     }
 
     private boolean isBombCoordinator() {

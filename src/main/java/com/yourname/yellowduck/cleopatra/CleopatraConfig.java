@@ -54,7 +54,7 @@ public final class CleopatraConfig {
 
     static {
         bossHealth = d("boss_health", 20000, 1, 1e9, "艳后最大生命值。默认：20000。");
-        bossAttack = d("boss_normal_attack_damage", 70, 0, 1e9, "艳后普通攻击伤害。默认：70。");
+        bossAttack = d("boss_normal_attack_damage", 105, 0, 1e9, "艳后普通攻击实际结算伤害。BossIce2 1.1.3 原值：105。");
         bossMeleeDefense = d("boss_melee_defense", 60, 0, 1e9, "艳后近战防御值。数值越高，受到的近战伤害越低。默认：60。");
         bossRangedDefense = d("boss_ranged_defense", 10, 0, 1e9, "艳后远程防御值。数值越高，受到的远程伤害越低。默认：10。");
         bossMagicDefense = d("boss_magic_defense", 10, 0, 1e9, "艳后魔法防御值。数值越高，受到的魔法伤害越低。默认：10。");
@@ -106,7 +106,7 @@ public final class CleopatraConfig {
         poolSicknessRatio = d("pool_sickness_max_health_ratio", 1.0, 0, 100, "玩家带有“毒素侵袭”时，毒池伤害占玩家最大生命值的比例。1.0=100%。默认：1.0。");
         snakeHealth = d("snake_health", 20000, 1, 1e9, "毒蛇、火焰蛇、寒冰蛇的最大生命值。默认：20000。");
         snakeAttributeAttack = d("snake_attribute_attack_damage", 30, 0, 1e9, "三蛇基础攻击力属性。默认：30。");
-        snakeAttack = d("snake_skill_attack_damage", 45, 0, 1e9, "三蛇普通技能攻击的基础伤害。默认：45。");
+        snakeAttack = d("snake_skill_attack_damage", 67.5, 0, 1e9, "三蛇普通技能攻击的基础伤害。BossIce2 1.1.3 原值：67.5。");
         snakeMeleeDefense = d("snake_melee_defense", 60, 0, 1e9, "三蛇近战防御值。默认：60。");
         snakeRangedDefense = d("snake_ranged_defense", 10, 0, 1e9, "三蛇远程防御值。默认：10。");
         snakeMagicDefense = d("snake_magic_defense", 10, 0, 1e9, "三蛇魔法防御值。默认：10。");
@@ -120,8 +120,8 @@ public final class CleopatraConfig {
         snakeRingAttempts = i("snake_ring_ground_attempts", 8, 1, 100, "生成元素圈时随机寻找可用地面的最大尝试次数。默认：8。");
         snakeRingRandomDiameter = d("snake_ring_random_diameter", 80, 0, 1000, "元素圈随机生成区域的直径，单位：格。默认：80。");
         snakeRingGroundYRange = d("snake_ring_ground_vertical_range", 5, 0, 100, "元素圈寻找地面时允许的上下搜索范围，单位：格。默认：5。");
-        snakeBombFirstCd = i("snake_first_bomb_cooldown_ticks", 300, 0, 120000, "三蛇第一次给玩家放置炸弹前的冷却，单位：tick。默认：300（15秒）。");
-        snakeBombCd = i("snake_bomb_cooldown_ticks", 600, 1, 120000, "三蛇放置炸弹的后续冷却，单位：tick。默认：600（30秒）。");
+        snakeBombFirstCd = i("snake_first_bomb_cooldown_ticks", 400, 0, 120000, "三蛇第一次给玩家放置炸弹前的冷却，单位：tick。BossIce2 原值：400（20秒）。");
+        snakeBombCd = i("snake_bomb_cooldown_ticks", 800, 1, 120000, "三蛇放置炸弹的后续冷却，单位：tick。BossIce2 原值：800（40秒）。");
         bombEffectDuration = i("bomb_effect_duration_ticks", 400, 1, 120000, "玩家身上炸弹状态效果的总持续时间，单位：tick。默认：400（20秒）。");
         bombFuseTicks = i("bomb_fuse_ticks", 300, 1, 120000, "炸弹标记生成后多少 tick 引爆。默认：300（15秒）。");
         bombCandidateRadius = d("bomb_candidate_radius", 40, 0, 1000, "三蛇选择炸弹目标时搜索玩家的范围，单位：格。默认：40。");
