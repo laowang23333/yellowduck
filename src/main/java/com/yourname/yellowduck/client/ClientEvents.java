@@ -22,6 +22,9 @@ public class ClientEvents {
 
         // 小樱布偶熊
         ToyBearRenderer.register(event, ModEntities.TOY_BEAR.get());
+
+        // 布偶熊根须缠绕实体
+        event.registerEntityRenderer(ModEntities.ROOT_VINE.get(), RootVineRenderer::new);
         
         // 小黄鸭 Boss 渲染器
         event.registerEntityRenderer(ModEntities.TWO_PHASE_BOSS.get(), TwoPhaseBossRenderer::new);
