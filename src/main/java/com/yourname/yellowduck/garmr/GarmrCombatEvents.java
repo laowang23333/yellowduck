@@ -32,6 +32,9 @@ public final class GarmrCombatEvents {
      */
     @SubscribeEvent
     public static void blockLadyDirectDamage(LivingAttackEvent event) {
+        // 本类主动重新结算的小怪伤害会再次经过 LivingAttackEvent；不能二次拦截造成递归。
+        if (GarmrOutgoingDamageFixEvents.isApplyingForcedHit()) return;
+
         if (GarmrBoss.ROLE_LADY.equals(event.getEntity().getPersistentData().getString(GarmrBoss.TAG_ROLE))) {
             event.setCanceled(true);
             return;
@@ -44,20 +47,30 @@ public final class GarmrCombatEvents {
         String role = attacker.getPersistentData().getString(GarmrBoss.TAG_ROLE);
         GarmrBoss boss = ownerBoss(attacker);
         if (boss == null || !boss.isParticipant(player)) return;
+        if (!(attacker instanceof GarmrHelperEntity helper)) return;
 
-        // 逻辑承载实体的原版攻击统一改为规则表固定伤害，并走 Boss 的无击退伤害接口。
+        // 逻辑承载实体的原版攻击统一改为配置伤害，并用真正的小怪作为伤害来源。
         if (GarmrBoss.ROLE_CORE_ADD.equals(role)) {
             event.setCanceled(true);
-            boss.damageNoKnockback(player, (float) EntityTuningConfig.configured(
-                    "garmr_lava_guard", "attack_damage", GarmrConfig.LAVA_GUARD_ATTACK));
+            float raw = (float) EntityTuningConfig.configured(
+                    "garmr_lava_guard", "attack_damage", GarmrConfig.LAVA_GUARD_ATTACK);
+            GarmrOutgoingDamageFixEvents.hurtMinion(
+                    boss, helper, player, raw,
+                    "garmr_lava_guard", GarmrConfig.LAVA_GUARD_ATTACK_LEVEL);
         } else if (GarmrBoss.ROLE_P1_SKELETON.equals(role)) {
             event.setCanceled(true);
-            boss.damageNoKnockback(player, (float) EntityTuningConfig.configured(
-                    "garmr_p1_archer", "attack_damage", GarmrConfig.P1_ARCHER_ATTACK));
+            float raw = (float) EntityTuningConfig.configured(
+                    "garmr_p1_archer", "attack_damage", GarmrConfig.P1_ARCHER_ATTACK);
+            GarmrOutgoingDamageFixEvents.hurtMinion(
+                    boss, helper, player, raw,
+                    "garmr_p1_archer", GarmrConfig.P1_ARCHER_ATTACK_LEVEL);
         } else if (GarmrBoss.ROLE_DEATH_GUARD.equals(role)) {
             event.setCanceled(true);
-            boss.damageNoKnockback(player, (float) EntityTuningConfig.configured(
-                    "garmr_death_guard", "attack_damage", GarmrConfig.DEATH_GUARD_ATTACK));
+            float raw = (float) EntityTuningConfig.configured(
+                    "garmr_death_guard", "attack_damage", GarmrConfig.DEATH_GUARD_ATTACK);
+            GarmrOutgoingDamageFixEvents.hurtMinion(
+                    boss, helper, player, raw,
+                    "garmr_death_guard", GarmrConfig.DEATH_GUARD_ATTACK_LEVEL);
             applyExactSlow(player);
         } else if (GarmrBoss.ROLE_LADY.equals(role) || GarmrBoss.ROLE_DEVIL.equals(role)) {
             // 幽灵伤害由每秒 AOE 逻辑结算；小恶魔只负责接触自爆。

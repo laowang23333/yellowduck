@@ -13,8 +13,8 @@ import net.minecraftforge.fml.common.Mod;
 /**
  * 冰/火亡灵夫人攻击补偿。
  *
- * 原 GarmrBoss 已负责 <=3.5 格的每秒 AOE；
- * 本类补足模型/寻路造成的 3.5~6 格死区，并持续追最高仇恨目标。
+ * GarmrBoss 负责 <=3.5 格 AOE；本类补足 3.5~6 格死区。
+ * 外圈伤害直接以夫人实体作为攻击者，并统一走召唤物最终出伤桥。
  */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID)
 public final class GarmrLadyAttackFixEvents {
@@ -57,7 +57,6 @@ public final class GarmrLadyAttackFixEvents {
                 int born = lady.getPersistentData().getInt(
                         GarmrBoss.TAG_LADY_SPAWN_TICK);
 
-                // born 保存的是 Boss.tickCount，旧版错误用了 lady.tickCount - born。
                 int elapsedSeconds =
                         Math.max(0, (boss.tickCount - born) / 20);
 
@@ -72,18 +71,16 @@ public final class GarmrLadyAttackFixEvents {
                 for (ServerPlayer player : boss.participants()) {
                     double d2 = player.distanceToSqr(lady);
 
-                    // <=3.5 格由 GarmrBoss 原本 AOE 负责，防止一秒吃两次。
+                    // <=3.5 格仍由 GarmrBoss 原本 AOE 触发；最终伤害由 GarmrOutgoingDamageFixEvents 修正。
                     if (d2 <= innerSq || d2 > outerSq) continue;
 
-                    float actual =
-                            Netcraft123CombatBridge.applyMinionTierSuppression(
-                                    player,
-                                    damage,
-                                    section,
-                                    GarmrConfig.LADY_ATTACK_LEVEL
-                            );
-
-                    if (boss.damageNoKnockback(player, actual)) {
+                    if (GarmrOutgoingDamageFixEvents.hurtMinion(
+                            boss,
+                            lady,
+                            player,
+                            damage,
+                            section,
+                            GarmrConfig.LADY_ATTACK_LEVEL)) {
                         level.sendParticles(
                                 type == GarmrBoss.BREATH_FIRE
                                         ? ParticleTypes.FLAME

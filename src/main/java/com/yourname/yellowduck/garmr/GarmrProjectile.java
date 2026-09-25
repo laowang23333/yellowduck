@@ -75,7 +75,9 @@ public final class GarmrProjectile extends ThrowableProjectile {
         if (!(level() instanceof ServerLevel server) || isRemoved()) return;
 
         Entity owner = getOwner();
-        if (owner instanceof GarmrBoss boss && boss.isAlive()) {
+        GarmrBoss boss = owner instanceof GarmrBoss garmr ? garmr : ownerBoss(server);
+        if (boss != null && boss.isAlive()) {
+            // 配置是唯一攻击基准；不再只保存 configure(damage) 却在实际爆炸时走另一套伤害链。
             float configuredDamage =
                     (float) EntityTuningConfig.configured(
                             "garmr_p1_archer",
@@ -92,16 +94,13 @@ public final class GarmrProjectile extends ThrowableProjectile {
 
                 if (living instanceof ServerPlayer player
                         && boss.isParticipant(player)) {
-
-                    float actualDamage =
-                            Netcraft123CombatBridge.applyMinionTierSuppression(
-                                    player,
-                                    configuredDamage,
-                                    "garmr_p1_archer",
-                                    GarmrConfig.P1_ARCHER_ATTACK_LEVEL
-                            );
-
-                    boss.damageNoKnockback(player, actualDamage);
+                    GarmrOutgoingDamageFixEvents.hurtMinionFromBossSource(
+                            boss,
+                            player,
+                            configuredDamage,
+                            "garmr_p1_archer",
+                            GarmrConfig.P1_ARCHER_ATTACK_LEVEL
+                    );
                 }
             }
         }
@@ -112,6 +111,12 @@ public final class GarmrProjectile extends ThrowableProjectile {
                 1, 0, 0, 0, 0
         );
         discard();
+    }
+
+    private GarmrBoss ownerBoss(ServerLevel level) {
+        if (!getPersistentData().hasUUID(GarmrBoss.TAG_OWNER)) return null;
+        Entity entity = level.getEntity(getPersistentData().getUUID(GarmrBoss.TAG_OWNER));
+        return entity instanceof GarmrBoss boss ? boss : null;
     }
 
     @Override
