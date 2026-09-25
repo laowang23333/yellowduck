@@ -8,7 +8,8 @@
     "BossPhysicsMixin",
     "ToyBearNoKnockbackMixin",
     "TwoPhaseBossNoKnockbackMixin",
-    "GarmrConfiguredDefenseMixin"
+    "GarmrConfiguredDefenseMixin",
+    "GarmrYellowPhaseGuardMixin"
   ],
   "client": [],
   "injectors": {
