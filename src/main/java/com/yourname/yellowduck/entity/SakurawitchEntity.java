@@ -140,10 +140,8 @@ public class SakurawitchEntity extends PathfinderMob {
      */
     private static final int NORMAL_ATTACK_INTERVAL = 60;
 
-    /** BossIce2 1.1.3：进入 2 格才开始普通攻击。 */
     private static final double NORMAL_ATTACK_RANGE = 2.0D;
 
-    /** BossIce2 1.1.3：攻击动作开始后 8 tick 结算；按 UUID 锁定，不再二次做近战距离判定。 */
     private static final int NORMAL_DAMAGE_DELAY = 8;
 
     /**
@@ -170,7 +168,7 @@ public class SakurawitchEntity extends PathfinderMob {
      *
      * 40 tick = 2 秒
      */
-    private static final int FIRE_CHARGE_INTERVAL = 40; // 保留仅用于旧存档兼容，BossIce2 原机制不再自动叠层
+    private static final int FIRE_CHARGE_INTERVAL = 40;
 
     /**
      * 三阶段点名间隔
@@ -231,7 +229,6 @@ public class SakurawitchEntity extends PathfinderMob {
      * 火焰喷射目标
      */
     private Player sprayTarget;
-    /** BossIce2 原版在开始蓄力时锁死喷火方向，目标后续移动不会让扇形跟踪转向。 */
     private double sprayLockedYaw;
 
     /**
@@ -269,7 +266,6 @@ public class SakurawitchEntity extends PathfinderMob {
      */
     private Player eruptionTarget;
 
-    /** Stargazer 原版地火 PNG 标记实际放置的位置。 */
     private BlockPos eruptionMarkerPos;
 
     /**
@@ -907,10 +903,6 @@ public class SakurawitchEntity extends PathfinderMob {
                 1.0F
         );
     }
-
-    /**
-     * BossIce2 1.1.3：普攻动画开始 8 tick 后结算。
-     */
     private void tickPendingNormalAttackDamage() {
         if (pendingNormalAttackDamageTicks <= 0 || pendingNormalAttackTargetUUID == null) return;
         if (--pendingNormalAttackDamageTicks > 0) return;
@@ -920,7 +912,6 @@ public class SakurawitchEntity extends PathfinderMob {
         Player target = level().getPlayerByUUID(targetId);
         if (!valid(target)) return;
 
-        // BossIce2 1.1.3：普攻 = 当前攻击属性 × 1.5。
         boolean hit = magicDamage(target, getConfiguredAttackDamage() * 1.5F);
         if (!hit) return;
         addMagicVulnerability(target);
@@ -1101,7 +1092,6 @@ public class SakurawitchEntity extends PathfinderMob {
                 Vec3.ZERO
         );
 
-        // BossIce2 原版：蓄力开始时就锁定喷火方向，之后目标移动也不会继续跟踪。
         faceLockedSprayDirection();
 
         if (!(level() instanceof ServerLevel serverLevel)) {
@@ -1257,7 +1247,6 @@ public class SakurawitchEntity extends PathfinderMob {
         List<Player> hit = new ArrayList<>();
         double halfAngleCos = Math.cos(Math.toRadians(22.5D));
 
-        // BossIce2 1.1.3：10 格、总夹角 45°，方向在蓄力开始时锁死。
         for (Player player : serverLevel.getEntitiesOfClass(Player.class, getBoundingBox().inflate(12.0D))) {
             if (!valid(player)) continue;
             Vec3 flat = new Vec3(player.getX() - getX(), 0.0D, player.getZ() - getZ());
@@ -1326,7 +1315,6 @@ public class SakurawitchEntity extends PathfinderMob {
             }
         }
 
-        // BossIce2 会等当前攻击动作结束后优先释放 10 层爆炸。
         if (stacks >= 10 && entityData.get(SKILL_STATE) == IDLE && entityData.get(ATTACK_TIMER) <= 0) {
             entityData.set(FIRE_MARK_STACKS, 0);
             explodeFireCharge();
@@ -1420,7 +1408,6 @@ public class SakurawitchEntity extends PathfinderMob {
         eruptionTimer =
                 ERUPTION_DELAY;
 
-        // Stargazer 原版：在点名位置铺一张地火 PNG 标记。
         placeEruptionMarker();
 
         entityData.set(
@@ -1582,7 +1569,6 @@ public class SakurawitchEntity extends PathfinderMob {
     }
 
     /**
-     * Stargazer 原版地火预警不是纯粒子，而是 1/16 格高的透明 PNG 地面标记。
      * 只占用空气位置，绝不覆盖副本建筑方块；若脚下位置不可用则尝试上一格。
      */
     private void placeEruptionMarker() {

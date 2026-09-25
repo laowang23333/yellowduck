@@ -38,19 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Stargazer 1.1.3-beta 的 EntityBossPuppetTeddyDec 机制移植。
- *
- * 只保留 YellowDuck 自己的布偶熊 GLB/动画；战斗循环按 Stargazer 熊还原：
- * - 普攻两段交替，3 秒 CD，8 tick 后结算；
- * - 技能1：30 秒一次，30 格群体缓慢 III，持续 5 秒；
- * - 技能2：P2/P3，50 秒一次，蓄力 8 秒，点名后瞬移斩；多人贴近时分摊，单吃 4 倍；
- * - 技能3：P3，20 秒一次，随机点名并召唤 500 血缠绕守卫；守卫活着时目标不能移动且只能攻击守卫；
- * - 小樱死亡后狂暴：攻击力立即 x2，之后每 10 秒再 x1.5；
- * - 熊死亡时通知小樱狂暴。
- *
- * 原包没有熊技能专属 PNG 粒子，因此技能视觉用 YellowDuck 自带 SAKURA_BEAR_* 粒子替代。
- */
 public class ToyBearEntity extends PathfinderMob {
     public static final EntityDataAccessor<Boolean> RAGING =
             SynchedEntityData.defineId(ToyBearEntity.class, EntityDataSerializers.BOOLEAN);
@@ -118,7 +105,6 @@ public class ToyBearEntity extends PathfinderMob {
     @Override
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
-        // Stargazer 熊的追击/攻击由实体自己的 tick 驱动，避免原版 MeleeAttackGoal 重复结算。
     }
 
     @Override
@@ -283,7 +269,6 @@ public class ToyBearEntity extends PathfinderMob {
         pendingDamageTarget = null;
         if (!valid(target)) return;
 
-        // 原 Stargazer 这里按 UUID 找目标后直接结算，不再额外做近战距离判定。
         target.hurt(damageSources().mobAttack(this), getAttackDamage());
         target.setDeltaMovement(Vec3.ZERO);
         if (level() instanceof ServerLevel server) {

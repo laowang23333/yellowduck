@@ -22,12 +22,6 @@ import net.minecraftforge.network.NetworkHooks;
 
 import java.util.UUID;
 
-/**
- * BossIce2 1.1.3 RootVineEntity 的 YellowDuck 版。
- *
- * 原 JAR 里的实体会始终跟随被缠绕玩家，只允许其他玩家攻击，
- * 被缠绕者本人无法破坏根须；根须被打掉后立即解除缠绕。
- */
 public class RootVineEntity extends PathfinderMob {
     /* 保留 YellowDuck 当前熊技能的 500 血救援强度。 */
     public static final float ROOT_MAX_HEALTH = 500.0F;
@@ -105,7 +99,6 @@ public class RootVineEntity extends PathfinderMob {
         Entity attacker = source.getEntity();
         if (!(attacker instanceof Player player)) return false;
 
-        // 对齐 BossIce2 RootVineEntity：被捆玩家不能自己拆根须，只能由队友救。
         if (targetUUID != null && targetUUID.equals(player.getUUID())) return false;
 
         return super.hurt(source, amount);
