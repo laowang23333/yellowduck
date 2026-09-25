@@ -1,16 +1,21 @@
 package com.yourname.yellowduck.garmr;
 
+import com.mojang.logging.LogUtils;
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.config.EntityTuningConfig;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import org.slf4j.Logger;
 
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -25,9 +30,21 @@ import java.util.UUID;
  */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID)
 public final class GarmrOutgoingDamageFixEvents {
+    /*
+     * v2:
+     * NetCraft 在某些装备组合下会在 LivingAttackEvent 就取消 YellowDuck 的攻击。
+     * 如果第一层已经 cancel，LivingHurt/LivingDamage 根本不会触发。
+     * 因此这里从 Attack -> Hurt -> Damage 三层连续兜底。
+     */
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static Field delayedHitField;
+    private static boolean delayedHitFieldResolved;
+    private static int fallbackLogBudget = 12;
+
     /** NetCraft 装备仍可减伤，但不能把 YellowDuck 加姆体系的合法攻击完全压成 0。 */
     private static final float MIN_FINAL_RATIO = 0.20F;
     private static final Map<UUID, PendingDamage> PENDING = new HashMap<>();
+    private static final Map<UUID, PendingDamage> FALLBACK = new HashMap<>();
     private static final ThreadLocal<Boolean> APPLYING_FORCED_HIT =
             ThreadLocal.withInitial(() -> Boolean.FALSE);
 
@@ -105,7 +122,8 @@ public final class GarmrOutgoingDamageFixEvents {
         }
 
         // 正常命中会在 LivingDamageEvent 中消费；被盾/无敌帧直接拦截时在这里清理。
-        if (PENDING.get(target.getUUID()) == pending) {
+        if (PENDING.get(target.getUUID()) == pending
+                && FALLBACK.get(target.getUUID()) != pending) {
             PENDING.remove(target.getUUID());
         }
         return hit;
@@ -113,6 +131,68 @@ public final class GarmrOutgoingDamageFixEvents {
 
     static boolean isApplyingForcedHit() {
         return APPLYING_FORCED_HIT.get();
+    }
+
+    /**
+     * 第一层：LivingAttackEvent。
+     *
+     * NetCraft 如果在这里直接 cancel，后续 LivingHurt/LivingDamage 都不会出现。
+     * 但 GarmrAttackSyncEvents 会故意 cancel “普攻动画刚开始的第一次攻击”来延迟到命中帧，
+     * 那一次必须继续保持取消，否则会造成普攻双重伤害。
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void restoreAttackEvent(LivingAttackEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(event.getSource().getEntity() instanceof LivingEntity attacker)) return;
+
+        long gameTime = player.level().getGameTime();
+
+        // hurtMinion()/hurtMinionFromBossSource() 主动发起的最终伤害已经提前登记。
+        PendingDamage forced = PENDING.get(player.getUUID());
+        if (APPLYING_FORCED_HIT.get() && matches(forced, attacker, gameTime)) {
+            if (event.isCanceled()) {
+                FALLBACK.put(player.getUUID(), forced);
+                event.setCanceled(false);
+            }
+            return;
+        }
+
+        if (!(attacker instanceof GarmrBoss boss) || !boss.isParticipant(player)) return;
+
+        boolean delayedBasic = isApplyingDelayedBossHit();
+
+        float expectedOriginalBasic = GarmrConfig.BASIC_DAMAGE;
+        if (boss.getEntityData().get(GarmrBoss.PHASE) == GarmrBoss.P3) {
+            expectedOriginalBasic *= GarmrConfig.PHASE_THREE_BASIC_MULTIPLIER;
+        }
+
+        /*
+         * 这一次是 GarmrAttackSyncEvents 为了“动画先播、命中帧再出伤”主动 cancel 的原始普攻。
+         * 不能把它救回来，否则玩家会先吃一次，命中帧再吃一次。
+         */
+        boolean animationProbe = boss.visualAction() == GarmrBoss.ACT_BASIC
+                && !delayedBasic
+                && Math.abs(event.getAmount() - expectedOriginalBasic) <= 0.01F;
+        if (animationProbe) return;
+
+        float finalDamage = expectedBossAttackDamage(
+                boss, player, event.getAmount(), delayedBasic);
+        if (finalDamage <= 0.0F) return;
+
+        float floor = Math.max(0.1F, finalDamage * MIN_FINAL_RATIO
+                * protectionMultiplier(boss, player));
+
+        PENDING.put(player.getUUID(), new PendingDamage(
+                boss.getUUID(),
+                Math.max(0.1F, finalDamage),
+                floor,
+                gameTime
+        ));
+
+        if (event.isCanceled()) {
+            FALLBACK.put(player.getUUID(), PENDING.get(player.getUUID()));
+            event.setCanceled(false);
+        }
     }
 
     /**
@@ -152,12 +232,15 @@ public final class GarmrOutgoingDamageFixEvents {
 
         PendingDamage pending = PENDING.get(player.getUUID());
         if (!matches(pending, attacker, player.level().getGameTime())) return;
-        if (event.isCanceled()) event.setCanceled(false);
+        if (event.isCanceled()) {
+            FALLBACK.put(player.getUUID(), pending);
+            event.setCanceled(false);
+        }
         event.setAmount(Math.max(event.getAmount(), pending.floor()));
     }
 
     /** 最终生命扣除前设置同样的 20% 下限，NetCraft/原版装备仍然可以正常减伤。 */
-    @SubscribeEvent(priority = EventPriority.LOWEST)
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
     public static void restoreFinalDamage(LivingDamageEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         if (!(event.getSource().getEntity() instanceof LivingEntity attacker)) return;
@@ -165,8 +248,150 @@ public final class GarmrOutgoingDamageFixEvents {
         PendingDamage pending = PENDING.get(player.getUUID());
         if (!matches(pending, attacker, player.level().getGameTime())) return;
 
+        if (event.isCanceled()) {
+            FALLBACK.put(player.getUUID(), pending);
+            event.setCanceled(false);
+        }
         event.setAmount(Math.max(event.getAmount(), pending.floor()));
         PENDING.remove(player.getUUID());
+        FALLBACK.remove(player.getUUID());
+    }
+
+    /**
+     * 如果其它模组在同一 LOWEST 优先级、并且排在本类之后再次取消攻击，
+     * 当次 hurt() 仍可能直接返回 false。ServerTick END 再检查一次：
+     * 正常进入 LivingDamage 的攻击已经从 FALLBACK 删除；只剩真正被提前吞掉的攻击。
+     */
+    @SubscribeEvent
+    public static void applyCanceledAttackFallback(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || FALLBACK.isEmpty()) return;
+
+        var iterator = FALLBACK.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, PendingDamage> entry = iterator.next();
+            ServerPlayer player = event.getServer().getPlayerList().getPlayer(entry.getKey());
+            PendingDamage pending = entry.getValue();
+
+            if (player == null || !player.isAlive() || player.isRemoved()) {
+                PENDING.remove(entry.getKey());
+                iterator.remove();
+                continue;
+            }
+
+            // 不允许旧记录跨 tick 继续扣血。
+            long now = player.level().getGameTime();
+            if (now < pending.gameTime()) continue;
+            if (now > pending.gameTime() + 1L) {
+                PENDING.remove(entry.getKey());
+                iterator.remove();
+                continue;
+            }
+
+            float remaining = pending.floor();
+            float absorption = player.getAbsorptionAmount();
+            if (absorption > 0.0F) {
+                float absorbed = Math.min(absorption, remaining);
+                player.setAbsorptionAmount(absorption - absorbed);
+                remaining -= absorbed;
+            }
+
+            if (remaining > 0.0F) {
+                float before = player.getHealth();
+                player.setHealth(Math.max(0.0F, before - remaining));
+                player.hurtMarked = true;
+
+                if (fallbackLogBudget > 0) {
+                    fallbackLogBudget--;
+                    LOGGER.info("[GarmrDamageFix] NetCraft 提前取消攻击，已执行最终兜底：player={}, damage={}",
+                            player.getGameProfile().getName(), pending.floor());
+                }
+
+                if (before > 0.0F && player.getHealth() <= 0.0F) {
+                    player.die(player.damageSources().generic());
+                }
+            }
+
+            PENDING.remove(entry.getKey());
+            iterator.remove();
+        }
+    }
+
+    /**
+     * LivingAttackEvent 仍保留 hurt() 刚传入的原始 amount，因此最适合判断这一击本来是什么。
+     */
+    private static float expectedBossAttackDamage(
+            GarmrBoss boss,
+            ServerPlayer player,
+            float incomingRaw,
+            boolean delayedBasic
+    ) {
+        int action = boss.visualAction();
+
+        if (delayedBasic && action == GarmrBoss.ACT_BASIC) {
+            float raw = (float) EntityTuningConfig.configured(
+                    "garmr", "attack_damage", GarmrConfig.BASIC_DAMAGE);
+            if (boss.getEntityData().get(GarmrBoss.PHASE) == GarmrBoss.P3) {
+                raw *= GarmrConfig.PHASE_THREE_BASIC_MULTIPLIER;
+            }
+            return Netcraft123CombatBridge.applyBossTierSuppression(player, raw);
+        }
+
+        float originalBreathTick = GarmrConfig.BREATH_DAMAGE / 3.0F;
+        if ((action == GarmrBoss.ACT_FIRE_BREATH || action == GarmrBoss.ACT_ICE_BREATH)
+                && Math.abs(incomingRaw - originalBreathTick) <= 0.01F) {
+            float basic = (float) EntityTuningConfig.configured(
+                    "garmr", "attack_damage", GarmrConfig.BASIC_DAMAGE);
+            float raw = basic * 0.50F / 3.0F;
+            return Netcraft123CombatBridge.applyBossTierSuppression(player, raw);
+        }
+
+        float devilRaw = player.getMaxHealth() * GarmrConfig.DEVIL_EXPLOSION_MAX_HEALTH_RATIO;
+        if (Math.abs(incomingRaw - devilRaw) <= Math.max(0.05F, devilRaw * 0.02F)
+                && hasOwnedDevilNear(boss, player)) {
+            return Netcraft123CombatBridge.applyMinionTierSuppression(
+                    player,
+                    devilRaw,
+                    "garmr_little_devil",
+                    GarmrConfig.DEVIL_ATTACK_LEVEL
+            );
+        }
+
+        GarmrHelperEntity lady = nearestOwnedLady(boss, player);
+        if (lady != null) {
+            int type = lady.getPersistentData().getInt(GarmrBoss.TAG_LADY_TYPE);
+            String section = type == GarmrBoss.BREATH_FIRE
+                    ? "garmr_fire_lady" : "garmr_ice_lady";
+            int born = lady.getPersistentData().getInt(GarmrBoss.TAG_LADY_SPAWN_TICK);
+            int elapsedSeconds = Math.max(0, (boss.tickCount - born) / 20);
+            float raw = (float) EntityTuningConfig.configured(
+                    section, "attack_damage", GarmrConfig.LADY_BASE_DAMAGE);
+            raw *= 1.0F + elapsedSeconds * GarmrConfig.LADY_DAMAGE_GROWTH_PER_SECOND;
+            return Netcraft123CombatBridge.applyMinionTierSuppression(
+                    player, raw, section, GarmrConfig.LADY_ATTACK_LEVEL);
+        }
+
+        /*
+         * 兼容旧版调用：熔岩守卫/亡灵战士/射手曾由 boss.damageNoKnockback() 代为出伤。
+         * 这类伤害已经在调用点读取配置；这里保留传入值并只负责防止被装备事件清零。
+         */
+        return incomingRaw > 0.0F ? incomingRaw : -1.0F;
+    }
+
+    /**
+     * 不改 GarmrAttackSyncEvents 的公开 API，只读取它的命中帧保护开关。
+     */
+    private static boolean isApplyingDelayedBossHit() {
+        try {
+            if (!delayedHitFieldResolved) {
+                delayedHitFieldResolved = true;
+                delayedHitField = GarmrAttackSyncEvents.class
+                        .getDeclaredField("applyingDelayedHit");
+                delayedHitField.setAccessible(true);
+            }
+            return delayedHitField != null && delayedHitField.getBoolean(null);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static float expectedBossSourceDamage(GarmrBoss boss, ServerPlayer player, float incomingRaw) {
