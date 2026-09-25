@@ -12,13 +12,6 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 
-/**
- * 复刻 BossIce2 RootVineRenderer 的四片旋转根须。
- *
- * BossIce2 JAR 引用了 boss_ice2:textures/entity/root_vine.png，
- * 但 1.1.3 实际没有打包这张 PNG，因此这里先直接使用原版 Minecraft vine.png，
- * 不额外伪造/重画一张“原贴图”。
- */
 public class RootVineRenderer extends EntityRenderer<RootVineEntity> {
     private static final ResourceLocation TEXTURE =
             new ResourceLocation("minecraft", "textures/block/vine.png");

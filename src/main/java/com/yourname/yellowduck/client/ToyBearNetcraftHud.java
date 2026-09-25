@@ -20,7 +20,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-/** Stargazer 原 bear.png 头像 + YellowDuck 已有 NetCraft 血条素材。 */
 public final class ToyBearNetcraftHud {
     private static final ResourceLocation BLOOD_BG =
             new ResourceLocation("yellowduck", "textures/gui/boss_blood_bg.png");
