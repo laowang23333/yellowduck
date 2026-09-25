@@ -2,6 +2,7 @@ package com.yourname.yellowduck.entity;
 
 import com.yourname.yellowduck.event.ToyBearEntangleEvents;
 import com.yourname.yellowduck.particle.ModParticles;
+import com.yourname.yellowduck.registry.ModSounds;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -100,6 +101,8 @@ public class ToyBearEntity extends PathfinderMob {
     private int deathTimer = -1;
     private boolean enraged;
     private int enrageTimer;
+    /** 狂暴倍率独立保存，不直接改属性，避免 /yd reload 把狂暴冲掉。 */
+    private float enrageDamageMultiplier = 1.0F;
 
     private UUID ownerSakura;
 
@@ -262,7 +265,6 @@ public class ToyBearEntity extends PathfinderMob {
         Vec3 current = getDeltaMovement();
         setDeltaMovement(dir.x * speed, current.y, dir.z * speed);
     }
-
     private void performNormalAttack(Player target) {
         faceTarget(target);
         attackCombo = (attackCombo + 1) % 2;
@@ -270,7 +272,7 @@ public class ToyBearEntity extends PathfinderMob {
         playAttackVisual(20);
         pendingDamageTarget = target.getUUID();
         pendingDamageDelay = NORMAL_ATTACK_DAMAGE_DELAY;
-        playHostileSound(SoundEvents.PLAYER_ATTACK_SWEEP, 1.0F, attackCombo == 0 ? 0.9F : 1.1F);
+        playHostileSound(ModSounds.TEDDY_ATTACK.get(), 1.5F, 1.0F);
     }
 
     private void tickPendingDamage() {
@@ -446,15 +448,12 @@ public class ToyBearEntity extends PathfinderMob {
         if (players.isEmpty()) return null;
         return players.get(random.nextInt(players.size()));
     }
-
     public void triggerEnrage() {
         if (enraged || level().isClientSide) return;
         enraged = true;
         entityData.set(RAGING, true);
         enrageTimer = 0;
-
-        var attack = getAttribute(Attributes.ATTACK_DAMAGE);
-        if (attack != null) attack.setBaseValue(attack.getBaseValue() * 2.0D);
+        enrageDamageMultiplier = 2.0F;
 
         if (level() instanceof ServerLevel server) {
             server.sendParticles(ModParticles.SAKURA_BEAR_RAGE_BURST.get(),
@@ -468,15 +467,12 @@ public class ToyBearEntity extends PathfinderMob {
     public void onOwnerSakuraDeath() {
         triggerEnrage();
     }
-
     private void tickEnrage() {
         if (!enraged) return;
         enrageTimer++;
         if (enrageTimer < ENRAGE_INTERVAL) return;
         enrageTimer = 0;
-
-        var attack = getAttribute(Attributes.ATTACK_DAMAGE);
-        if (attack != null) attack.setBaseValue(attack.getBaseValue() * 1.5D);
+        enrageDamageMultiplier *= 1.5F;
 
         if (level() instanceof ServerLevel server) {
             server.sendParticles(ModParticles.SAKURA_BEAR_RAGE_MIST.get(),
@@ -506,9 +502,8 @@ public class ToyBearEntity extends PathfinderMob {
         if (ratio > 0.50F) return 2;
         return 3;
     }
-
     private float getAttackDamage() {
-        return (float) getAttributeValue(Attributes.ATTACK_DAMAGE);
+        return (float) (getAttributeValue(Attributes.ATTACK_DAMAGE) * enrageDamageMultiplier);
     }
 
     private List<Player> combatPlayers(double radius) {
@@ -654,6 +649,7 @@ public class ToyBearEntity extends PathfinderMob {
         tag.putInt("PendingDamageDelay", pendingDamageDelay);
         tag.putBoolean("Enraged", enraged);
         tag.putInt("EnrageTimer", enrageTimer);
+        tag.putFloat("EnrageDamageMultiplier", enrageDamageMultiplier);
     }
 
     @Override
@@ -672,6 +668,9 @@ public class ToyBearEntity extends PathfinderMob {
         if (tag.contains("PendingDamageDelay")) pendingDamageDelay = tag.getInt("PendingDamageDelay");
         if (tag.contains("Enraged")) enraged = tag.getBoolean("Enraged");
         if (tag.contains("EnrageTimer")) enrageTimer = tag.getInt("EnrageTimer");
+        enrageDamageMultiplier = tag.contains("EnrageDamageMultiplier")
+                ? Math.max(1.0F, tag.getFloat("EnrageDamageMultiplier"))
+                : (enraged ? 2.0F : 1.0F);
         entityData.set(RAGING, enraged);
     }
 

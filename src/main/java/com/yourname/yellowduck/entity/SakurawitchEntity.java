@@ -19,6 +19,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
@@ -137,16 +138,13 @@ public class SakurawitchEntity extends PathfinderMob {
     /**
      * 普通魔法攻击间隔
      */
-    private static final int NORMAL_ATTACK_INTERVAL = 40;
+    private static final int NORMAL_ATTACK_INTERVAL = 60;
 
-    /** NetCraft：进入 2.5 格才开始普通攻击。 */
-    private static final double NORMAL_ATTACK_RANGE = 2.5D;
+    /** BossIce2 1.1.3：进入 2 格才开始普通攻击。 */
+    private static final double NORMAL_ATTACK_RANGE = 2.0D;
 
-    /** NetCraft：15 tick 后结算时，目标必须仍在 3.5 格内。 */
-    private static final double NORMAL_DAMAGE_RANGE = 3.5D;
-
-    /** NetCraft：攻击动作开始后 15 tick 才真正造成伤害。 */
-    private static final int NORMAL_DAMAGE_DELAY = 15;
+    /** BossIce2 1.1.3：攻击动作开始后 8 tick 结算；按 UUID 锁定，不再二次做近战距离判定。 */
+    private static final int NORMAL_DAMAGE_DELAY = 8;
 
     /**
      * 火焰喷射间隔
@@ -172,14 +170,14 @@ public class SakurawitchEntity extends PathfinderMob {
      *
      * 40 tick = 2 秒
      */
-    private static final int FIRE_CHARGE_INTERVAL = 40;
+    private static final int FIRE_CHARGE_INTERVAL = 40; // 保留仅用于旧存档兼容，BossIce2 原机制不再自动叠层
 
     /**
      * 三阶段点名间隔
      *
      * 160 tick = 8 秒
      */
-    private static final int ERUPTION_INTERVAL = 160;
+    private static final int ERUPTION_INTERVAL = 400;
 
     /**
      * 火焰喷发倒计时
@@ -211,11 +209,9 @@ public class SakurawitchEntity extends PathfinderMob {
     private static final float T2_MELEE_REDUCTION = 0.05F;
 
     // 布偶熊先倒下后，小樱进入永久强化。
-    private static final float PARTNER_RAGE_DAMAGE_MULTIPLIER = 1.25F;
-    private static final int PARTNER_RAGE_NORMAL_ATTACK_INTERVAL = 30;
-    private static final int PARTNER_RAGE_SPRAY_CD = 450;
-    private static final int PARTNER_RAGE_FIRE_CHARGE_INTERVAL = 30;
-    private static final int PARTNER_RAGE_ERUPTION_INTERVAL = 120;
+    private static final int PARTNER_RAGE_INTERVAL = 200; // 10 秒
+    private static final float PARTNER_RAGE_INITIAL_MULTIPLIER = 2.0F;
+    private static final float PARTNER_RAGE_STEP_MULTIPLIER = 1.5F;
 
     // =========================================================
     // 技能运行变量
@@ -235,6 +231,8 @@ public class SakurawitchEntity extends PathfinderMob {
      * 火焰喷射目标
      */
     private Player sprayTarget;
+    /** BossIce2 原版在开始蓄力时锁死喷火方向，目标后续移动不会让扇形跟踪转向。 */
+    private double sprayLockedYaw;
 
     /**
      * 普通魔法攻击 CD
@@ -287,6 +285,9 @@ public class SakurawitchEntity extends PathfinderMob {
     private boolean toyBearSummoned = false;
     private UUID toyBearUUID;
     private boolean partnerRage = false;
+    private int partnerRageTimer = 0;
+    private float partnerRageDamageMultiplier = 1.0F;
+    private int idleSoundTimer = 0;
 
     // NetCraft 1.4.18：仇恨、出生点限制、脱战回位和回血。
     private final SakuraHatredManager hatredManager = new SakuraHatredManager(this);
@@ -445,6 +446,8 @@ public class SakurawitchEntity extends PathfinderMob {
             normalAttackTimer--;
         }
         tickPendingNormalAttackDamage();
+        tickPartnerRage();
+        tickIdleSound();
 
         updatePhase();
 
@@ -528,6 +531,8 @@ public class SakurawitchEntity extends PathfinderMob {
         eruptionCD = currentEruptionInterval();
         playedPhaseTwoSound = false;
         partnerRage = false;
+        partnerRageTimer = 0;
+        partnerRageDamageMultiplier = 1.0F;
         entityData.set(PARTNER_RAGE, false);
 
         removeToyBear();
@@ -775,28 +780,17 @@ public class SakurawitchEntity extends PathfinderMob {
     /** 布偶熊先被击败：小樱进入永久伙伴死亡狂暴。 */
     public void onToyBearDefeated() {
         if (level().isClientSide || partnerRage || entityData.get(IS_DYING)) return;
-
         partnerRage = true;
+        partnerRageTimer = 0;
+        partnerRageDamageMultiplier = PARTNER_RAGE_INITIAL_MULTIPLIER;
         entityData.set(PARTNER_RAGE, true);
         toyBearUUID = null;
-
-        // 让下一轮技能更快到来，但不强行打断当前技能。
-        normalAttackTimer = Math.min(normalAttackTimer, 10);
-        sprayCD = Math.min(sprayCD, 120);
-        eruptionCD = Math.min(eruptionCD, 60);
-
-        announce("§4⚠ 布偶熊被击败，小樱陷入狂暴！");
+        announce("§4⚠ 布偶熊被击败，小樱陷入狂暴！攻击力翻倍，之后每10秒继续提高50%！");
         if (level() instanceof ServerLevel serverLevel) {
-            serverLevel.sendParticles(
-                    ModParticles.SAKURA_EXPLOSION.get(),
-                    getX(), getY() + 1.0D, getZ(),
-                    40, 1.4D, 1.0D, 1.4D, 0.08D
-            );
-            serverLevel.sendParticles(
-                    ModParticles.SAKURA_MAGIC.get(),
-                    getX(), getY() + 1.2D, getZ(),
-                    45, 1.7D, 1.1D, 1.7D, 0.10D
-            );
+            serverLevel.sendParticles(ModParticles.SAKURA_EXPLOSION.get(),
+                    getX(), getY() + 1.0D, getZ(), 40, 1.4D, 1.0D, 1.4D, 0.08D);
+            serverLevel.sendParticles(ModParticles.SAKURA_MAGIC.get(),
+                    getX(), getY() + 1.2D, getZ(), 45, 1.7D, 1.1D, 1.7D, 0.10D);
         }
         level().playSound(null, blockPosition(), SoundEvents.WITHER_SPAWN,
                 SoundSource.HOSTILE, 1.8F, 1.25F);
@@ -810,22 +804,10 @@ public class SakurawitchEntity extends PathfinderMob {
             bear.onOwnerSakuraDeath();
         }
     }
-
-    private int currentNormalAttackInterval() {
-        return partnerRage ? PARTNER_RAGE_NORMAL_ATTACK_INTERVAL : NORMAL_ATTACK_INTERVAL;
-    }
-
-    private int currentSprayCooldown() {
-        return partnerRage ? PARTNER_RAGE_SPRAY_CD : SPRAY_CD;
-    }
-
-    private int currentFireChargeInterval() {
-        return partnerRage ? PARTNER_RAGE_FIRE_CHARGE_INTERVAL : FIRE_CHARGE_INTERVAL;
-    }
-
-    private int currentEruptionInterval() {
-        return partnerRage ? PARTNER_RAGE_ERUPTION_INTERVAL : ERUPTION_INTERVAL;
-    }
+    private int currentNormalAttackInterval() { return NORMAL_ATTACK_INTERVAL; }
+    private int currentSprayCooldown() { return SPRAY_CD; }
+    private int currentFireChargeInterval() { return FIRE_CHARGE_INTERVAL; }
+    private int currentEruptionInterval() { return ERUPTION_INTERVAL; }
 
     private void removeToyBear() {
         if (toyBearUUID == null || !(level() instanceof ServerLevel serverLevel)) {
@@ -919,40 +901,42 @@ public class SakurawitchEntity extends PathfinderMob {
         level().playSound(
                 null,
                 blockPosition(),
-                ModSounds.SAKURA_ATT.get(),
+                (random.nextBoolean() ? ModSounds.SAKURA_ATT2 : ModSounds.SAKURA_ATT3).get(),
                 SoundSource.HOSTILE,
-                1.2F,
+                1.5F,
                 1.0F
         );
     }
 
     /**
-     * NetCraft：普攻动画开始 15 tick 后才结算；
-     * 此时目标如果已经离开 3.5 格，则本次攻击落空。
+     * BossIce2 1.1.3：普攻动画开始 8 tick 后结算。
      */
     private void tickPendingNormalAttackDamage() {
-        if (pendingNormalAttackDamageTicks <= 0) {
-            return;
-        }
-
-        pendingNormalAttackDamageTicks--;
-        if (pendingNormalAttackDamageTicks > 0) {
-            return;
-        }
+        if (pendingNormalAttackDamageTicks <= 0 || pendingNormalAttackTargetUUID == null) return;
+        if (--pendingNormalAttackDamageTicks > 0) return;
 
         UUID targetId = pendingNormalAttackTargetUUID;
         pendingNormalAttackTargetUUID = null;
-        if (targetId == null) {
-            return;
-        }
-
         Player target = level().getPlayerByUUID(targetId);
-        if (!valid(target) || distanceTo(target) > NORMAL_DAMAGE_RANGE) {
-            return;
-        }
+        if (!valid(target)) return;
 
-        magicDamage(target, NORMAL_MAGIC_DAMAGE);
+        // BossIce2 1.1.3：普攻 = 当前攻击属性 × 1.5。
+        boolean hit = magicDamage(target, getConfiguredAttackDamage() * 1.5F);
+        if (!hit) return;
         addMagicVulnerability(target);
+
+        // 二、三阶段：只有普通攻击成功命中才叠 1 层火焰蓄能；不再按时间自动增长。
+        if (entityData.get(PHASE) >= 2) {
+            int stacks = Math.min(10, entityData.get(FIRE_MARK_STACKS) + 1);
+            entityData.set(FIRE_MARK_STACKS, stacks);
+            if (level() instanceof ServerLevel serverLevel) {
+                serverLevel.sendParticles(ModParticles.SAKURA_MAGIC.get(),
+                        getX(), getY() + 1.0D, getZ(), 8,
+                        0.5D, 0.6D, 0.5D, 0.02D);
+            }
+            level().playSound(null, blockPosition(), SoundEvents.FIRECHARGE_USE,
+                    SoundSource.HOSTILE, 0.8F, 0.9F + stacks * 0.03F);
+        }
     }
 
     // =========================================================
@@ -987,7 +971,7 @@ public class SakurawitchEntity extends PathfinderMob {
         player.addEffect(
                 new MobEffectInstance(
                         ModEffects.MAGIC_VULNERABILITY.get(),
-                        200,
+                        100,
                         amplifier,
                         false,
                         true,
@@ -1071,6 +1055,13 @@ public class SakurawitchEntity extends PathfinderMob {
         );
 
         sprayTimer = 0;
+        if (valid(sprayTarget)) {
+            double dx = sprayTarget.getX() - getX();
+            double dz = sprayTarget.getZ() - getZ();
+            sprayLockedYaw = Math.atan2(dx, -dz);
+        } else {
+            sprayLockedYaw = Math.toRadians(getYRot());
+        }
         hatredManager.notifyAttackAction();
 
         getNavigation().stop();
@@ -1110,15 +1101,8 @@ public class SakurawitchEntity extends PathfinderMob {
                 Vec3.ZERO
         );
 
-        if (valid(sprayTarget)) {
-            lookAt(
-                    sprayTarget.position().add(
-                            0.0D,
-                            1.0D,
-                            0.0D
-                    )
-            );
-        }
+        // BossIce2 原版：蓄力开始时就锁定喷火方向，之后目标移动也不会继续跟踪。
+        faceLockedSprayDirection();
 
         if (!(level() instanceof ServerLevel serverLevel)) {
             return;
@@ -1198,25 +1182,18 @@ public class SakurawitchEntity extends PathfinderMob {
                 Vec3.ZERO
         );
 
-        /*
-         * 释放期间继续朝向目标。
-         */
-        if (valid(sprayTarget)) {
-            lookAt(
-                    sprayTarget.position().add(
-                            0.0D,
-                            1.0D,
-                            0.0D
-                    )
-            );
-        }
+        // 释放阶段也保持蓄力开始时的锁定方向。
+        faceLockedSprayDirection();
 
         /*
          * 释放阶段的持续火焰粒子。
          */
         if (level() instanceof ServerLevel serverLevel) {
-            Vec3 direction =
-                    getLookAngle().normalize();
+            Vec3 direction = new Vec3(
+                    Math.sin(sprayLockedYaw),
+                    0.0D,
+                    -Math.cos(sprayLockedYaw)
+            ).normalize();
 
             Vec3 start =
                     position().add(
@@ -1265,311 +1242,93 @@ public class SakurawitchEntity extends PathfinderMob {
     // =========================================================
     // 火焰喷射实际伤害
     // =========================================================
+    private void faceLockedSprayDirection() {
+        float yaw = (float) Math.toDegrees(sprayLockedYaw);
+        setYRot(yaw);
+        yBodyRot = yaw;
+        yHeadRot = yaw;
+    }
 
     private void castSpray() {
-        if (!(level() instanceof ServerLevel serverLevel)) {
-            return;
+        if (!(level() instanceof ServerLevel serverLevel)) return;
+
+        Vec3 start = position().add(0.0D, 1.35D, 0.0D);
+        Vec3 direction = new Vec3(Math.sin(sprayLockedYaw), 0.0D, -Math.cos(sprayLockedYaw)).normalize();
+        List<Player> hit = new ArrayList<>();
+        double halfAngleCos = Math.cos(Math.toRadians(22.5D));
+
+        // BossIce2 1.1.3：10 格、总夹角 45°，方向在蓄力开始时锁死。
+        for (Player player : serverLevel.getEntitiesOfClass(Player.class, getBoundingBox().inflate(12.0D))) {
+            if (!valid(player)) continue;
+            Vec3 flat = new Vec3(player.getX() - getX(), 0.0D, player.getZ() - getZ());
+            double distance = flat.length();
+            if (distance <= 0.01D || distance > 10.0D) continue;
+            if (flat.normalize().dot(direction) >= halfAngleCos) hit.add(player);
         }
 
-        Vec3 start =
-                position().add(
-                        0.0D,
-                        1.35D,
-                        0.0D
-                );
+        float damage = getConfiguredAttackDamage() * 2.5F;
+        for (Player player : hit) magicDamage(player, damage);
 
-        Vec3 direction;
-
-        if (valid(sprayTarget)) {
-            direction =
-                    sprayTarget.position()
-                            .add(
-                                    0.0D,
-                                    1.0D,
-                                    0.0D
-                            )
-                            .subtract(start)
-                            .normalize();
-        } else {
-            direction =
-                    getLookAngle()
-                            .normalize();
-        }
-
-        List<Player> hit =
-                new ArrayList<>();
-
-        /*
-         * 15 格射程。
-         *
-         * dot >= cos(60°)
-         * 即前方约 120° 扇形。
-         */
-        for (Player player :
-                serverLevel.getEntitiesOfClass(
-                        Player.class,
-                        getBoundingBox()
-                                .inflate(15.0D)
-                )) {
-
-            if (!valid(player)) {
-                continue;
+        // 原版机制：多人同时吃到喷火不是减喷火本身，而是给这些玩家 30 秒“魔法虚弱”，
+        // 期间他们自己造成的魔法伤害减半。
+        if (hit.size() >= 2) {
+            for (Player player : hit) {
+                player.addEffect(new MobEffectInstance(ModEffects.SAKURA_MAGIC_WEAKNESS.get(),
+                        600, 0, false, true, true));
             }
-
-            Vec3 targetPoint =
-                    player.position()
-                            .add(
-                                    0.0D,
-                                    1.0D,
-                                    0.0D
-                            );
-
-            Vec3 delta =
-                    targetPoint.subtract(start);
-
-            double distance =
-                    delta.length();
-
-            if (distance <= 0.01D
-                    || distance > 15.0D) {
-                continue;
-            }
-
-            Vec3 normalized =
-                    delta.normalize();
-
-            if (normalized.dot(direction) >= 0.5D) {
-                hit.add(player);
-            }
+            announce("§c⚠ 多名玩家同时吃到火焰喷射，获得30秒魔法虚弱！");
         }
 
-        /*
-         * 火焰喷射的核心机制：
-         *
-         * 多名玩家抱团时，
-         * 火焰喷射伤害降低 50%。
-         *
-         * 这就是奶块攻略里常见的
-         * “抱团吃喷火减伤”机制。
-         */
-        boolean grouped =
-                hit.size() >= 2;
-
-        float damage =
-                grouped
-                        ? SPRAY_DAMAGE * 0.5F
-                        : SPRAY_DAMAGE;
-
-        for (Player player : hit) {
-            magicDamage(
-                    player,
-                    damage
-            );
+        if (valid(sprayTarget) && !hit.contains(sprayTarget)) {
+            tell(sprayTarget, "§a✔ 你成功躲开了火焰喷射！");
         }
 
-        if (grouped) {
-            announce(
-                    "§a✔ 多名玩家靠近，火焰喷射伤害降低！"
-            );
-        }
-
-        if (valid(sprayTarget)
-                && !hit.contains(sprayTarget)) {
-
-            tell(
-                    sprayTarget,
-                    "§a✔ 你成功躲开了火焰喷射！"
-            );
-        }
-
-        /*
-         * 扇形火焰视觉。
-         */
-        for (int ring = 1; ring <= 6; ring++) {
-            double distance =
-                    ring * 2.0D;
-
-            double halfAngle =
-                    Math.toRadians(60.0D);
-
-            int count =
-                    9 + ring * 2;
-
+        // 保留 YellowDuck 粒子，但收窄到原版 45° / 10 格。
+        double halfAngle = Math.toRadians(22.5D);
+        for (int ring = 1; ring <= 5; ring++) {
+            double distance = ring * 2.0D;
+            int count = 7 + ring * 2;
             for (int i = 0; i < count; i++) {
-                double ratio =
-                        count <= 1
-                                ? 0.0D
-                                : (double) i
-                                / (count - 1);
-
-                double angle =
-                        -halfAngle
-                                + ratio
-                                * halfAngle
-                                * 2.0D;
-
-                Vec3 forward =
-                        rotateHorizontal(
-                                direction,
-                                angle
-                        );
-
-                Vec3 pos =
-                        start.add(
-                                forward.scale(
-                                        distance
-                                )
-                        );
-
-                serverLevel.sendParticles(
-                        ModParticles.SAKURA_FLAME.get(),
-                        pos.x,
-                        pos.y,
-                        pos.z,
-                        1,
-                        0.15D,
-                        0.25D,
-                        0.15D,
-                        0.01D
-                );
+                double ratio = count <= 1 ? 0.0D : (double) i / (count - 1);
+                double angle = -halfAngle + ratio * halfAngle * 2.0D;
+                Vec3 forward = rotateHorizontal(direction, angle);
+                Vec3 pos = start.add(forward.scale(distance));
+                serverLevel.sendParticles(ModParticles.SAKURA_FLAME.get(),
+                        pos.x, pos.y, pos.z, 1,
+                        0.12D, 0.20D, 0.12D, 0.01D);
             }
         }
-
-        serverLevel.sendParticles(
-                ModParticles.SAKURA_EXPLOSION.get(),
-                start.x,
-                start.y,
-                start.z,
-                18,
-                0.8D,
-                0.6D,
-                0.8D,
-                0.04D
-        );
-
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.BLAZE_SHOOT,
-                SoundSource.HOSTILE,
-                2.5F,
-                0.7F
-        );
+        serverLevel.sendParticles(ModParticles.SAKURA_EXPLOSION.get(),
+                start.x, start.y, start.z, 18,
+                0.8D, 0.6D, 0.8D, 0.04D);
+        level().playSound(null, blockPosition(), ModSounds.SAKURA_ATT.get(),
+                SoundSource.HOSTILE, 2.5F, 1.0F);
     }
 
     // =========================================================
     // 火焰蓄能
     // =========================================================
-
     private void tickFireCharge() {
-        if (entityData.get(PHASE) < 2) {
-            return;
-        }
+        if (entityData.get(PHASE) < 2) return;
 
+        int stacks = entityData.get(FIRE_MARK_STACKS);
+        // 只保留蓄能环绕视觉；层数由普攻命中增加。
         fireChargeTimer++;
-
-        /*
-         * 环绕小樱的火焰元素视觉。
-         */
-        if (fireChargeTimer % 5 == 0
-                && level() instanceof ServerLevel serverLevel) {
-
-            int stacks =
-                    entityData.get(
-                            FIRE_MARK_STACKS
-                    );
-
-            double radius =
-                    1.1D
-                            + stacks * 0.08D;
-
+        if (fireChargeTimer % 5 == 0 && stacks > 0 && level() instanceof ServerLevel serverLevel) {
+            double radius = 1.1D + stacks * 0.08D;
             for (int i = 0; i < 6; i++) {
-                double angle =
-                        random.nextDouble()
-                                * Math.PI * 2.0D;
-
-                serverLevel.sendParticles(
-                        ModParticles.SAKURA_FLAME.get(),
-                        getX()
-                                + Math.cos(angle)
-                                * radius,
-                        getY()
-                                + 0.15D
-                                + random.nextDouble()
-                                * 1.5D,
-                        getZ()
-                                + Math.sin(angle)
-                                * radius,
-                        1,
-                        0.0D,
-                        0.02D,
-                        0.0D,
-                        0.0D
-                );
+                double angle = random.nextDouble() * Math.PI * 2.0D;
+                serverLevel.sendParticles(ModParticles.SAKURA_FLAME.get(),
+                        getX() + Math.cos(angle) * radius,
+                        getY() + 0.15D + random.nextDouble() * 1.5D,
+                        getZ() + Math.sin(angle) * radius,
+                        1, 0.0D, 0.02D, 0.0D, 0.0D);
             }
         }
 
-        /*
-         * 每 2 秒增加一层。
-         */
-        if (fireChargeTimer < currentFireChargeInterval()) {
-            return;
-        }
-
-        fireChargeTimer = 0;
-
-        int stacks =
-                entityData.get(
-                        FIRE_MARK_STACKS
-                );
-
-        stacks =
-                Math.min(
-                        10,
-                        stacks + 1
-                );
-
-        entityData.set(
-                FIRE_MARK_STACKS,
-                stacks
-        );
-
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.FIRECHARGE_USE,
-                SoundSource.HOSTILE,
-                0.8F,
-                0.9F + stacks * 0.03F
-        );
-
-        if (level() instanceof ServerLevel serverLevel) {
-
-            /*
-             * 每增加一层明显闪一下。
-             */
-            serverLevel.sendParticles(
-                    ModParticles.SAKURA_MAGIC.get(),
-                    getX(),
-                    getY() + 1.0D,
-                    getZ(),
-                    8,
-                    0.5D,
-                    0.6D,
-                    0.5D,
-                    0.02D
-            );
-        }
-
-        /*
-         * 10 层爆炸。
-         */
-        if (stacks >= 10) {
-            entityData.set(
-                    FIRE_MARK_STACKS,
-                    0
-            );
-
+        // BossIce2 会等当前攻击动作结束后优先释放 10 层爆炸。
+        if (stacks >= 10 && entityData.get(SKILL_STATE) == IDLE && entityData.get(ATTACK_TIMER) <= 0) {
+            entityData.set(FIRE_MARK_STACKS, 0);
             explodeFireCharge();
         }
     }
@@ -1577,97 +1336,32 @@ public class SakurawitchEntity extends PathfinderMob {
     // =========================================================
     // 火焰爆炸
     // =========================================================
-
     private void explodeFireCharge() {
-        if (!(level() instanceof ServerLevel serverLevel)) {
-            return;
+        if (!(level() instanceof ServerLevel serverLevel)) return;
+        announce("§4☠ 小樱释放了火焰爆炸！");
+        level().playSound(null, blockPosition(), ModSounds.SAKURA_ATT.get(),
+                SoundSource.HOSTILE, 2.5F, 1.0F);
+        serverLevel.sendParticles(ModParticles.SAKURA_EXPLOSION.get(),
+                getX(), getY() + 1.0D, getZ(), 35,
+                2.0D, 1.2D, 2.0D, 0.08D);
+
+        List<Player> targets = players(30.0D);
+        float attack = getConfiguredAttackDamage();
+        for (Player player : targets) {
+            if (!valid(player)) continue;
+            magicDamage(player, attack * (player.isBlocking() ? 0.5F : 1.0F));
         }
 
-        announce(
-                "§4☠ 小樱释放了火焰爆炸！"
-        );
-
-        level().playSound(
-                null,
-                blockPosition(),
-                SoundEvents.GENERIC_EXPLODE,
-                SoundSource.HOSTILE,
-                3.0F,
-                0.65F
-        );
-
-        serverLevel.sendParticles(
-                ModParticles.SAKURA_EXPLOSION.get(),
-                getX(),
-                getY() + 1.0D,
-                getZ(),
-                35,
-                2.0D,
-                1.2D,
-                2.0D,
-                0.08D
-        );
-
-        List<Player> players =
-                players(30.0D);
-
-        /*
-         * 全队基础魔法伤害。
-         */
-        for (Player player : players) {
-
-            if (!valid(player)) {
-                continue;
+        // 原版：任意两名玩家距离 <=5 格时，这一对会分别再吃 25% 攻击力余烬伤害。
+        for (int i = 0; i < targets.size(); i++) {
+            Player a = targets.get(i);
+            if (!valid(a)) continue;
+            for (int j = i + 1; j < targets.size(); j++) {
+                Player b = targets.get(j);
+                if (!valid(b) || a.distanceTo(b) > 5.0F) continue;
+                magicDamage(a, attack * (a.isBlocking() ? 0.125F : 0.25F));
+                magicDamage(b, attack * (b.isBlocking() ? 0.125F : 0.25F));
             }
-
-            magicDamage(
-                    player,
-                    FIRE_EXPLOSION_DAMAGE
-            );
-        }
-
-        /*
-         * 5 格内队友产生额外余烬伤害。
-         *
-         * 所以玩家应该分散。
-         */
-        for (Player player : players) {
-
-            if (!valid(player)) {
-                continue;
-            }
-
-            int nearby =
-                    0;
-
-            for (Player other : players) {
-
-                if (other == player) {
-                    continue;
-                }
-
-                if (other.distanceToSqr(player) <= 25.0D) {
-                    nearby++;
-                }
-            }
-
-            if (nearby <= 0) {
-                continue;
-            }
-
-            /*
-             * 每个过近队友增加一次余烬伤害。
-             */
-            magicDamage(
-                    player,
-                    EMBER_DAMAGE * nearby
-            );
-
-            tell(
-                    player,
-                    "§c⚠ 你与队友距离过近！"
-                            + " 受到额外余烬伤害！"
-            );
         }
     }
 
@@ -1930,97 +1624,26 @@ public class SakurawitchEntity extends PathfinderMob {
     // =========================================================
     // 火焰喷发爆炸
     // =========================================================
-
     private void explodeEruption() {
+        if (!(level() instanceof ServerLevel serverLevel) || eruptionPos == null) return;
+        BlockPos pos = eruptionPos;
+        double centerX = pos.getX() + 0.5D;
+        double centerY = pos.getY() + 0.5D;
+        double centerZ = pos.getZ() + 0.5D;
 
-        if (!(level() instanceof ServerLevel serverLevel)) {
-            return;
-        }
+        level().playSound(null, pos, SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 2.2F, 0.9F);
+        serverLevel.sendParticles(ModParticles.SAKURA_ERUPTION.get(), centerX, centerY, centerZ,
+                35, 1.2D, 0.7D, 1.2D, 0.08D);
+        serverLevel.sendParticles(ModParticles.SAKURA_EXPLOSION.get(), centerX, centerY, centerZ,
+                20, 0.8D, 0.6D, 0.8D, 0.05D);
 
-        if (eruptionPos == null) {
-            return;
-        }
-
-        BlockPos pos =
-                eruptionPos;
-
-        double centerX =
-                pos.getX() + 0.5D;
-
-        double centerY =
-                pos.getY() + 0.5D;
-
-        double centerZ =
-                pos.getZ() + 0.5D;
-
-        level().playSound(
-                null,
-                pos,
-                SoundEvents.GENERIC_EXPLODE,
-                SoundSource.HOSTILE,
-                2.2F,
-                0.9F
-        );
-
-        serverLevel.sendParticles(
-                ModParticles.SAKURA_ERUPTION.get(),
-                centerX,
-                centerY,
-                centerZ,
-                35,
-                1.5D,
-                0.7D,
-                1.5D,
-                0.08D
-        );
-
-        serverLevel.sendParticles(
-                ModParticles.SAKURA_EXPLOSION.get(),
-                centerX,
-                centerY,
-                centerZ,
-                20,
-                1.0D,
-                0.6D,
-                1.0D,
-                0.05D
-        );
-
-        /*
-         * 3 格爆炸范围。
-         */
-        AABB box =
-                new AABB(pos)
-                        .inflate(3.0D);
-
-        for (Player player :
-                serverLevel.getEntitiesOfClass(
-                        Player.class,
-                        box
-                )) {
-
-            if (!valid(player)) {
-                continue;
-            }
-
-            double dx =
-                    player.getX()
-                            - centerX;
-
-            double dz =
-                    player.getZ()
-                            - centerZ;
-
-            /*
-             * 只判断水平距离。
-             */
-            if (dx * dx + dz * dz <= 9.0D) {
-
-                magicDamage(
-                        player,
-                        ERUPTION_DAMAGE
-                );
-            }
+        AABB box = new AABB(centerX - 1.5D, centerY - 1.0D, centerZ - 1.5D,
+                centerX + 1.5D, centerY + 3.0D, centerZ + 1.5D);
+        float attack = getConfiguredAttackDamage();
+        for (Player player : serverLevel.getEntitiesOfClass(Player.class, box, this::valid)) {
+            magicDamage(player, attack * (player.isBlocking() ? 0.625F : 1.25F));
+            player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN,
+                    60, 255, false, false, true));
         }
     }
 
@@ -2054,62 +1677,43 @@ public class SakurawitchEntity extends PathfinderMob {
     // =========================================================
     // 魔法伤害
     // =========================================================
-
-    private void magicDamage(
-            Player player,
-            float baseDamage
-    ) {
-
-        if (!valid(player)) {
-            return;
-        }
-
-        MobEffectInstance effect =
-                player.getEffect(
-                        ModEffects.MAGIC_VULNERABILITY.get()
-                );
-
-        /*
-         * 魔法易伤每层让受到的小樱魔法伤害
-         * 增加 5%。
-         *
-         * 最高 10 层。
-         */
-        int stacks =
-                effect == null
-                        ? 0
-                        : Math.min(
-                                10,
-                                effect.getAmplifier() + 1
-                        );
-
-        float damage =
-                baseDamage
-                        * (
-                        1.0F
-                                + 0.05F
-                                * stacks
-                )
-                        * (partnerRage ? PARTNER_RAGE_DAMAGE_MULTIPLIER : 1.0F);
-
-        /*
-         * NetCraft 小樱：hurt() 前保存目标速度，伤害后立即恢复。
-         * 所以会正常受伤，但不会被这次攻击击退。
-         * 你现有的普攻、喷火、爆炸、喷发都走 magicDamage()，
-         * 因此统一获得同样的无击退效果。
-         */
+    private boolean magicDamage(Player player, float baseDamage) {
+        if (!valid(player)) return false;
+        float damage = baseDamage * partnerRageDamageMultiplier;
         Vec3 oldMotion = player.getDeltaMovement();
+        boolean hit = player.hurt(damageSources().indirectMagic(this, this), damage);
+        if (hit) {
+            player.setDeltaMovement(oldMotion);
+            player.hurtMarked = true;
+            hatredManager.notifyAttackAction();
+        }
+        return hit;
+    }
 
-        player.hurt(
-                damageSources().indirectMagic(
-                        this,
-                        this
-                ),
-                damage
-        );
+    private float getConfiguredAttackDamage() {
+        return (float) Math.max(0.0D, getAttributeValue(Attributes.ATTACK_DAMAGE));
+    }
 
-        player.setDeltaMovement(oldMotion);
-        hatredManager.notifyAttackAction();
+    private void tickPartnerRage() {
+        if (!partnerRage) return;
+        if (++partnerRageTimer < PARTNER_RAGE_INTERVAL) return;
+        partnerRageTimer = 0;
+        partnerRageDamageMultiplier *= PARTNER_RAGE_STEP_MULTIPLIER;
+        if (level() instanceof ServerLevel serverLevel) {
+            serverLevel.sendParticles(ModParticles.SAKURA_FLAME.get(),
+                    getX(), getY() + 1.0D, getZ(), 8,
+                    0.5D, 0.7D, 0.5D, 0.04D);
+        }
+    }
+
+    private void tickIdleSound() {
+        if (idleSoundTimer > 0) { idleSoundTimer--; return; }
+        idleSoundTimer = 500 + random.nextInt(400);
+        if (!entityData.get(IS_DYING) && entityData.get(SKILL_STATE) == IDLE
+                && entityData.get(ATTACK_TIMER) <= 0) {
+            level().playSound(null, blockPosition(), ModSounds.SAKURA_STAND.get(),
+                    SoundSource.HOSTILE, 1.2F, 1.0F);
+        }
     }
 
     // =========================================================
@@ -2406,7 +2010,7 @@ public class SakurawitchEntity extends PathfinderMob {
             level().playSound(
                     null,
                     blockPosition(),
-                    ModSounds.SAKURA_END.get(),
+                    ModSounds.SAKURA_DEATH.get(),
                     SoundSource.HOSTILE,
                     2.0F,
                     1.0F
@@ -2539,6 +2143,8 @@ public class SakurawitchEntity extends PathfinderMob {
         tag.putBoolean("PlayedDeathSound", playedDeathSound);
         tag.putBoolean("ToyBearSummoned", toyBearSummoned);
         tag.putBoolean("PartnerRage", partnerRage);
+        tag.putInt("PartnerRageTimer", partnerRageTimer);
+        tag.putFloat("PartnerRageDamageMultiplier", partnerRageDamageMultiplier);
         if (toyBearUUID != null) {
             tag.putUUID("ToyBearUUID", toyBearUUID);
         }
@@ -2614,6 +2220,10 @@ public class SakurawitchEntity extends PathfinderMob {
         playedDeathSound = tag.getBoolean("PlayedDeathSound");
         toyBearSummoned = tag.getBoolean("ToyBearSummoned");
         partnerRage = tag.getBoolean("PartnerRage");
+        partnerRageTimer = tag.getInt("PartnerRageTimer");
+        partnerRageDamageMultiplier = tag.contains("PartnerRageDamageMultiplier")
+                ? Math.max(1.0F, tag.getFloat("PartnerRageDamageMultiplier"))
+                : (partnerRage ? PARTNER_RAGE_INITIAL_MULTIPLIER : 1.0F);
         entityData.set(PARTNER_RAGE, partnerRage);
         toyBearUUID = tag.hasUUID("ToyBearUUID") ? tag.getUUID("ToyBearUUID") : null;
     }
