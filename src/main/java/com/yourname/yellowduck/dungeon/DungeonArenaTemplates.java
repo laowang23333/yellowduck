@@ -49,6 +49,25 @@ public final class DungeonArenaTemplates {
                 16,
                 25
         ));
+
+        // 恐惧之地：85 x 51 x 75。
+        // 蓝图唯一海晶灯 local=(45,16,35) 作为 Boss 出生点/实例原点。
+        // 场地独立金块 local=(45,16,67) 作为阿努比斯固定点，相对 Boss 为 +Z 32 格。
+        // 玩家以“金块朝 Boss 方向前 2 格”为中心出生；5 人横向错开，避免完全重叠。
+        register("garmr", new ArenaTemplate(
+                new ResourceLocation(YellowDuckMod.MOD_ID, "dungeons/garmr"),
+                new BlockPos(-45, -16, -35),
+                new BlockPos(0, 0, 0),
+                List.of(
+                        new BlockPos(0, 0, 30),
+                        new BlockPos(-1, 0, 30),
+                        new BlockPos(1, 0, 30),
+                        new BlockPos(-2, 0, 30),
+                        new BlockPos(2, 0, 30)
+                ),
+                48,
+                51
+        ));
     }
 
     private DungeonArenaTemplates() {}
