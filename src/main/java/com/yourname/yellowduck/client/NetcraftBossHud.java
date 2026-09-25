@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.yourname.yellowduck.boss.NetcraftBossBase;
+import com.yourname.yellowduck.garmr.GarmrBoss;
 import com.yourname.yellowduck.tengu.TenguBoss;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -22,8 +23,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 所有继承 NetcraftBossBase 的 Boss 共用的 NetCraft 1.4.18 风格 HUD。
- * 天狗是例外：按需求只在实体头顶显示世界空间血条，因此这里排除。
+ * 所有继承 NetcraftBossBase 的 Boss 共用的 NetCraft 风格 HUD。
+ * 天狗按需求只显示世界空间血条，因此这里排除。
  */
 public final class NetcraftBossHud {
     private static final ResourceLocation BLOOD_BG =
@@ -39,6 +40,12 @@ public final class NetcraftBossHud {
 
     private static final int ICON_ATLAS_W = 1368;
     private static final int ICON_ATLAS_H = 1012;
+
+    // boss_map_icon.png 第一排第 4 个头像。
+    private static final int GARMR_ICON_U = 396;
+    private static final int GARMR_ICON_V = 2;
+    private static final int GARMR_ICON_W = 106;
+    private static final int GARMR_ICON_H = 95;
 
     private NetcraftBossHud() {
     }
@@ -200,10 +207,15 @@ public final class NetcraftBossHud {
             float width,
             float height
     ) {
-        float u0 = boss.getIconAtlasU() / (float) ICON_ATLAS_W;
-        float v0 = boss.getIconAtlasV() / (float) ICON_ATLAS_H;
-        float u1 = (boss.getIconAtlasU() + boss.getIconWidth()) / (float) ICON_ATLAS_W;
-        float v1 = (boss.getIconAtlasV() + boss.getIconHeight()) / (float) ICON_ATLAS_H;
+        int iconU = boss instanceof GarmrBoss ? GARMR_ICON_U : boss.getIconAtlasU();
+        int iconV = boss instanceof GarmrBoss ? GARMR_ICON_V : boss.getIconAtlasV();
+        int iconW = boss instanceof GarmrBoss ? GARMR_ICON_W : boss.getIconWidth();
+        int iconH = boss instanceof GarmrBoss ? GARMR_ICON_H : boss.getIconHeight();
+
+        float u0 = iconU / (float) ICON_ATLAS_W;
+        float v0 = iconV / (float) ICON_ATLAS_H;
+        float u1 = (iconU + iconW) / (float) ICON_ATLAS_W;
+        float v1 = (iconV + iconH) / (float) ICON_ATLAS_H;
         drawTexturedQuad(graphics, BOSS_ICON_ATLAS, x, y, width, height, u0, v0, u1, v1);
     }
 
