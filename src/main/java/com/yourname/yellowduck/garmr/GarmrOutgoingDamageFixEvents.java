@@ -40,11 +40,15 @@ public final class GarmrOutgoingDamageFixEvents {
     private static Field delayedHitField;
     private static boolean delayedHitFieldResolved;
     private static int fallbackLogBudget = 12;
+    private static int verifyLogBudget = 20;
+    private static int reconcileLogBudget = 20;
 
     /** NetCraft 装备仍可减伤，但不能把 YellowDuck 加姆体系的合法攻击完全压成 0。 */
     private static final float MIN_FINAL_RATIO = 0.20F;
     private static final Map<UUID, PendingDamage> PENDING = new HashMap<>();
     private static final Map<UUID, PendingDamage> FALLBACK = new HashMap<>();
+    /** 下一 tick 核对“实际生命+吸收”是否真的下降，彻底绕开其它 Mod 的后置改写。 */
+    private static final Map<UUID, HealthCheck> VERIFY = new HashMap<>();
     private static final ThreadLocal<Boolean> APPLYING_FORCED_HIT =
             ThreadLocal.withInitial(() -> Boolean.FALSE);
 
@@ -105,6 +109,7 @@ public final class GarmrOutgoingDamageFixEvents {
                 protectedFloor,
                 target.level().getGameTime()
         );
+        scheduleHealthCheck(target, attacker, protectedFloor, "forced");
         PENDING.put(target.getUUID(), pending);
 
         Vec3 oldMotion = target.getDeltaMovement();
@@ -188,6 +193,7 @@ public final class GarmrOutgoingDamageFixEvents {
                 floor,
                 gameTime
         ));
+        scheduleHealthCheck(player, boss, floor, "attack");
 
         if (event.isCanceled()) {
             FALLBACK.put(player.getUUID(), PENDING.get(player.getUUID()));
@@ -218,6 +224,7 @@ public final class GarmrOutgoingDamageFixEvents {
                     * protectionMultiplier(boss, player));
             PENDING.put(player.getUUID(), new PendingDamage(
                     boss.getUUID(), Math.max(0.1F, finalDamage), floor, gameTime));
+            scheduleHealthCheck(player, boss, floor, "hurt");
         }
     }
 
@@ -264,7 +271,7 @@ public final class GarmrOutgoingDamageFixEvents {
      */
     @SubscribeEvent
     public static void applyCanceledAttackFallback(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END || FALLBACK.isEmpty()) return;
+        if (event.phase != TickEvent.Phase.END) return;
 
         var iterator = FALLBACK.entrySet().iterator();
         while (iterator.hasNext()) {
@@ -313,6 +320,132 @@ public final class GarmrOutgoingDamageFixEvents {
 
             PENDING.remove(entry.getKey());
             iterator.remove();
+        }
+
+        /*
+         * v3 最终核对：
+         * LivingDamageEvent 即使成功触发，也可能被 Mohist/NetCraft 在本监听器之后再次改写，
+         * 因而“事件没取消”并不等于玩家真的扣了血。
+         * 下一 tick 用服务端真实 health + absorption 对账；不足最低伤害时只补差额。
+         */
+        if (!VERIFY.isEmpty()) {
+            var verifyIterator = VERIFY.entrySet().iterator();
+            while (verifyIterator.hasNext()) {
+                Map.Entry<UUID, HealthCheck> entry = verifyIterator.next();
+                ServerPlayer player = event.getServer().getPlayerList().getPlayer(entry.getKey());
+                HealthCheck check = entry.getValue();
+
+                if (player == null || !player.isAlive() || player.isRemoved()) {
+                    verifyIterator.remove();
+                    continue;
+                }
+
+                long now = player.level().getGameTime();
+                if (now <= check.gameTime()) continue;
+                if (now > check.gameTime() + 3L) {
+                    verifyIterator.remove();
+                    continue;
+                }
+
+                float currentEffective = effectiveHealth(player);
+                float actuallyLost = Math.max(0.0F, check.beforeEffectiveHealth() - currentEffective);
+                float missing = check.requiredFloor() - actuallyLost;
+
+                if (missing > 0.01F) {
+                    forceRemoveEffectiveHealth(player, missing);
+
+                    if (reconcileLogBudget > 0) {
+                        reconcileLogBudget--;
+                        LOGGER.info(
+                                "[GarmrDamageFix] 最终生命核对补伤：player={}, stage={}, expectedMin={}, actuallyLost={}, supplemented={}",
+                                player.getGameProfile().getName(),
+                                check.stage(),
+                                check.requiredFloor(),
+                                actuallyLost,
+                                missing
+                        );
+                    }
+                }
+
+                verifyIterator.remove();
+            }
+        }
+    }
+
+    /**
+     * 登记一笔伤害的“实际生命核对”。
+     * 同一玩家同一 tick 可能同时经过 Attack/Hurt 两层，只取更高的最低伤害，避免重复计算。
+     */
+    private static void scheduleHealthCheck(
+            ServerPlayer player,
+            LivingEntity attacker,
+            float requiredFloor,
+            String stage
+    ) {
+        if (player == null || attacker == null || requiredFloor <= 0.0F) return;
+
+        long gameTime = player.level().getGameTime();
+        float before = effectiveHealth(player);
+        HealthCheck previous = VERIFY.get(player.getUUID());
+
+        if (previous != null && previous.gameTime() == gameTime) {
+            VERIFY.put(player.getUUID(), new HealthCheck(
+                    Math.max(previous.beforeEffectiveHealth(), before),
+                    Math.max(previous.requiredFloor(), requiredFloor),
+                    gameTime,
+                    previous.stage() + "+" + stage
+            ));
+        } else {
+            VERIFY.put(player.getUUID(), new HealthCheck(
+                    before,
+                    requiredFloor,
+                    gameTime,
+                    stage
+            ));
+        }
+
+        if (verifyLogBudget > 0) {
+            verifyLogBudget--;
+            LOGGER.info(
+                    "[GarmrDamageFix] 已登记实际生命核对：player={}, attacker={}, stage={}, hpPlusAbsorption={}, expectedMin={}",
+                    player.getGameProfile().getName(),
+                    attacker.getClass().getSimpleName(),
+                    stage,
+                    before,
+                    requiredFloor
+            );
+        }
+    }
+
+    private static float effectiveHealth(ServerPlayer player) {
+        return Math.max(0.0F, player.getHealth())
+                + Math.max(0.0F, player.getAbsorptionAmount());
+    }
+
+    /**
+     * 只补“缺失”的那一部分；优先扣吸收值，再扣真实生命。
+     * 这是事件链全部结束后的最终保险，因此不再重新调用 hurt()，避免再次被同一套装备逻辑吞掉。
+     */
+    private static void forceRemoveEffectiveHealth(ServerPlayer player, float amount) {
+        if (player == null || amount <= 0.0F) return;
+
+        float remaining = amount;
+        float absorption = Math.max(0.0F, player.getAbsorptionAmount());
+        if (absorption > 0.0F) {
+            float absorbed = Math.min(absorption, remaining);
+            player.setAbsorptionAmount(absorption - absorbed);
+            remaining -= absorbed;
+        }
+
+        if (remaining <= 0.0F) return;
+
+        float before = player.getHealth();
+        float after = Math.max(0.0F, before - remaining);
+        player.setHealth(after);
+        player.hurtMarked = true;
+
+        if (before > 0.0F && after <= 0.0F) {
+            player.die(player.damageSources().generic());
         }
     }
 
@@ -490,4 +623,10 @@ public final class GarmrOutgoingDamageFixEvents {
     }
 
     private record PendingDamage(UUID attackerId, float damage, float floor, long gameTime) {}
+    private record HealthCheck(
+            float beforeEffectiveHealth,
+            float requiredFloor,
+            long gameTime,
+            String stage
+    ) {}
 }
