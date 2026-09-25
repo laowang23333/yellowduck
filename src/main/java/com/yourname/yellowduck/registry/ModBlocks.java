@@ -145,7 +145,6 @@ public class ModBlocks {
             () -> new RecordItem(5, ModSounds.MUSIC_DISC_5, new Item.Properties().stacksTo(1), 5234));
 
     // =========================
-    // Stargazer 小樱火焰喷发 PNG 地面标记（无物品，仅 Boss 临时生成）
     // =========================
 
     public static final RegistryObject<Block> SAKURA_ERUPTION_MARKER = BLOCKS.register("sakura_eruption_marker",
