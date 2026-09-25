@@ -12,7 +12,6 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 /**
- * BossIce2 1.1.3 小樱 Debuff 结算：
  * 1) 魔法防御削减：1~10 层对应魔法易伤 2/5/9/14/20/27/35/44/54/65%。
  * 2) 多人一起吃喷火后获得魔法虚弱，玩家自己造成的魔法伤害降低 50%。
  */
