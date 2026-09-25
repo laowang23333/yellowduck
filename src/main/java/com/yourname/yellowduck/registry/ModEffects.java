@@ -16,10 +16,15 @@ public class ModEffects {
     public static final RegistryObject<MobEffect> GARMR_DEATH_CURSE = EFFECTS.register("garmr_death_curse",
                     () -> new MobEffect(MobEffectCategory.HARMFUL, 0x5B176E) {});
 
-    // 魔法易伤：每层提升 5% 受到的魔法伤害，最高 10 层
+    // 小樱普攻叠加的魔法防御削减；真实增伤由 SakuraCombatEvents 按 BossIce2 阶梯结算。
     public static final RegistryObject<MobEffect> MAGIC_VULNERABILITY =
             EFFECTS.register("magic_vulnerability",
                     () -> new MobEffect(MobEffectCategory.HARMFUL, 0x9B30FF) {});
+
+    // BossIce2：多人一起吃小樱喷火后，玩家自身魔法输出降低 50%。
+    public static final RegistryObject<MobEffect> SAKURA_MAGIC_WEAKNESS =
+            EFFECTS.register("sakura_magic_weakness",
+                    () -> new MobEffect(MobEffectCategory.HARMFUL, 0x7A3A8C) {});
 
     // 布偶熊 P3：根须缠绕。
     public static final RegistryObject<MobEffect> ROOT_ENTANGLE =
