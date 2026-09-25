@@ -5,6 +5,7 @@ import com.yourname.yellowduck.cleopatra.*;
 import com.yourname.yellowduck.entity.MountEntity;
 import com.yourname.yellowduck.dungeon.DungeonConfig;
 import com.yourname.yellowduck.entity.AlpacaMountEntity;
+import com.yourname.yellowduck.entity.RootVineEntity;
 import com.yourname.yellowduck.entity.SakurawitchEntity;
 import com.yourname.yellowduck.entity.ToyBearEntity;
 import com.yourname.yellowduck.entity.TwoPhaseBossEntity;
@@ -65,6 +66,7 @@ public class YellowDuckMod {
         event.put(ModEntities.BAMBOO_HORSE_MOUNT.get(), MountEntity.createAttributes().build());
         event.put(ModEntities.SAKURA_WITCH.get(), SakurawitchEntity.createAttributes().build());
         event.put(ModEntities.TOY_BEAR.get(), ToyBearEntity.createAttributes().build());
+        event.put(ModEntities.ROOT_VINE.get(), RootVineEntity.createAttributes().build());
         event.put(CleopatraEntities.BOSS.get(), CleopatraBoss.createAttributes().build());
         event.put(CleopatraEntities.SANDWORM.get(), CleopatraSandworm.createAttributes().build());
         event.put(CleopatraEntities.SCORPION.get(), CleopatraScorpion.createAttributes().build());
