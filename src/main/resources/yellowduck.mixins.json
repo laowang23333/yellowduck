@@ -9,7 +9,9 @@
     "ToyBearNoKnockbackMixin",
     "TwoPhaseBossNoKnockbackMixin",
     "GarmrConfiguredDefenseMixin",
-    "GarmrYellowPhaseGuardMixin"
+    "GarmrYellowPhaseGuardMixin",
+    "GarmrLavaGuardAttackRangeMixin",
+    "ToyBearAttackRangeMixin"
   ],
   "client": [],
   "injectors": {
