@@ -15,6 +15,11 @@ public class ModSounds {
     public static final RegistryObject<SoundEvent> NIGANMA = register("niganma");
     public static final RegistryObject<SoundEvent> ROUDAN = register("roudan");
     public static final RegistryObject<SoundEvent> SAKURA_ATT = register("sakura_att");
+    public static final RegistryObject<SoundEvent> SAKURA_ATT2 = register("sakura_att2");
+    public static final RegistryObject<SoundEvent> SAKURA_ATT3 = register("sakura_att3");
+    public static final RegistryObject<SoundEvent> SAKURA_STAND = register("sakura_stand");
+    public static final RegistryObject<SoundEvent> SAKURA_DEATH = register("sakura_death");
+    public static final RegistryObject<SoundEvent> TEDDY_ATTACK = register("teddy_attack");
     public static final RegistryObject<SoundEvent> SAKURA_END = register("sakura_end");
     public static final RegistryObject<SoundEvent> SAKURA_XIONG = register("sakura_xiong");
     public static final RegistryObject<SoundEvent> XIAOQI_DISC = register("xiaoqi_disc");
