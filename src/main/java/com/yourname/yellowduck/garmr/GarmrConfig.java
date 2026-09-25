@@ -74,10 +74,10 @@ public final class GarmrConfig {
     public static final int BREATH_INTERVAL_TICKS = 200; // 10 秒，冰/火轮流
     public static final float BREATH_DAMAGE = BASIC_DAMAGE * 0.50F; // 50% 近战物理 = 90
     public static final float BREATH_HALF_ANGLE_DEGREES = 30.0F; // 总扇形 60°
-    public static final double BREATH_RANGE = 18.0D; // 图片未给距离，沿用当前测试半径
+    public static final double BREATH_RANGE = 32.0D; // 冰/火吐息统一 32 格有效距离
     public static final int BREATH_DURATION_TICKS = 40;
 
-    // P2 阿努比斯守护：每 30 秒最近玩家获得 15 秒守护，减伤 50%，圈内每秒 -1 索命。
+    // P2 阿努比斯守护：进入黄血阶段先必出 1 次，之后每 30 秒最近玩家获得 15 秒守护，减伤 50%，圈内每秒 -1 索命。
     public static final int ANUBIS_GUARD_INTERVAL_TICKS = 600;
     public static final int ANUBIS_GUARD_DURATION_TICKS = 300;
     public static final float ANUBIS_PROTECTION_MULTIPLIER = 0.50F;
@@ -117,6 +117,7 @@ public final class GarmrConfig {
     public static final int LANDING_TICKS = 60;
     public static final double AIR_HEIGHT = 6.0D;
 
-    public static final double ANUBIS_OFFSET_Z = 18.0D; // 默认测试场地临时坐标
+    // 恐惧之地蓝图：金块相对海晶灯 Boss 点位于 +Z 32 格，作为阿努比斯固定点。
+    public static final double ANUBIS_OFFSET_Z = 32.0D;
     public static final double LADY_OFFSET = 16.0D;     // 默认测试场地临时坐标
 }
