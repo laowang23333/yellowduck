@@ -463,7 +463,6 @@ public class CleopatraVenomSnake extends NetcraftBossBase {
         List<Player> all = level().getEntitiesOfClass(Player.class, box, CleopatraUtil::validPlayer);
         if (all.isEmpty()) return false;
 
-        // BossIce2 1.1.3：盾牌武器/龙爪副手玩家优先免点；
         // 只有场上所有可选玩家都属于这类职业时才允许点到他们。
         List<Player> normal = new ArrayList<>();
         List<Player> immune = new ArrayList<>();
