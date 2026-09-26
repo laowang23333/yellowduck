@@ -38,6 +38,7 @@ public class YellowDuckMod {
 
         com.yourname.yellowduck.piratechest.DragonPalacePirateChestContent.register(bus);
         com.yourname.yellowduck.distillation.DistillationContent.register(bus);
+        com.yourname.yellowduck.statue.ChangeStatueContent.register(bus);
 
         ModEntities.ENTITIES.register(bus);
         CleopatraEntities.TYPES.register(bus);
