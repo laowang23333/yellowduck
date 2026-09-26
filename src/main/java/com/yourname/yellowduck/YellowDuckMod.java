@@ -41,6 +41,7 @@ public class YellowDuckMod {
         com.yourname.yellowduck.statue.ChangeStatueContent.register(bus);
         com.yourname.yellowduck.rabbitbox.RabbitBoxContent.register(bus);
         com.yourname.yellowduck.change.ChangeContent.register(bus);
+        com.yourname.yellowduck.praytree.PrayTreeContent.register(bus);
 
         ModEntities.ENTITIES.register(bus);
         CleopatraEntities.TYPES.register(bus);
