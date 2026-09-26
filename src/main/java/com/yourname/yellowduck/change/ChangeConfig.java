@@ -52,7 +52,7 @@ public final class ChangeConfig {
     }
 
     public static void applyClone(ChangeClone clone) {
-        applyIfNeeded(clone, snapshot().clone());
+        applyIfNeeded(clone, snapshot().cloneValues());
     }
 
     public static void applyRabbit(ChangeRabbit rabbit) {
@@ -76,19 +76,19 @@ public final class ChangeConfig {
     }
 
     public static int cloneMeleeDefense() {
-        return (int) Math.round(snapshot().clone().meleeDefense());
+        return (int) Math.round(snapshot().cloneValues().meleeDefense());
     }
 
     public static int cloneRangedDefense() {
-        return (int) Math.round(snapshot().clone().rangedDefense());
+        return (int) Math.round(snapshot().cloneValues().rangedDefense());
     }
 
     public static int cloneMagicDefense() {
-        return (int) Math.round(snapshot().clone().magicDefense());
+        return (int) Math.round(snapshot().cloneValues().magicDefense());
     }
 
     public static float cloneDamageReduction() {
-        return (float) snapshot().clone().damageReduction();
+        return (float) snapshot().cloneValues().damageReduction();
     }
 
     public static int rabbitMeleeDefense() {
@@ -381,7 +381,7 @@ public final class ChangeConfig {
         return s;
     }
 
-    private record Snapshot(Values boss, Values clone, Values rabbit) {
+    private record Snapshot(Values boss, Values cloneValues, Values rabbit) {
         static Snapshot defaults() {
             return new Snapshot(
                     Values.bossDefaults(),
