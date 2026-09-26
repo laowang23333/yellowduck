@@ -1,0 +1,16 @@
+{
+  "variants": {
+    "axis=y": {
+      "model": "yellowduck:block/pray_tree"
+    },
+    "axis=z": {
+      "model": "yellowduck:block/pray_tree",
+      "x": 90
+    },
+    "axis=x": {
+      "model": "yellowduck:block/pray_tree",
+      "x": 90,
+      "y": 90
+    }
+  }
+}

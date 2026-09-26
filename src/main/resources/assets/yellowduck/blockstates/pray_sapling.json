@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "stage=0": {
+      "model": "yellowduck:block/pray_sapling"
+    },
+    "stage=1": {
+      "model": "yellowduck:block/pray_sapling"
+    }
+  }
+}
