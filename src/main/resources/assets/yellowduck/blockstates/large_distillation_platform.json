@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "main=true": {
+      "model": "yellowduck:block/large_distillation_platform"
+    },
+    "main=false": {
+      "model": "minecraft:block/air"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "yellowduck:block/dragon_palace_pirate_chest"
+    },
+    "facing=south": {
+      "model": "yellowduck:block/dragon_palace_pirate_chest"
+    },
+    "facing=west": {
+      "model": "yellowduck:block/dragon_palace_pirate_chest"
+    },
+    "facing=east": {
+      "model": "yellowduck:block/dragon_palace_pirate_chest"
+    }
+  }
+}
