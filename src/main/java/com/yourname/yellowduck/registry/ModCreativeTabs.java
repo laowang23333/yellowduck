@@ -22,6 +22,7 @@ public class ModCreativeTabs {
                         output.accept(com.yourname.yellowduck.distillation.DistillationContent.HEAT_CONDUCTING_COPPER_COMPONENT.get());
                         output.accept(com.yourname.yellowduck.distillation.DistillationContent.HARDENED_GLASS.get());
                         output.accept(com.yourname.yellowduck.distillation.DistillationContent.LARGE_DISTILLATION_PLATFORM.get());
+                        output.accept(com.yourname.yellowduck.statue.ChangeStatueContent.CHANGE_STATUE_ITEM.get());
                         output.accept(ModBlocks.JINYUANQUAN.get());
                         output.accept(ModBlocks.MEET_STONE_ITEM.get());
 
