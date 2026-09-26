@@ -2,8 +2,10 @@ package com.yourname.yellowduck.registry;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.item.GltfModelItem;
+import com.yourname.yellowduck.item.MooncakeItem;
 import com.yourname.yellowduck.item.MountSummonItem;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -58,6 +60,58 @@ public final class ModItems {
                             new ResourceLocation("yellowduck", "models/gltf/item/high_saddle.glb"),
                             0.90F
                     ));
+
+    private static FoodProperties smallMooncakeFood() {
+        // 前四种只增加 3 点饱食度；alwaysEat 允许满饱食时为了 Buff 继续食用。
+        return new FoodProperties.Builder()
+                .nutrition(3)
+                .saturationMod(0.30F)
+                .alwaysEat()
+                .build();
+    }
+
+    private static FoodProperties fullMooncakeFood() {
+        // nutrition 20 会直接补到 20/20；高饱和度同时会被原版上限裁到当前饱食度。
+        return new FoodProperties.Builder()
+                .nutrition(20)
+                .saturationMod(1.0F)
+                .alwaysEat()
+                .build();
+    }
+
+    public static final RegistryObject<Item> SAKURA_ICE_MOONCAKE_RED =
+            ITEMS.register("sakura_ice_mooncake_red",
+                    () -> mooncake(smallMooncakeFood(), MooncakeItem.Kind.SAKURA_DAMAGE,
+                            "sakura_ice_mooncake_red"));
+
+    public static final RegistryObject<Item> SAKURA_ICE_MOONCAKE_YELLOW =
+            ITEMS.register("sakura_ice_mooncake_yellow",
+                    () -> mooncake(smallMooncakeFood(), MooncakeItem.Kind.SAKURA_REGENERATION,
+                            "sakura_ice_mooncake_yellow"));
+
+    public static final RegistryObject<Item> ROSE_MOONCAKE =
+            ITEMS.register("rose_mooncake",
+                    () -> mooncake(smallMooncakeFood(), MooncakeItem.Kind.ROSE_SPEED,
+                            "rose_mooncake"));
+
+    public static final RegistryObject<Item> RABBIT_CAKE =
+            ITEMS.register("rabbit_cake",
+                    () -> mooncake(smallMooncakeFood(), MooncakeItem.Kind.RABBIT_HASTE,
+                            "rabbit_cake"));
+
+    public static final RegistryObject<Item> RABBIT_RABBIT_CAKE =
+            ITEMS.register("rabbit_rabbit_cake",
+                    () -> mooncake(fullMooncakeFood(), MooncakeItem.Kind.RABBIT_ALL_NETCRAFT_BUFFS,
+                            "rabbit_rabbit_cake"));
+
+    private static MooncakeItem mooncake(FoodProperties food, MooncakeItem.Kind kind, String modelName) {
+        return new MooncakeItem(
+                new Item.Properties().food(food),
+                kind,
+                new ResourceLocation(YellowDuckMod.MOD_ID, "models/gltf/item/" + modelName + ".glb"),
+                0.92F
+        );
+    }
 
     private ModItems() {}
 }

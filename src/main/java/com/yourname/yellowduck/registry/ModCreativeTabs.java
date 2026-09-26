@@ -26,6 +26,13 @@ public class ModCreativeTabs {
                         output.accept(ModBlocks.JINYUANQUAN.get());
                         output.accept(ModBlocks.MEET_STONE_ITEM.get());
 
+                        // 月饼食物
+                        output.accept(ModItems.SAKURA_ICE_MOONCAKE_RED.get());
+                        output.accept(ModItems.SAKURA_ICE_MOONCAKE_YELLOW.get());
+                        output.accept(ModItems.ROSE_MOONCAKE.get());
+                        output.accept(ModItems.RABBIT_CAKE.get());
+                        output.accept(ModItems.RABBIT_RABBIT_CAKE.get());
+
                         output.accept(ModBlocks.DUNGEON_ENTRANCE_MARKER_ITEM.get());
                         output.accept(ModBlocks.DUNGEON_BOSS_SPAWN_MARKER_ITEM.get());
                         output.accept(ModBlocks.YIN_SHEN_XIANG_ITEM.get());
