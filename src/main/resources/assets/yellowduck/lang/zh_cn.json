@@ -102,5 +102,7 @@
   "gui.yellowduck.distillation.zone_crops": "作物区",
   "gui.yellowduck.distillation.zone_fuel": "燃料区",
   "gui.yellowduck.distillation.zone_bottles": "玻璃瓶区",
-  "gui.yellowduck.distillation.zone_output": "产物区"
+  "gui.yellowduck.distillation.zone_output": "产物区",
+  "block.yellowduck.change_statue": "嫦娥雕像",
+  "item.yellowduck.change_statue": "嫦娥雕像"
 }
