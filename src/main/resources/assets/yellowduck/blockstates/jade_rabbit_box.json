@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "yellowduck:block/jade_rabbit_box" },
+    "facing=south": { "model": "yellowduck:block/jade_rabbit_box" },
+    "facing=east":  { "model": "yellowduck:block/jade_rabbit_box" },
+    "facing=west":  { "model": "yellowduck:block/jade_rabbit_box" }
+  }
+}
