@@ -111,5 +111,7 @@
   "gui.yellowduck.distillation.zone_bottles": "玻璃瓶区",
   "gui.yellowduck.distillation.zone_output": "产物区",
   "block.yellowduck.change_statue": "嫦娥雕像",
-  "item.yellowduck.change_statue": "嫦娥雕像"
+  "item.yellowduck.change_statue": "嫦娥雕像",
+  "block.yellowduck.jade_rabbit_box": "兔兔宝箱",
+  "item.yellowduck.jade_rabbit_box": "兔兔宝箱"
 }
