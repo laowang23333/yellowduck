@@ -118,6 +118,14 @@ public final class ChangeBoss extends NetcraftBossBase {
         tickPendingHit();
         checkRage();
 
+        // 酿酒玉兔属于独立计时机制，狂暴期间也必须继续生成。
+        // 否则狂暴状态会在这里提前 return，玉兔永远无法继续出现，
+        // 嫦娥也就没有机会喝到桂花酿结束狂暴。
+        if (rabbitTimer <= 0) {
+            rabbitTimer = 200;
+            spawnRabbitAxis();
+        }
+
         if (raging) {
             getNavigation().stop();
             setDeltaMovement(0, getDeltaMovement().y, 0);
@@ -131,11 +139,6 @@ public final class ChangeBoss extends NetcraftBossBase {
         else getNavigation().stop();
 
         tickSkills();
-
-        if (rabbitTimer <= 0) {
-            rabbitTimer = 200;
-            spawnRabbitAxis();
-        }
     }
 
     private void chase(Player target) {

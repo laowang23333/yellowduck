@@ -142,7 +142,7 @@ public final class ChangeClient {
             );
             draw(
                     entity,
-                    yaw,
+                    yaw + 180.0F,
                     partialTick,
                     pose,
                     buffers,
@@ -186,7 +186,7 @@ public final class ChangeClient {
 
             draw(
                     entity,
-                    yaw,
+                    yaw + 180.0F,
                     partialTick,
                     pose,
                     buffers,
