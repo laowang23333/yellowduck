@@ -373,6 +373,12 @@ public final class ChangeBoss extends NetcraftBossBase {
         );
     }
 
+
+    @Override public int getIconAtlasU() { return 218; }
+    @Override public int getIconAtlasV() { return 624; }
+    @Override public int getIconWidth() { return 106; }
+    @Override public int getIconHeight() { return 95; }
+
     @Override
     public void die(net.minecraft.world.damagesource.DamageSource source) {
         if (!level().isClientSide) {

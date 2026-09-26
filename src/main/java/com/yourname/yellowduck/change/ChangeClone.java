@@ -64,6 +64,12 @@ public final class ChangeClone extends NetcraftBossBase {
     @Override public void push(double x, double y, double z) {}
     @Override public boolean isPlayingAttackAnimation() { return attacking(); }
 
+
+    @Override public int getIconAtlasU() { return 218; }
+    @Override public int getIconAtlasV() { return 624; }
+    @Override public int getIconWidth() { return 106; }
+    @Override public int getIconHeight() { return 95; }
+
     @Override
     public void tick() {
         super.tick();
