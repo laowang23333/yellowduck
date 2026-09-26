@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "yellowduck:block/dragon_palace_pirate_chest"
+  }
+}
