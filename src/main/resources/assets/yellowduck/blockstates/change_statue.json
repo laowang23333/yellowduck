@@ -1,0 +1,16 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "yellowduck:block/change_statue"
+    },
+    "facing=south": {
+      "model": "yellowduck:block/change_statue"
+    },
+    "facing=east": {
+      "model": "yellowduck:block/change_statue"
+    },
+    "facing=west": {
+      "model": "yellowduck:block/change_statue"
+    }
+  }
+}
