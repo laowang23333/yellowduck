@@ -18,8 +18,8 @@ public final class RabbitBoxRenderer implements BlockEntityRenderer<RabbitBoxBlo
     public static final ResourceLocation MODEL =
             new ResourceLocation(YellowDuckMod.MOD_ID, "models/gltf/jade_rabbit_box.glb");
 
-    /** 最大边缩放到 0.95 格，完整模型不会超出单方块太多。 */
-    private static final float TARGET_MAX_EXTENT = 0.95F;
+    /** 按宝箱原始宽度定尺寸；上方兔兔变高时不会把整个宝箱一起缩小。 */
+    private static final float TARGET_WIDTH = 0.95F;
 
     private YellowGltfModel model;
     private Bounds bounds;
@@ -51,7 +51,8 @@ public final class RabbitBoxRenderer implements BlockEntityRenderer<RabbitBoxBlo
             pose.translate(0.5D, 0.0D, 0.5D);
             pose.mulPose(Axis.YP.rotationDegrees(rotation));
 
-            float scale = TARGET_MAX_EXTENT / Math.max(1.0E-6F, bounds.maxExtent());
+            float modelWidth = Math.max(1.0E-6F, bounds.maxX() - bounds.minX());
+            float scale = TARGET_WIDTH / modelWidth;
             pose.scale(scale, scale, scale);
             pose.translate(-bounds.centerX(), -bounds.minY(), -bounds.centerZ());
 
@@ -74,7 +75,7 @@ public final class RabbitBoxRenderer implements BlockEntityRenderer<RabbitBoxBlo
         model = YellowGltfModelCache.getOrLoad(MODEL);
         if (model == null) return false;
         bounds = calculateBounds(model);
-        return bounds != null && bounds.maxExtent() > 1.0E-6F;
+        return bounds != null && (bounds.maxX() - bounds.minX()) > 1.0E-6F;
     }
 
     static Bounds calculateBounds(YellowGltfModel model) {

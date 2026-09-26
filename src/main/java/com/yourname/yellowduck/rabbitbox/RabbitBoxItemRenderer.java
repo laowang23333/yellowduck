@@ -14,7 +14,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
-/** 兔兔宝箱 3D 物品渲染器。模型只有约 500 顶点，GUI 使用也很轻。 */
+/** 兔兔宝箱 3D 物品渲染器。 */
 @OnlyIn(Dist.CLIENT)
 public final class RabbitBoxItemRenderer extends BlockEntityWithoutLevelRenderer {
     private static RabbitBoxItemRenderer instance;
@@ -71,7 +71,12 @@ public final class RabbitBoxItemRenderer extends BlockEntityWithoutLevelRenderer
                 default -> 0.78F;
             };
 
-            float fit = visualScale / Math.max(1.0E-6F, bounds.maxExtent());
+            float width = bounds.maxX() - bounds.minX();
+            float depth = bounds.maxZ() - bounds.minZ();
+            float height = bounds.maxY() - bounds.minY();
+            // 完整模型比原箱子高很多；适当降低高度权重，避免物品栏里缩得过小。
+            float fitExtent = Math.max(width, Math.max(depth, height * 0.72F));
+            float fit = visualScale / Math.max(1.0E-6F, fitExtent);
             pose.scale(fit, fit, fit);
             pose.translate(-bounds.centerX(), -bounds.centerY(), -bounds.centerZ());
 
