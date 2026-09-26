@@ -23,6 +23,9 @@ public final class ChangeStatueRenderer
                     "models/gltf/change_statue.glb"
             );
 
+    /** 与原版玩家站立高度一致。 */
+    private static final float TARGET_HEIGHT = 1.80F;
+
     private YellowGltfModel model;
     private Bounds bounds;
 
@@ -53,8 +56,11 @@ public final class ChangeStatueRenderer
             pose.translate(0.5D, 0.0D, 0.5D);
             pose.mulPose(Axis.YP.rotationDegrees(rotation));
 
-            // 原模型最高约 13.1 单位。自动缩放到一格内，底座贴地并水平居中。
-            float scale = 0.95F / bounds.maxExtent;
+            // 按模型真实高度缩放到 1.80 格，而不是按最大边压进 1 格。
+            // 原模型比例会完整保留，所以宽深也会同步放大。
+            float modelHeight = Math.max(1.0E-6F, bounds.maxY - bounds.minY);
+            float scale = TARGET_HEIGHT / modelHeight;
+
             pose.scale(scale, scale, scale);
             pose.translate(-bounds.centerX, -bounds.minY, -bounds.centerZ);
 
@@ -77,7 +83,7 @@ public final class ChangeStatueRenderer
         model = YellowGltfModelCache.getOrLoad(MODEL);
         if (model == null) return false;
         bounds = calculateBounds(model);
-        return bounds != null && bounds.maxExtent > 1.0E-6F;
+        return bounds != null && (bounds.maxY - bounds.minY) > 1.0E-6F;
     }
 
     static Bounds calculateBounds(YellowGltfModel model) {
