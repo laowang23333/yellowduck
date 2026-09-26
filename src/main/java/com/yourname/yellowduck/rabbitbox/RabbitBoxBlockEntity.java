@@ -76,8 +76,9 @@ public final class RabbitBoxBlockEntity extends BlockEntity {
     }
 
     /**
-     * 每次开启固定掉落 1 个奖励：
-     * 嫦娥雕像 5%；其余 95% 在五个月饼之间等分，因此每种月饼均为 19%。
+     * 每次开启抽取一种奖励：
+     * 嫦娥雕像 5%，掉落 1 个；
+     * 其余 95% 在五个月饼之间等分，因此每种月饼均为 19%，抽中后一次掉落 10 个。
      */
     private static ItemStack rollReward(ServerLevel level) {
         if (level.random.nextFloat() < 0.05F) {
@@ -85,11 +86,11 @@ public final class RabbitBoxBlockEntity extends BlockEntity {
         }
 
         return switch (level.random.nextInt(5)) {
-            case 0 -> new ItemStack(ModItems.SAKURA_ICE_MOONCAKE_RED.get());
-            case 1 -> new ItemStack(ModItems.SAKURA_ICE_MOONCAKE_YELLOW.get());
-            case 2 -> new ItemStack(ModItems.ROSE_MOONCAKE.get());
-            case 3 -> new ItemStack(ModItems.RABBIT_CAKE.get());
-            default -> new ItemStack(ModItems.RABBIT_RABBIT_CAKE.get());
+            case 0 -> new ItemStack(ModItems.SAKURA_ICE_MOONCAKE_RED.get(), 10);
+            case 1 -> new ItemStack(ModItems.SAKURA_ICE_MOONCAKE_YELLOW.get(), 10);
+            case 2 -> new ItemStack(ModItems.ROSE_MOONCAKE.get(), 10);
+            case 3 -> new ItemStack(ModItems.RABBIT_CAKE.get(), 10);
+            default -> new ItemStack(ModItems.RABBIT_RABBIT_CAKE.get(), 10);
         };
     }
 
