@@ -1,0 +1,6 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "particle": "yellowduck:block/jade_rabbit_box_particle"
+  }
+}
