@@ -2,7 +2,6 @@ package com.yourname.yellowduck.piratechest;
 
 import com.yourname.yellowduck.YellowDuckMod;
 import net.minecraft.world.inventory.MenuType;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -33,19 +32,30 @@ public final class DragonPalacePirateChestContent {
 
     public static final RegistryObject<Item> DRAGON_PALACE_PIRATE_CHEST_ITEM = ITEMS.register(
             "dragon_palace_pirate_chest",
-            () -> new BlockItem(DRAGON_PALACE_PIRATE_CHEST.get(), new Item.Properties()));
+            () -> new DragonPalacePirateChestItem(
+                    DRAGON_PALACE_PIRATE_CHEST.get(),
+                    new Item.Properties()
+            ));
 
-    public static final RegistryObject<BlockEntityType<DragonPalacePirateChestBlockEntity>> DRAGON_PALACE_PIRATE_CHEST_BE =
-            BLOCK_ENTITIES.register("dragon_palace_pirate_chest",
+    public static final RegistryObject<BlockEntityType<DragonPalacePirateChestBlockEntity>>
+            DRAGON_PALACE_PIRATE_CHEST_BE =
+            BLOCK_ENTITIES.register(
+                    "dragon_palace_pirate_chest",
                     () -> BlockEntityType.Builder.of(
                             DragonPalacePirateChestBlockEntity::new,
-                            DRAGON_PALACE_PIRATE_CHEST.get()).build(null));
+                            DRAGON_PALACE_PIRATE_CHEST.get()
+                    ).build(null)
+            );
 
-    public static final RegistryObject<MenuType<DragonPalacePirateChestMenu>> DRAGON_PALACE_PIRATE_CHEST_MENU =
-            MENUS.register("dragon_palace_pirate_chest",
-                    () -> IForgeMenuType.create(DragonPalacePirateChestMenu::new));
+    public static final RegistryObject<MenuType<DragonPalacePirateChestMenu>>
+            DRAGON_PALACE_PIRATE_CHEST_MENU =
+            MENUS.register(
+                    "dragon_palace_pirate_chest",
+                    () -> IForgeMenuType.create(DragonPalacePirateChestMenu::new)
+            );
 
-    private DragonPalacePirateChestContent() {}
+    private DragonPalacePirateChestContent() {
+    }
 
     public static void register(IEventBus bus) {
         BLOCKS.register(bus);
