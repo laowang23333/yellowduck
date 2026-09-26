@@ -202,9 +202,49 @@ public final class LargeDistillationPlatformBlockEntity extends BaseContainerBlo
         return new LargeDistillationPlatformMenu(id, inv, this);
     }
 
-    @Override protected NonNullList<ItemStack> getItems() { return items; }
-    @Override protected void setItems(NonNullList<ItemStack> stacks) { items = stacks; }
     @Override public int getContainerSize() { return SLOT_COUNT; }
+
+    @Override
+    public boolean isEmpty() {
+        for (ItemStack stack : items) {
+            if (!stack.isEmpty()) return false;
+        }
+        return true;
+    }
+
+    @Override
+    public ItemStack getItem(int slot) {
+        return items.get(slot);
+    }
+
+    @Override
+    public ItemStack removeItem(int slot, int amount) {
+        ItemStack result = ContainerHelper.removeItem(items, slot, amount);
+        if (!result.isEmpty()) setChanged();
+        return result;
+    }
+
+    @Override
+    public ItemStack removeItemNoUpdate(int slot) {
+        ItemStack result = ContainerHelper.takeItem(items, slot);
+        if (!result.isEmpty()) setChanged();
+        return result;
+    }
+
+    @Override
+    public void setItem(int slot, ItemStack stack) {
+        items.set(slot, stack);
+        if (!stack.isEmpty() && stack.getCount() > getMaxStackSize()) {
+            stack.setCount(getMaxStackSize());
+        }
+        setChanged();
+    }
+
+    @Override
+    public void clearContent() {
+        items.clear();
+        setChanged();
+    }
 
     @Override public boolean stillValid(Player player) {
         if (level == null || level.getBlockEntity(worldPosition) != this) return false;
