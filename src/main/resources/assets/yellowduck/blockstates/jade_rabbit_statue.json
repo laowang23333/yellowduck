@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "yellowduck:block/jade_rabbit_statue"
+    },
+    "facing=east": {
+      "model": "yellowduck:block/jade_rabbit_statue",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "yellowduck:block/jade_rabbit_statue",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "yellowduck:block/jade_rabbit_statue",
+      "y": 270
+    }
+  }
+}

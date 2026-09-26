@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "yellowduck:block/idun_statue"
+    },
+    "facing=east": {
+      "model": "yellowduck:block/idun_statue",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "yellowduck:block/idun_statue",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "yellowduck:block/idun_statue",
+      "y": 270
+    }
+  }
+}

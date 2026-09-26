@@ -1,9 +1,30 @@
 {
   "variants": {
-    "main=true": {
+    "main=true,facing=north": {
       "model": "yellowduck:block/large_distillation_platform"
     },
-    "main=false": {
+    "main=true,facing=east": {
+      "model": "yellowduck:block/large_distillation_platform",
+      "y": 90
+    },
+    "main=true,facing=south": {
+      "model": "yellowduck:block/large_distillation_platform",
+      "y": 180
+    },
+    "main=true,facing=west": {
+      "model": "yellowduck:block/large_distillation_platform",
+      "y": 270
+    },
+    "main=false,facing=north": {
+      "model": "minecraft:block/air"
+    },
+    "main=false,facing=east": {
+      "model": "minecraft:block/air"
+    },
+    "main=false,facing=south": {
+      "model": "minecraft:block/air"
+    },
+    "main=false,facing=west": {
       "model": "minecraft:block/air"
     }
   }
