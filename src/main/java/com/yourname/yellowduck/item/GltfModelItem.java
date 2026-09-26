@@ -9,7 +9,7 @@ import net.minecraftforge.client.extensions.common.IClientItemExtensions;
 import java.util.function.Consumer;
 
 /** 使用 YellowDuck Native GLTF 直接渲染的 3D 物品。 */
-public final class GltfModelItem extends Item {
+public class GltfModelItem extends Item {
     private final ResourceLocation modelLocation;
     private final float visualScale;
 
