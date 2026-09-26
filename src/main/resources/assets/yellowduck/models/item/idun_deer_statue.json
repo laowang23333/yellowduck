@@ -1,6 +1,4 @@
 {
-  "parent": "minecraft:item/generated",
-  "textures": {
-    "layer0": "minecraft:item/barrier"
-  }
+  "parent": "builtin/entity",
+  "gui_light": "front"
 }
