@@ -38,8 +38,7 @@ public final class DragonPalacePirateChestContent {
     public static final RegistryObject<BlockEntityType<DragonPalacePirateChestBlockEntity>> DRAGON_PALACE_PIRATE_CHEST_BE =
             BLOCK_ENTITIES.register("dragon_palace_pirate_chest",
                     () -> BlockEntityType.Builder.of(
-                            (pos, state) -> new DragonPalacePirateChestBlockEntity(
-                                    DRAGON_PALACE_PIRATE_CHEST_BE.get(), pos, state),
+                            DragonPalacePirateChestBlockEntity::new,
                             DRAGON_PALACE_PIRATE_CHEST.get()).build(null));
 
     public static final RegistryObject<MenuType<DragonPalacePirateChestMenu>> DRAGON_PALACE_PIRATE_CHEST_MENU =

@@ -15,6 +15,10 @@ public final class DragonPalacePirateChestBlockEntity extends BlockEntity implem
     public static final int SIZE = 252;
     private final NonNullList<ItemStack> items = NonNullList.withSize(SIZE, ItemStack.EMPTY);
 
+    public DragonPalacePirateChestBlockEntity(BlockPos pos, BlockState state) {
+        this(DragonPalacePirateChestContent.DRAGON_PALACE_PIRATE_CHEST_BE.get(), pos, state);
+    }
+
     public DragonPalacePirateChestBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
     }
