@@ -43,13 +43,13 @@ public final class ChangeContent {
     public static final RegistryObject<EntityType<ChangeEffectEntity>> MARK_THIRST = effect("change_mark_thirst");
 
     public static final RegistryObject<MobEffect> DRINK = EFFECTS.register("change_drink",
-            () -> new ChangeStackEffect(false, 0xD9B45C));
+            () -> new ChangeStackEffect(false, 0xD9B45C, "饮酒"));
     public static final RegistryObject<MobEffect> THIRST = EFFECTS.register("change_thirst",
-            () -> new ChangeStackEffect(true, 0xA44EBC));
+            () -> new ChangeStackEffect(true, 0xA44EBC, "馋酒"));
     public static final RegistryObject<MobEffect> DRUNKEN = EFFECTS.register("change_drunken",
-            () -> new ChangeStackEffect(true, 0x7A4E9E));
+            () -> new ChangeStackEffect(true, 0x7A4E9E, "醉酒"));
     public static final RegistryObject<MobEffect> DRINK_BOOST = EFFECTS.register("change_drink_boost",
-            () -> new ChangeStackEffect(false, 0xF2D46B));
+            () -> new ChangeStackEffect(false, 0xF2D46B, "酒意强化"));
 
     public static final RegistryObject<SimpleParticleType> RAGE_WAVE =
             PARTICLES.register("chang_e_rage_wave", () -> new SimpleParticleType(false));

@@ -46,16 +46,16 @@ public final class ChangeBoss extends NetcraftBossBase {
         super(type, level);
         setPersistenceRequired();
         setBaseTier(4);
-        setBaseDamage(120);
+        setBaseDamage(110);
         setBaseDefense(60);
         xpReward = 0;
     }
 
     public static AttributeSupplier.Builder createAttributes() {
         return Monster.createMonsterAttributes()
-                .add(Attributes.MAX_HEALTH, 100000.0D)
+                .add(Attributes.MAX_HEALTH, 150000.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.25D)
-                .add(Attributes.ATTACK_DAMAGE, 120.0D)
+                .add(Attributes.ATTACK_DAMAGE, 110.0D)
                 .add(Attributes.FOLLOW_RANGE, 40.0D)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D);
     }

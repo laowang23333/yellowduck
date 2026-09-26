@@ -124,7 +124,7 @@ public final class ChangeClient {
 
     private static final class BossRenderer extends Base<ChangeBoss> {
         BossRenderer(EntityRendererProvider.Context context, boolean ignored) {
-            super(context, "boss_elite_chang_e.glb", 0.065F, 0.75F);
+            super(context, "boss_elite_chang_e.glb", 0.075F, 0.85F);
         }
 
         @Override
@@ -162,7 +162,7 @@ public final class ChangeClient {
 
     private static final class CloneRenderer extends Base<ChangeClone> {
         CloneRenderer(EntityRendererProvider.Context context) {
-            super(context, "boss_elite_chang_e.glb", 0.065F, 0.75F);
+            super(context, "boss_elite_chang_e.glb", 0.075F, 0.85F);
         }
 
         @Override

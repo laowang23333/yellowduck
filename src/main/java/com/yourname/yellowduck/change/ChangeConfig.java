@@ -274,6 +274,18 @@ public final class ChangeConfig {
                     ? Files.readString(PATH, StandardCharsets.UTF_8)
                     : "# YellowDuck 生物属性配置\n";
 
+            String migrated = migrateOldBossDefaults(text);
+            if (!migrated.equals(text) && Files.exists(PATH)) {
+                Files.writeString(
+                        PATH,
+                        migrated,
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.TRUNCATE_EXISTING,
+                        StandardOpenOption.WRITE
+                );
+                text = migrated;
+            }
+
             String lower = text.toLowerCase(Locale.ROOT);
             StringBuilder add = new StringBuilder();
 
@@ -321,6 +333,71 @@ public final class ChangeConfig {
         } catch (Exception ex) {
             LOGGER.error("写入嫦娥属性配置段失败。", ex);
         }
+    }
+
+
+    private static String migrateOldBossDefaults(String text) {
+        String[] lines = text.split("\\R", -1);
+        boolean inBoss = false;
+        int healthLine = -1;
+        int attackLine = -1;
+        String healthValue = null;
+        String attackValue = null;
+
+        for (int i = 0; i < lines.length; i++) {
+            String clean = stripComment(lines[i]).trim();
+
+            if (clean.startsWith("[") && clean.endsWith("]")) {
+                String section = clean.substring(1, clean.length() - 1)
+                        .trim()
+                        .toLowerCase(Locale.ROOT);
+                inBoss = "change_boss".equals(section);
+                continue;
+            }
+
+            if (!inBoss) continue;
+
+            int eq = clean.indexOf('=');
+            if (eq <= 0) continue;
+
+            String key = clean.substring(0, eq).trim().toLowerCase(Locale.ROOT);
+            String value = clean.substring(eq + 1).trim();
+
+            if ("max_health".equals(key)) {
+                healthLine = i;
+                healthValue = value;
+            } else if ("attack_damage".equals(key)) {
+                attackLine = i;
+                attackValue = value;
+            }
+        }
+
+        if (healthLine < 0 || attackLine < 0) return text;
+        if (!sameNumber(healthValue, 100000.0D)
+                || !sameNumber(attackValue, 120.0D)) {
+            return text;
+        }
+
+        lines[healthLine] = replaceConfigValue(lines[healthLine], "150000");
+        lines[attackLine] = replaceConfigValue(lines[attackLine], "110");
+        return String.join(System.lineSeparator(), lines);
+    }
+
+    private static boolean sameNumber(String raw, double expected) {
+        try {
+            return Math.abs(Double.parseDouble(unquote(raw)) - expected) <= 1.0E-9D;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static String replaceConfigValue(String line, String value) {
+        int eq = line.indexOf('=');
+        if (eq < 0) return line;
+
+        int comment = line.indexOf('#', eq + 1);
+        String suffix = comment >= 0 ? " " + line.substring(comment).trim() : "";
+        return line.substring(0, eq + 1) + " " + value + suffix;
     }
 
     private static String section(String id, String title, Values v) {
@@ -407,8 +484,8 @@ public final class ChangeConfig {
     ) {
         static Values bossDefaults() {
             return new Values(
-                    100000.0D,
-                    120.0D,
+                    150000.0D,
+                    110.0D,
                     0.25D,
                     0.0D,
                     0.0D,
