@@ -113,5 +113,13 @@
   "block.yellowduck.change_statue": "嫦娥雕像",
   "item.yellowduck.change_statue": "嫦娥雕像",
   "block.yellowduck.jade_rabbit_box": "兔兔宝箱",
-  "item.yellowduck.jade_rabbit_box": "兔兔宝箱"
+  "item.yellowduck.jade_rabbit_box": "兔兔宝箱",
+  "block.yellowduck.pray_sapling": "祈福树苗",
+  "item.yellowduck.pray_sapling": "祈福树苗",
+  "block.yellowduck.pray_tree": "祈福树",
+  "item.yellowduck.pray_tree": "祈福树",
+  "block.yellowduck.pray_leaves": "祈福树叶",
+  "item.yellowduck.pray_leaves": "祈福树叶",
+  "block.yellowduck.pray_ribbon": "祈福缎带",
+  "item.yellowduck.pray_ribbon": "祈福缎带"
 }
