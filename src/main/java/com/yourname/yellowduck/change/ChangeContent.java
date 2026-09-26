@@ -1,6 +1,8 @@
 package com.yourname.yellowduck.change;
 
 import com.yourname.yellowduck.YellowDuckMod;
+import net.minecraft.core.particles.ParticleType;
+import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.effect.MobEffect;
@@ -18,6 +20,8 @@ public final class ChangeContent {
             DeferredRegister.create(ForgeRegistries.MOB_EFFECTS, YellowDuckMod.MOD_ID);
     public static final DeferredRegister<SoundEvent> SOUNDS =
             DeferredRegister.create(ForgeRegistries.SOUND_EVENTS, YellowDuckMod.MOD_ID);
+    public static final DeferredRegister<ParticleType<?>> PARTICLES =
+            DeferredRegister.create(ForgeRegistries.PARTICLE_TYPES, YellowDuckMod.MOD_ID);
 
     public static final RegistryObject<EntityType<ChangeBoss>> BOSS = ENTITY_TYPES.register("change_boss",
             () -> EntityType.Builder.of(ChangeBoss::new, MobCategory.MONSTER)
@@ -32,6 +36,12 @@ public final class ChangeContent {
             () -> EntityType.Builder.<GuiHuaNiangEntity>of(GuiHuaNiangEntity::new, MobCategory.MISC)
                     .sized(1.0F, 0.35F).clientTrackingRange(10).build("gui_hua_niang"));
 
+    public static final RegistryObject<EntityType<ChangeEffectEntity>> EFFECT_ATTACK = effect("change_effect_attack");
+    public static final RegistryObject<EntityType<ChangeEffectEntity>> EFFECT_SUMMON = effect("change_effect_summon");
+    public static final RegistryObject<EntityType<ChangeEffectEntity>> EFFECT_DRINK = effect("change_effect_drink");
+    public static final RegistryObject<EntityType<ChangeEffectEntity>> MARK_DRINK = effect("change_mark_drink");
+    public static final RegistryObject<EntityType<ChangeEffectEntity>> MARK_THIRST = effect("change_mark_thirst");
+
     public static final RegistryObject<MobEffect> DRINK = EFFECTS.register("change_drink",
             () -> new ChangeStackEffect(false, 0xD9B45C));
     public static final RegistryObject<MobEffect> THIRST = EFFECTS.register("change_thirst",
@@ -41,8 +51,20 @@ public final class ChangeContent {
     public static final RegistryObject<MobEffect> DRINK_BOOST = EFFECTS.register("change_drink_boost",
             () -> new ChangeStackEffect(false, 0xF2D46B));
 
+    public static final RegistryObject<SimpleParticleType> RAGE_WAVE =
+            PARTICLES.register("chang_e_rage_wave", () -> new SimpleParticleType(false));
+
     public static final RegistryObject<SoundEvent> SKILL = sound("change_skill");
     public static final RegistryObject<SoundEvent> DEATH = sound("change_death");
+
+    private static RegistryObject<EntityType<ChangeEffectEntity>> effect(String id) {
+        return ENTITY_TYPES.register(id, () ->
+                EntityType.Builder.<ChangeEffectEntity>of(ChangeEffectEntity::new, MobCategory.MISC)
+                        .sized(0.1F, 0.1F)
+                        .clientTrackingRange(12)
+                        .updateInterval(1)
+                        .build(id));
+    }
 
     private static RegistryObject<SoundEvent> sound(String id) {
         return SOUNDS.register(id, () -> SoundEvent.createVariableRangeEvent(
@@ -53,6 +75,7 @@ public final class ChangeContent {
         ENTITY_TYPES.register(bus);
         EFFECTS.register(bus);
         SOUNDS.register(bus);
+        PARTICLES.register(bus);
     }
 
     private ChangeContent() {}

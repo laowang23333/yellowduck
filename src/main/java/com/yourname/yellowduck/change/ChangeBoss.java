@@ -25,6 +25,8 @@ public final class ChangeBoss extends NetcraftBossBase {
             SynchedEntityData.defineId(ChangeBoss.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Integer> ACTION_SERIAL =
             SynchedEntityData.defineId(ChangeBoss.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> RAGE_WAVE_SEQ =
+            SynchedEntityData.defineId(ChangeBoss.class, EntityDataSerializers.INT);
 
     private int actionTicks;
     private int meleeCooldown;
@@ -37,6 +39,8 @@ public final class ChangeBoss extends NetcraftBossBase {
     private boolean rage80;
     private boolean rage50;
     private boolean raging;
+    private int rageWaveSeq;
+    private int clientRageWaveSeen;
 
     public ChangeBoss(EntityType<? extends Monster> type, Level level) {
         super(type, level);
@@ -65,6 +69,7 @@ public final class ChangeBoss extends NetcraftBossBase {
         super.defineSynchedData();
         entityData.define(ACTION, IDLE);
         entityData.define(ACTION_SERIAL, 0);
+        entityData.define(RAGE_WAVE_SEQ, 0);
     }
 
     public int action() { return entityData.get(ACTION); }
@@ -96,7 +101,11 @@ public final class ChangeBoss extends NetcraftBossBase {
     @Override
     public void tick() {
         super.tick();
-        if (level().isClientSide || !isAlive()) return;
+        if (level().isClientSide) {
+            tickRageWaveClient();
+            return;
+        }
+        if (!isAlive()) return;
 
         ChangeConfig.applyBoss(this);
 
@@ -142,6 +151,12 @@ public final class ChangeBoss extends NetcraftBossBase {
                 meleeHitTimer = 15;
                 meleeTarget = target.getUUID();
                 play(ATTACK, 22);
+                ChangeEffectEntity.spawnOn(
+                        level(),
+                        this,
+                        ChangeContent.EFFECT_ATTACK.get(),
+                        13
+                );
             }
         }
     }
@@ -212,6 +227,9 @@ public final class ChangeBoss extends NetcraftBossBase {
     }
 
     private void rageWave() {
+        notifyAttackAction();
+        entityData.set(RAGE_WAVE_SEQ, ++rageWaveSeq);
+
         List<Player> players = level().getEntitiesOfClass(
                 Player.class,
                 getBoundingBox().inflate(40.0D),
@@ -224,28 +242,43 @@ public final class ChangeBoss extends NetcraftBossBase {
                 hurtWithoutKnockback(player, damageSources().magic(), 50.0F);
             }
         }
+    }
 
-        if (level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-            for (int i=0; i<120; i++) {
-                double angle = random.nextDouble() * Math.PI * 2.0D;
-                double radius = 2.0D + random.nextDouble() * 38.0D;
-                serverLevel.sendParticles(
-                        net.minecraft.core.particles.ParticleTypes.END_ROD,
-                        getX() + Math.cos(angle) * radius,
-                        getY() + 0.15D,
-                        getZ() + Math.sin(angle) * radius,
-                        1,
-                        0,
-                        0.02D,
-                        0,
-                        0
-                );
+    private void tickRageWaveClient() {
+        int sequence = entityData.get(RAGE_WAVE_SEQ);
+        if (sequence == clientRageWaveSeen) return;
+        clientRageWaveSeen = sequence;
+        if (sequence <= 0) return;
+
+        double y = Math.floor(getY()) + 0.05D;
+        for (int x = -19; x <= 20; x++) {
+            for (int z = -19; z <= 20; z++) {
+                for (int sx = 0; sx <= 1; sx++) {
+                    for (int sz = 0; sz <= 1; sz++) {
+                        level().addParticle(
+                                ChangeContent.RAGE_WAVE.get(),
+                                getX() + x + 0.25D + sx * 0.5D,
+                                y,
+                                getZ() + z + 0.25D + sz * 0.5D,
+                                0.0D,
+                                0.0D,
+                                0.0D
+                        );
+                    }
+                }
             }
         }
     }
 
     public void onBrewDrunk() {
         ChangeStatus.addBoost(this);
+        ChangeEffectEntity.spawnAt(
+                level(),
+                getX(),
+                getY(),
+                getZ(),
+                ChangeContent.EFFECT_DRINK.get()
+        );
         if (raging) {
             raging = false;
             actionTicks = 0;
@@ -278,6 +311,21 @@ public final class ChangeBoss extends NetcraftBossBase {
         moveTo(me.x, me.y, me.z, getYRot(), getXRot());
         clone.moveTo(other.x, other.y, other.z, getYRot(), 0);
         level().addFreshEntity(clone);
+
+        ChangeEffectEntity.spawnAt(
+                level(),
+                me.x,
+                me.y,
+                me.z,
+                ChangeContent.EFFECT_SUMMON.get()
+        );
+        ChangeEffectEntity.spawnAt(
+                level(),
+                other.x,
+                other.y,
+                other.z,
+                ChangeContent.EFFECT_SUMMON.get()
+        );
     }
 
     private void spawnRabbitAxis() {

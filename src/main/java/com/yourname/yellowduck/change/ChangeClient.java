@@ -5,6 +5,8 @@ import com.yourname.yellowduck.YellowDuckMod;
 import com.yourname.yellowduck.client.gltf.YellowGltfModel;
 import com.yourname.yellowduck.client.gltf.YellowGltfModelCache;
 import com.yourname.yellowduck.client.gltf.YellowGltfRenderUtil;
+import com.yourname.yellowduck.change.client.ChangeEffectRenderer;
+import com.yourname.yellowduck.change.client.ChangeRageWaveParticle;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
@@ -12,6 +14,7 @@ import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
+import net.minecraftforge.client.event.RegisterParticleProvidersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.joml.Quaternionf;
@@ -46,6 +49,19 @@ public final class ChangeClient {
         event.registerEntityRenderer(
                 ChangeContent.BREW.get(),
                 BrewRenderer::new
+        );
+        event.registerEntityRenderer(ChangeContent.EFFECT_ATTACK.get(), ChangeEffectRenderer::new);
+        event.registerEntityRenderer(ChangeContent.EFFECT_SUMMON.get(), ChangeEffectRenderer::new);
+        event.registerEntityRenderer(ChangeContent.EFFECT_DRINK.get(), ChangeEffectRenderer::new);
+        event.registerEntityRenderer(ChangeContent.MARK_DRINK.get(), ChangeEffectRenderer::new);
+        event.registerEntityRenderer(ChangeContent.MARK_THIRST.get(), ChangeEffectRenderer::new);
+    }
+
+    @SubscribeEvent
+    public static void particles(RegisterParticleProvidersEvent event) {
+        event.registerSpriteSet(
+                ChangeContent.RAGE_WAVE.get(),
+                ChangeRageWaveParticle.Provider::new
         );
     }
 
