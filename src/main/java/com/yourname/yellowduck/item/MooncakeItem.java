@@ -22,6 +22,7 @@ import net.minecraftforge.fml.common.Mod;
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class MooncakeItem extends GltfModelItem {
     public static final int TEN_SECONDS = 20 * 10;
+    public static final int TEN_MINUTES = 20 * 60 * 10;
     private static final float DAMAGE_MULTIPLIER = 1.20F;
 
     public enum Kind {
@@ -42,6 +43,21 @@ public final class MooncakeItem extends GltfModelItem {
         this.kind = kind;
     }
 
+    /**
+     * 物品栏/快捷栏使用轻量 2D 图标，避免手机端同时渲染多个高面数 GLB 导致掉帧和触控丢失。
+     * 手持、第三人称、地面实体仍由 YellowDuck Native GLTF 渲染。
+     */
+    public ResourceLocation getGuiIconTexture() {
+        String name = switch (kind) {
+            case SAKURA_DAMAGE -> "sakura_ice_mooncake_red";
+            case SAKURA_REGENERATION -> "sakura_ice_mooncake_yellow";
+            case ROSE_SPEED -> "rose_mooncake";
+            case RABBIT_HASTE -> "rabbit_cake";
+            case RABBIT_ALL_NETCRAFT_BUFFS -> "rabbit_rabbit_cake";
+        };
+        return new ResourceLocation(YellowDuckMod.MOD_ID, "textures/item/mooncake/" + name + ".png");
+    }
+
     @Override
     public ItemStack finishUsingItem(ItemStack stack, Level level, LivingEntity entity) {
         ItemStack result = super.finishUsingItem(stack, level, entity);
@@ -57,7 +73,7 @@ public final class MooncakeItem extends GltfModelItem {
                 case RABBIT_HASTE -> applyNonStackingEffect(
                         player, MobEffects.DIG_SPEED, TEN_SECONDS, 0);
                 case RABBIT_ALL_NETCRAFT_BUFFS ->
-                        NetcraftFoodBuffBridge.applyAll(player, TEN_SECONDS);
+                        NetcraftFoodBuffBridge.applyAll(player, TEN_MINUTES);
             }
         }
         return result;
