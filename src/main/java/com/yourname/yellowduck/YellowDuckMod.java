@@ -40,6 +40,7 @@ public class YellowDuckMod {
         com.yourname.yellowduck.distillation.DistillationContent.register(bus);
         com.yourname.yellowduck.statue.ChangeStatueContent.register(bus);
         com.yourname.yellowduck.rabbitbox.RabbitBoxContent.register(bus);
+        com.yourname.yellowduck.change.ChangeContent.register(bus);
 
         ModEntities.ENTITIES.register(bus);
         CleopatraEntities.TYPES.register(bus);
@@ -58,6 +59,7 @@ public class YellowDuckMod {
 
         DungeonConfig.ensureLoaded();
         if (GarmrDungeonBootstrap.ensureDungeonSection()) DungeonConfig.reload();
+        if (com.yourname.yellowduck.change.ChangeDungeonBootstrap.ensureDungeonSection()) DungeonConfig.reload();
 
         SilkConfig.ensureLoaded();
         bus.addListener(this::registerAttributes);
@@ -78,5 +80,8 @@ public class YellowDuckMod {
         event.put(CleopatraEntities.SNAKE_POISON.get(), CleopatraVenomSnake.createAttributes().build());
         event.put(CleopatraEntities.SNAKE_FIRE.get(), CleopatraVenomSnake.createAttributes().build());
         event.put(CleopatraEntities.SNAKE_ICE.get(), CleopatraVenomSnake.createAttributes().build());
+        event.put(com.yourname.yellowduck.change.ChangeContent.BOSS.get(), com.yourname.yellowduck.change.ChangeBoss.createAttributes().build());
+        event.put(com.yourname.yellowduck.change.ChangeContent.CLONE.get(), com.yourname.yellowduck.change.ChangeClone.createAttributes().build());
+        event.put(com.yourname.yellowduck.change.ChangeContent.RABBIT.get(), com.yourname.yellowduck.change.ChangeRabbit.createAttributes().build());
     }
 }
