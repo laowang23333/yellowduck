@@ -35,6 +35,10 @@ public class YellowDuckMod {
         com.yourname.yellowduck.registry.ModBlockEntities.BLOCK_ENTITIES.register(bus);
         com.yourname.yellowduck.registry.ModMenuTypes.MENUS.register(bus);
         com.yourname.yellowduck.registry.ModCreativeTabs.CREATIVE_TABS.register(bus);
+
+        com.yourname.yellowduck.piratechest.DragonPalacePirateChestContent.register(bus);
+        com.yourname.yellowduck.distillation.DistillationContent.register(bus);
+
         ModEntities.ENTITIES.register(bus);
         CleopatraEntities.TYPES.register(bus);
         SilkContent.ENTITY_TYPES.register(bus);
@@ -50,7 +54,6 @@ public class YellowDuckMod {
 
         EntityTuningConfig.ensureLoaded();
 
-        // 先让原副本配置正常生成/读取，再只追加缺失的 Garmr 段；已有配置值绝不覆盖。
         DungeonConfig.ensureLoaded();
         if (GarmrDungeonBootstrap.ensureDungeonSection()) DungeonConfig.reload();
 
