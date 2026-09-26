@@ -89,5 +89,18 @@
   "item.yellowduck.high_saddle": "高鞍",
   "entity.yellowduck.tengu_boss": "天狗",
   "entity.yellowduck.tengu_wild_mount": "天狗",
-  "entity.yellowduck.tengu_mount": "天狗"
+  "entity.yellowduck.tengu_mount": "天狗",
+  "block.yellowduck.dragon_palace_pirate_chest": "龙宫海盗箱",
+  "item.yellowduck.dragon_palace_pirate_chest": "龙宫海盗箱",
+  "block.yellowduck.heat_conducting_copper_component": "导热铜组件",
+  "item.yellowduck.heat_conducting_copper_component": "导热铜组件",
+  "block.yellowduck.hardened_glass": "硬化玻璃",
+  "item.yellowduck.hardened_glass": "硬化玻璃",
+  "block.yellowduck.large_distillation_platform": "大型蒸馏台",
+  "item.yellowduck.large_distillation_platform": "大型蒸馏台",
+  "container.yellowduck.large_distillation_platform": "大型蒸馏台",
+  "gui.yellowduck.distillation.zone_crops": "作物区",
+  "gui.yellowduck.distillation.zone_fuel": "燃料区",
+  "gui.yellowduck.distillation.zone_bottles": "玻璃瓶区",
+  "gui.yellowduck.distillation.zone_output": "产物区"
 }
