@@ -1,20 +1,17 @@
 package com.yourname.yellowduck.change;
 
 import com.yourname.yellowduck.boss.NetcraftBossBase;
-import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -59,6 +56,11 @@ public final class ChangeBoss extends NetcraftBossBase {
                 .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D);
     }
 
+    @Override
+    public Component getName() {
+        return Component.literal("嫦娥");
+    }
+
     @Override protected void defineSynchedData() {
         super.defineSynchedData();
         entityData.define(ACTION, IDLE);
@@ -75,10 +77,10 @@ public final class ChangeBoss extends NetcraftBossBase {
         actionTicks = ticks;
     }
 
-    @Override public int getMeleeDefense() { return 60; }
-    @Override public int getRangedDefense() { return 10; }
-    @Override public int getMagicDefense() { return 10; }
-    @Override public float getDamageReductionRatio() { return 0.70F; }
+    @Override public int getMeleeDefense() { return ChangeConfig.bossMeleeDefense(); }
+    @Override public int getRangedDefense() { return ChangeConfig.bossRangedDefense(); }
+    @Override public int getMagicDefense() { return ChangeConfig.bossMagicDefense(); }
+    @Override public float getDamageReductionRatio() { return ChangeConfig.bossDamageReduction(); }
     @Override public boolean shouldIgnoreSpawnDistanceLimit() { return true; }
     @Override public double getDetectionRadius() { return 10.0D; }
     @Override public double getDetectionHatred() { return 4.0D; }
@@ -87,12 +89,16 @@ public final class ChangeBoss extends NetcraftBossBase {
     @Override public boolean isPushable() { return false; }
     @Override public void push(net.minecraft.world.entity.Entity e) {}
     @Override public void push(double x, double y, double z) {}
-    @Override public boolean isPlayingAttackAnimation() { return action()==ATTACK || action()==SKILL || action()==SUMMON || action()==RAGE; }
+    @Override public boolean isPlayingAttackAnimation() {
+        return action()==ATTACK || action()==SKILL || action()==SUMMON || action()==RAGE;
+    }
 
     @Override
     public void tick() {
         super.tick();
         if (level().isClientSide || !isAlive()) return;
+
+        ChangeConfig.applyBoss(this);
 
         if (actionTicks > 0 && --actionTicks == 0 && !raging) entityData.set(ACTION, IDLE);
         if (meleeCooldown > 0) meleeCooldown--;
@@ -143,11 +149,14 @@ public final class ChangeBoss extends NetcraftBossBase {
     private void tickPendingHit() {
         if (meleeHitTimer <= 0) return;
         if (--meleeHitTimer != 0 || meleeTarget == null) return;
-        Player p = level().getPlayerByUUID(meleeTarget);
+
+        Player player = level().getPlayerByUUID(meleeTarget);
         meleeTarget = null;
-        if (p == null || !p.isAlive() || distanceToSqr(p) > 25.0D) return;
-        float damage = 120.0F * (1.0F + ChangeStatus.boost(this) * 0.10F);
-        hurtWithoutKnockback(p, damageSources().mobAttack(this), damage);
+        if (player == null || !player.isAlive() || distanceToSqr(player) > 25.0D) return;
+
+        float damage = getNetcraftAttackDamage()
+                * (1.0F + ChangeStatus.boost(this) * 0.10F);
+        hurtWithoutKnockback(player, damageSources().mobAttack(this), damage);
     }
 
     private void tickSkills() {
@@ -160,20 +169,27 @@ public final class ChangeBoss extends NetcraftBossBase {
         }
 
         if (drinkCooldown <= 0) {
-            Player p = randomNearestThree();
-            if (p != null) {
+            Player player = randomNearestThree();
+            if (player != null) {
                 drinkCooldown = 100;
-                ChangeStatus.addDrink(p, 1);
+                ChangeStatus.addDrink(player, 1);
             }
         }
 
         if (ratio < 0.80F && thirstCooldown <= 0) {
-            Player p = randomNearestThree();
-            if (p != null) {
+            Player player = randomNearestThree();
+            if (player != null) {
                 thirstCooldown = 400;
-                ChangeStatus.addThirst(p, 1);
+                ChangeStatus.addThirst(player, 1);
                 play(SKILL, 30);
-                level().playSound(null, blockPosition(), ChangeContent.SKILL.get(), SoundSource.HOSTILE, 1.5F, 1.0F);
+                level().playSound(
+                        null,
+                        blockPosition(),
+                        ChangeContent.SKILL.get(),
+                        SoundSource.HOSTILE,
+                        1.5F,
+                        1.0F
+                );
             }
         }
     }
@@ -196,19 +212,34 @@ public final class ChangeBoss extends NetcraftBossBase {
     }
 
     private void rageWave() {
-        List<Player> players = level().getEntitiesOfClass(Player.class, getBoundingBox().inflate(40.0D),
-                p -> isValidHatredPlayer(p));
-        for (Player p : players) {
-            hurtWithoutKnockback(p, damageSources().magic(), 50.0F);
-            if (distanceToSqr(p) <= 9.0D) hurtWithoutKnockback(p, damageSources().magic(), 50.0F);
+        List<Player> players = level().getEntitiesOfClass(
+                Player.class,
+                getBoundingBox().inflate(40.0D),
+                this::isValidHatredPlayer
+        );
+
+        for (Player player : players) {
+            hurtWithoutKnockback(player, damageSources().magic(), 50.0F);
+            if (distanceToSqr(player) <= 9.0D) {
+                hurtWithoutKnockback(player, damageSources().magic(), 50.0F);
+            }
         }
-        if (level() instanceof net.minecraft.server.level.ServerLevel sl) {
-            for (int i=0;i<120;i++) {
-                double a = random.nextDouble() * Math.PI * 2.0D;
-                double r = 2.0D + random.nextDouble() * 38.0D;
-                sl.sendParticles(net.minecraft.core.particles.ParticleTypes.END_ROD,
-                        getX()+Math.cos(a)*r, getY()+0.15D, getZ()+Math.sin(a)*r,
-                        1, 0, 0.02D, 0, 0);
+
+        if (level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            for (int i=0; i<120; i++) {
+                double angle = random.nextDouble() * Math.PI * 2.0D;
+                double radius = 2.0D + random.nextDouble() * 38.0D;
+                serverLevel.sendParticles(
+                        net.minecraft.core.particles.ParticleTypes.END_ROD,
+                        getX() + Math.cos(angle) * radius,
+                        getY() + 0.15D,
+                        getZ() + Math.sin(angle) * radius,
+                        1,
+                        0,
+                        0.02D,
+                        0,
+                        0
+                );
             }
         }
     }
@@ -226,60 +257,86 @@ public final class ChangeBoss extends NetcraftBossBase {
     private void spawnClone() {
         ChangeClone clone = ChangeContent.CLONE.get().create(level());
         if (clone == null) return;
+
         Vec3 center = getSpawnPosition() == null ? position() : getSpawnPosition();
-        Player p = nearest(40.0D);
-        Vec3 side = new Vec3(1,0,0);
-        if (p != null) {
-            double dx=p.getX()-center.x, dz=p.getZ()-center.z;
-            double len=Math.sqrt(dx*dx+dz*dz);
-            if (len>0.0001D) side=new Vec3(-dz/len,0,dx/len);
+        Player player = nearest(40.0D);
+        Vec3 side = new Vec3(1, 0, 0);
+
+        if (player != null) {
+            double dx = player.getX() - center.x;
+            double dz = player.getZ() - center.z;
+            double length = Math.sqrt(dx * dx + dz * dz);
+            if (length > 0.0001D) {
+                side = new Vec3(-dz / length, 0, dx / length);
+            }
         }
-        boolean flip=random.nextBoolean();
-        Vec3 me=center.add(side.scale(flip?2.5D:-2.5D));
-        Vec3 other=center.add(side.scale(flip?-2.5D:2.5D));
+
+        boolean flip = random.nextBoolean();
+        Vec3 me = center.add(side.scale(flip ? 2.5D : -2.5D));
+        Vec3 other = center.add(side.scale(flip ? -2.5D : 2.5D));
+
         moveTo(me.x, me.y, me.z, getYRot(), getXRot());
         clone.moveTo(other.x, other.y, other.z, getYRot(), 0);
         level().addFreshEntity(clone);
     }
 
     private void spawnRabbitAxis() {
-        Vec3 c = getSpawnPosition() == null ? position() : getSpawnPosition();
+        Vec3 center = getSpawnPosition() == null ? position() : getSpawnPosition();
         int axis = random.nextInt(4);
-        Vec3 p = switch(axis) {
-            case 0 -> c.add(15,0,0);
-            case 1 -> c.add(-15,0,0);
-            case 2 -> c.add(0,0,15);
-            default -> c.add(0,0,-15);
+        Vec3 spawn = switch (axis) {
+            case 0 -> center.add(15, 0, 0);
+            case 1 -> center.add(-15, 0, 0);
+            case 2 -> center.add(0, 0, 15);
+            default -> center.add(0, 0, -15);
         };
-        summonRabbit(p);
+        summonRabbit(spawn);
     }
 
-    private void summonRabbit(Vec3 p) {
+    private void summonRabbit(Vec3 position) {
         ChangeRabbit rabbit = ChangeContent.RABBIT.get().create(level());
         if (rabbit == null) return;
+
         rabbit.setOwner(this);
-        rabbit.moveTo(p.x, p.y, p.z, getYRot(), 0);
+        rabbit.moveTo(position.x, position.y, position.z, getYRot(), 0);
         level().addFreshEntity(rabbit);
     }
 
     private Player randomNearestThree() {
         List<Player> list = players(10.0D);
         list.sort(Comparator.comparingDouble(this::distanceToSqr));
-        if (list.size() > 3) list = new ArrayList<>(list.subList(0,3));
+        if (list.size() > 3) {
+            list = new ArrayList<>(list.subList(0, 3));
+        }
         return list.isEmpty() ? null : list.get(random.nextInt(list.size()));
     }
 
     private Player nearest(double radius) {
-        return players(radius).stream().min(Comparator.comparingDouble(this::distanceToSqr)).orElse(null);
+        return players(radius)
+                .stream()
+                .min(Comparator.comparingDouble(this::distanceToSqr))
+                .orElse(null);
     }
 
     private List<Player> players(double radius) {
-        return level().getEntitiesOfClass(Player.class, getBoundingBox().inflate(radius), this::isValidHatredPlayer);
+        return level().getEntitiesOfClass(
+                Player.class,
+                getBoundingBox().inflate(radius),
+                this::isValidHatredPlayer
+        );
     }
 
     @Override
     public void die(net.minecraft.world.damagesource.DamageSource source) {
-        if (!level().isClientSide) level().playSound(null, blockPosition(), ChangeContent.DEATH.get(), SoundSource.HOSTILE, 1.5F, 1.0F);
+        if (!level().isClientSide) {
+            level().playSound(
+                    null,
+                    blockPosition(),
+                    ChangeContent.DEATH.get(),
+                    SoundSource.HOSTILE,
+                    1.5F,
+                    1.0F
+            );
+        }
         super.die(source);
     }
 }
