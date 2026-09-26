@@ -1,0 +1,10 @@
+{
+  "entity.yellowduck.change_boss": "嫦娥",
+  "entity.yellowduck.change_clone": "嫦娥分身",
+  "entity.yellowduck.change_brewing_rabbit": "酿酒玉兔",
+  "entity.yellowduck.gui_hua_niang": "桂花酿",
+  "effect.yellowduck.change_drink": "饮酒",
+  "effect.yellowduck.change_thirst": "馋酒",
+  "effect.yellowduck.change_drunken": "醉酒",
+  "effect.yellowduck.change_drink_boost": "酒意强化"
+}
