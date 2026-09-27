@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -138,7 +139,10 @@ public final class DungeonRewardManager {
         }
     }
 
-    /** 保留原来的通关只读预览；这里只展示本场 Roll 结果，不等于领取。 */
+    /**
+     * 通关结算界面。
+     * 只展示本场实际 Roll 的奖励和战斗统计，副本内没有任何领取入口。
+     */
     public static void openPreview(ServerPlayer player, DungeonInstance instance) {
         List<UUID> eligible = new ArrayList<>(instance.rewardEligible);
         int totalXp = Math.max(0, instance.definition.experience());
@@ -158,13 +162,25 @@ public final class DungeonRewardManager {
 
         final int xpForViewer = personalXp;
         final String recipient = recipientName;
+        final List<RewardMenu.CombatRow> rows = buildCombatRows(player, instance);
+        final List<ItemStack> displayRewards = compactDisplayRewards(instance.rolledRewards);
+        final int fightSeconds = Math.max(0, instance.fightTicks / 20);
+        final int previewSeconds = Math.max(0,
+                instance.definition.rewardPreviewSeconds() - Math.max(0, instance.stateTicks / 20));
+        final String dungeonId = instance.definition.id();
+        final String bossEntityId = instance.definition.bossEntity();
+
         NetworkHooks.openScreen(player,
                 new SimpleMenuProvider(
-                        (id, inv, p) -> new RewardMenu(id, inv, instance.definition.displayName(),
-                                instance.rolledRewards, totalXp, xpForViewer, recipient, isRecipient, false),
-                        Component.literal("副本奖励")),
-                buf -> RewardMenu.writeOpenData(buf, instance.definition.displayName(), instance.rolledRewards,
-                        totalXp, xpForViewer, recipient, isRecipient, false));
+                        (id, inv, p) -> new RewardMenu(id, inv,
+                                instance.definition.displayName(), dungeonId, bossEntityId,
+                                displayRewards, totalXp, xpForViewer, recipient, isRecipient, false,
+                                fightSeconds, previewSeconds, rows),
+                        Component.literal("副本结算")),
+                buf -> RewardMenu.writeOpenData(buf,
+                        instance.definition.displayName(), dungeonId, bossEntityId,
+                        displayRewards, totalXp, xpForViewer, recipient, isRecipient, false,
+                        fightSeconds, previewSeconds, rows));
     }
 
     /** 打开玩家自己的待领取邮箱。 */
@@ -183,11 +199,15 @@ public final class DungeonRewardManager {
 
         NetworkHooks.openScreen(player,
                 new SimpleMenuProvider(
-                        (id, inv, p) -> new RewardMenu(id, inv, "待领取邮箱", items,
-                                0, 0, player.getGameProfile().getName(), true, true),
+                        (id, inv, p) -> new RewardMenu(id, inv,
+                                "待领取邮箱", "", "", items,
+                                0, 0, player.getGameProfile().getName(), true, true,
+                                0, 0, List.of()),
                         Component.literal("待领取邮箱")),
-                buf -> RewardMenu.writeOpenData(buf, "待领取邮箱", items,
-                        0, 0, player.getGameProfile().getName(), true, true));
+                buf -> RewardMenu.writeOpenData(buf,
+                        "待领取邮箱", "", "", items,
+                        0, 0, player.getGameProfile().getName(), true, true,
+                        0, 0, List.of()));
     }
 
     /**
@@ -234,7 +254,6 @@ public final class DungeonRewardManager {
                 droppedOverflow = true;
                 MAILBOX_CLAIMED_THIS_RUNTIME.add(pending.batchId());
             } else if (result == SafePlayerDelivery.DeliveryResult.ALREADY_RECEIVED) {
-                // 同一运行期已经领取过时直接从UI/开本判断中隐藏，跨重启后再清SavedData记录。
                 MAILBOX_CLAIMED_THIS_RUNTIME.add(pending.batchId());
             } else {
                 failed = true;
@@ -309,6 +328,52 @@ public final class DungeonRewardManager {
             if (cached.isPresent() && cached.get().getName() != null) return cached.get().getName();
         }
         return uuid.toString().substring(0, 8);
+    }
+
+    private static List<RewardMenu.CombatRow> buildCombatRows(ServerPlayer viewer, DungeonInstance instance) {
+        List<RewardMenu.CombatRow> rows = new ArrayList<>();
+        for (UUID uuid : instance.participants) {
+            rows.add(new RewardMenu.CombatRow(
+                    uuid,
+                    resolvePlayerName(viewer, uuid),
+                    stat(instance.damageDealt, uuid),
+                    stat(instance.healingDone, uuid),
+                    stat(instance.damageTaken, uuid)
+            ));
+        }
+        rows.sort(Comparator
+                .comparingDouble(RewardMenu.CombatRow::total).reversed()
+                .thenComparing(RewardMenu.CombatRow::name, String.CASE_INSENSITIVE_ORDER));
+        return rows;
+    }
+
+    private static double stat(Map<UUID, Double> map, UUID uuid) {
+        double value = map.getOrDefault(uuid, 0.0D);
+        return Double.isFinite(value) && value > 0.0D ? value : 0.0D;
+    }
+
+
+    /** 结算界面把同物品同NBT的多堆合并，只改变显示，不改变邮箱里的真实奖励堆。 */
+    private static List<ItemStack> compactDisplayRewards(List<ItemStack> rewards) {
+        List<ItemStack> out = new ArrayList<>();
+        if (rewards == null) return out;
+        for (ItemStack stack : rewards) {
+            if (stack == null || stack.isEmpty()) continue;
+            ItemStack same = null;
+            for (ItemStack existing : out) {
+                if (ItemStack.isSameItemSameTags(existing, stack)) {
+                    same = existing;
+                    break;
+                }
+            }
+            if (same == null) {
+                out.add(stack.copy());
+            } else {
+                long total = (long) same.getCount() + stack.getCount();
+                same.setCount((int) Math.min(Integer.MAX_VALUE, total));
+            }
+        }
+        return out;
     }
 
     /**

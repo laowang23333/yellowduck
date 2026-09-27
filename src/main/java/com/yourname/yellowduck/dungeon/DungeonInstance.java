@@ -32,6 +32,11 @@ public final class DungeonInstance {
     public final Map<UUID, LifeState> life = new LinkedHashMap<>();
     public final List<ItemStack> rolledRewards = new ArrayList<>();
 
+    /** 本场结算统计。只在本次副本运行期间存在，不写入长期存档。 */
+    public final Map<UUID, Double> damageDealt = new LinkedHashMap<>();
+    public final Map<UUID, Double> healingDone = new LinkedHashMap<>();
+    public final Map<UUID, Double> damageTaken = new LinkedHashMap<>();
+
     public State state = State.PREPARING;
     public int ageTicks;
     public int fightTicks;
