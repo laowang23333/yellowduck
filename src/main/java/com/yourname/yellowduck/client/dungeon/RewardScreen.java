@@ -4,16 +4,11 @@ import com.yourname.yellowduck.dungeon.RewardMenu;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
-import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.Comparator;
 import java.util.List;
@@ -23,7 +18,7 @@ import java.util.Locale;
  * 副本结算 / 待领取邮箱界面。
  *
  * 结算模式完全由代码和现有小色块动态拼出，不使用整张死背景图：
- * - 左上动态渲染当前 Boss 的真实实体模型；
+ * - 左上按当前副本动态切换 Boss 专属元素横幅；
  * - 中间显示本场玩家输出 / 治疗 / 承伤；
  * - 右侧只显示本场真正 Roll 出来的掉落；
  * - 副本内没有领取按钮，奖励只能离本后从柱子邮箱领取。
@@ -31,6 +26,12 @@ import java.util.Locale;
 public final class RewardScreen extends AbstractContainerScreen<RewardMenu> {
     private static final ResourceLocation CHEST_TEXTURE =
             new ResourceLocation("minecraft", "textures/gui/container/generic_54.png");
+
+    private static final ResourceLocation BANNER_SAKURA = banner("sakura");
+    private static final ResourceLocation BANNER_CLEOPATRA = banner("cleopatra");
+    private static final ResourceLocation BANNER_GARMR = banner("garmr");
+    private static final ResourceLocation BANNER_CHANGE = banner("change");
+    private static final ResourceLocation BANNER_SILK = banner("silk");
 
     private static final int LOGICAL_W = 720;
     private static final int LOGICAL_H = 405;
@@ -43,7 +44,6 @@ public final class RewardScreen extends AbstractContainerScreen<RewardMenu> {
     private float uiY;
     private int lootPage;
     private long openedGameTime;
-    private LivingEntity bossPreview;
 
     private int claimX;
     private int claimY;
@@ -73,7 +73,6 @@ public final class RewardScreen extends AbstractContainerScreen<RewardMenu> {
         updateTransform();
         openedGameTime = minecraft != null && minecraft.level != null
                 ? minecraft.level.getGameTime() : 0L;
-        createBossPreview();
     }
 
     private void updateTransform() {
@@ -82,36 +81,6 @@ public final class RewardScreen extends AbstractContainerScreen<RewardMenu> {
         uiScale = Math.max(0.35F, uiScale);
         uiX = (width - LOGICAL_W * uiScale) / 2.0F;
         uiY = (height - LOGICAL_H * uiScale) / 2.0F;
-    }
-
-    private void createBossPreview() {
-        bossPreview = null;
-        if (minecraft == null || minecraft.level == null || menu.bossEntityId().isBlank()) return;
-        try {
-            ResourceLocation id = new ResourceLocation(menu.bossEntityId());
-            var type = ForgeRegistries.ENTITY_TYPES.getValue(id);
-            if (type == null) return;
-            Entity entity = type.create(minecraft.level);
-            if (!(entity instanceof LivingEntity living)) return;
-            bossPreview = living;
-            bossPreview.setNoGravity(true);
-            bossPreview.setYRot(180.0F);
-            bossPreview.yRotO = 180.0F;
-            bossPreview.setXRot(0.0F);
-            bossPreview.xRotO = 0.0F;
-            if (bossPreview instanceof Mob mob) mob.setNoAi(true);
-        } catch (Throwable ignored) {
-            bossPreview = null;
-        }
-    }
-
-    @Override
-    public void removed() {
-        if (bossPreview != null) {
-            bossPreview.remove(Entity.RemovalReason.DISCARDED);
-            bossPreview = null;
-        }
-        super.removed();
     }
 
     @Override
@@ -213,26 +182,15 @@ public final class RewardScreen extends AbstractContainerScreen<RewardMenu> {
         panel(g, x, y, w, h, colors[0]);
         g.fill(x + 3, y + 3, x + w - 3, y + h - 3, 0xEE100E18);
 
-        // 用当前副本元素颜色拼一个动态“立绘背景”。
-        g.fill(x + 4, y + 4, x + w - 4, y + h - 4, colors[1]);
-        g.fill(x + 4, y + 4, x + 112, y + h - 4, colors[2]);
-        for (int i = 0; i < 7; i++) {
-            int bx = x + 9 + i * 28;
-            int bh = 10 + (i % 3) * 9;
-            g.fill(bx, y + h - 7 - bh, bx + 13, y + h - 7, (colors[0] & 0x00FFFFFF) | 0x66000000);
-        }
+        // Boss 专属横幅只负责元素氛围；“已击败 / Boss名 / 经验”仍由代码动态绘制。
+        // 资源统一为 512x128，铺满整个 Boss 信息框，不再创建/渲染实体，避免朝向和动画兼容问题。
+        g.blit(bossBanner(), x + 4, y + 4, w - 8, h - 8,
+                0.0F, 0.0F, 512, 128, 512, 128);
 
-        try {
-            if (bossPreview != null) {
-                int scale = previewScale();
-                InventoryScreen.renderEntityInInventoryFollowsMouse(
-                        g, x + 92, y + 91, scale, 8.0F, -3.0F, bossPreview);
-            } else {
-                DungeonGuiStyle.bossIconForDungeon(g, menu.dungeonId(), x + 38, y + 20, 108, 62);
-            }
-        } catch (Throwable ignored) {
-            DungeonGuiStyle.bossIconForDungeon(g, menu.dungeonId(), x + 38, y + 20, 108, 62);
-        }
+        // 右侧压暗，保证动态文字在每张横幅上都清晰。
+        g.fill(x + 166, y + 4, x + w - 4, y + h - 4, 0x7A090911);
+        g.fill(x + 224, y + 4, x + w - 4, y + h - 4, 0x66000000);
+        g.fill(x + 4, y + 4, x + w - 4, y + 6, 0x553FFFFFF);
 
         int tx = x + 185;
         g.fill(tx, y + 12, tx + 54, y + 29, 0xFF641C27);
@@ -435,13 +393,18 @@ public final class RewardScreen extends AbstractContainerScreen<RewardMenu> {
         return new int[]{0xFF8B4EB2, 0xCC1B1026, 0xBB59227B};
     }
 
-    private int previewScale() {
+    private static ResourceLocation banner(String name) {
+        return new ResourceLocation("yellowduck", "textures/gui/reward/boss_banner/" + name + ".png");
+    }
+
+    private ResourceLocation bossBanner() {
         String id = menu.dungeonId().toLowerCase(Locale.ROOT);
-        if (id.contains("garmr")) return 27;
-        if (id.contains("change")) return 36;
-        if (id.contains("cleopatra")) return 34;
-        if (id.contains("silk") || id.contains("professor")) return 34;
-        return 36;
+        if (id.contains("sakura")) return BANNER_SAKURA;
+        if (id.contains("cleopatra")) return BANNER_CLEOPATRA;
+        if (id.contains("garmr") || id.contains("hellhound")) return BANNER_GARMR;
+        if (id.contains("change")) return BANNER_CHANGE;
+        if (id.contains("silk") || id.contains("professor")) return BANNER_SILK;
+        return BANNER_GARMR;
     }
 
     private String bossDisplayName() {
@@ -451,7 +414,7 @@ public final class RewardScreen extends AbstractContainerScreen<RewardMenu> {
         if (id.contains("garmr")) return "地狱双头犬加姆";
         if (id.contains("change")) return "嫦娥";
         if (id.contains("silk") || id.contains("professor")) return "疯狂教授斯尔克";
-        return bossPreview != null ? bossPreview.getName().getString() : menu.dungeonName();
+        return menu.dungeonName();
     }
 
     private String roleText(RewardMenu.CombatRow row, List<RewardMenu.CombatRow> rows) {
