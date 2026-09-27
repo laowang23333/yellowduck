@@ -190,7 +190,7 @@ public final class RewardScreen extends AbstractContainerScreen<RewardMenu> {
         // 右侧压暗，保证动态文字在每张横幅上都清晰。
         g.fill(x + 166, y + 4, x + w - 4, y + h - 4, 0x7A090911);
         g.fill(x + 224, y + 4, x + w - 4, y + h - 4, 0x66000000);
-        g.fill(x + 4, y + 4, x + w - 4, y + 6, 0x553FFFFFF);
+        g.fill(x + 4, y + 4, x + w - 4, y + 6, 0x55FFFFFF);
 
         int tx = x + 185;
         g.fill(tx, y + 12, tx + 54, y + 29, 0xFF641C27);
