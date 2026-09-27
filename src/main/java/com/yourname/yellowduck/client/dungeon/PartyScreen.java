@@ -17,11 +17,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * YellowDuck 组队 / 副本 GUI。
+ * YellowDuck 副本组队主界面。
  *
- * 当前版本不再依赖整张“画死”的界面 PNG。
- * 外框、功能卡、按钮、成员行、状态条全部由代码实时绘制；
- * 玩家、队伍、准备、副本、邀请等数据仍由 PartyMenu 服务端状态槽实时同步。
+ * 视觉层参考三栏式副本大厅：左侧副本、中间队员、右侧副本信息，底部为邮箱和操作按钮。
+ * 所有玩家、准备、配置奖励、邮箱、开本状态仍由 PartyMenu 服务端实时同步。
  */
 public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
     private final List<HitTarget> targets = new ArrayList<>();
@@ -35,8 +34,8 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
 
     public PartyScreen(PartyMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.imageWidth = 384;
-        this.imageHeight = 459;
+        this.imageWidth = 640;
+        this.imageHeight = 405;
     }
 
     @Override
@@ -48,7 +47,6 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
 
     @Override
     protected void containerTick() {
-        // 每秒向服务端刷新一次状态，保证队员、准备、邀请等内容实时变化。
         if (++refreshTicks >= 20) {
             refreshTicks = 0;
             sendAction(PartyMenu.ACTION_REFRESH);
@@ -56,18 +54,12 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
     }
 
     private ScreenSize screenSize() {
-        return switch (page) {
-            case MAIN -> new ScreenSize(384, 459);
-            case INFO, INVITE -> new ScreenSize(352, 459);
-            case MANAGE -> new ScreenSize(388, 459);
-            case DUNGEONS -> new ScreenSize(384, 418);
-            case CONFIRM -> new ScreenSize(352, 418);
-        };
+        return page == Page.MAIN ? new ScreenSize(640, 405) : new ScreenSize(470, 405);
     }
 
     private void updateTransform() {
         ScreenSize s = screenSize();
-        uiScale = Math.min(1.0F, Math.min((width - 16.0F) / s.w, (height - 16.0F) / s.h));
+        uiScale = Math.min(1.0F, Math.min((width - 18.0F) / s.w, (height - 18.0F) / s.h));
         uiScale = Math.max(0.35F, uiScale);
         uiX = (width - s.w * uiScale) / 2.0F;
         uiY = (height - s.h * uiScale) / 2.0F;
@@ -86,12 +78,9 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
         targets.clear();
 
         CompoundTag meta = tag(menu.stateStack(PartyMenu.META_SLOT));
-        boolean hasParty = meta.getBoolean("HasParty");
-        if (!hasParty && page != Page.MAIN) page = Page.MAIN;
-        if ((page == Page.INVITE || page == Page.MANAGE)
-                && (!meta.getBoolean("ViewerLeader") || meta.getBoolean("Locked"))) {
-            page = Page.MAIN;
-        }
+        if (!meta.getBoolean("HasParty") && page == Page.MANAGE) page = Page.MAIN;
+        if (page == Page.MANAGE && (!meta.getBoolean("ViewerLeader") || meta.getBoolean("Locked"))) page = Page.MAIN;
+        if (page == Page.INVITE && (!meta.getBoolean("ViewerLeader") || meta.getBoolean("Locked"))) page = Page.MAIN;
 
         updateTransform();
         ScreenSize s = screenSize();
@@ -103,16 +92,12 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
         g.pose().scale(uiScale, uiScale, 1.0F);
 
         DungeonGuiStyle.tiledWindow(g, 0, 0, s.w, s.h, true);
-        renderHeader(g, meta, s.w);
+        renderHeader(g, s.w, mx, my);
 
-        switch (page) {
-            case MAIN -> renderMain(g, meta, mx, my);
-            case INFO -> renderInfo(g, meta, mx, my);
-            case INVITE -> renderInvite(g, meta, mx, my);
-            case MANAGE -> renderManage(g, meta, mx, my);
-            case DUNGEONS -> renderDungeons(g, meta, mx, my);
-            case CONFIRM -> renderConfirm(g, meta, mx, my);
-        }
+        if (page == Page.MAIN) renderMain(g, meta, mx, my);
+        else if (page == Page.INVITE) renderInvite(g, mx, my);
+        else renderManage(g, meta, mx, my);
+
         g.pose().popPose();
 
         for (HitTarget target : targets) {
@@ -123,25 +108,26 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
         }
     }
 
-    private void renderHeader(GuiGraphics g, CompoundTag meta, int width) {
-        if (page == Page.MAIN) {
-            drawItemIcon(g, new ItemStack(Items.PLAYER_HEAD), 15, 5, 1.05F);
-            int count = meta.getBoolean("HasParty") ? Math.max(1, meta.getInt("MemberTotal")) : 0;
-            g.drawString(font, count + "  组队系统", 38, 10, DungeonGuiStyle.TEXT, false);
-        } else {
-            g.drawCenteredString(font, pageTitle(), width / 2, 10, DungeonGuiStyle.TEXT);
-        }
+    private void renderHeader(GuiGraphics g, int width, float mx, float my) {
+        // 中间标题牌。
+        int titleW = 180;
+        int titleX = (width - titleW) / 2;
+        g.fill(titleX - 4, 6, titleX + titleW + 4, 39, 0xFF6B4022);
+        g.fill(titleX - 2, 8, titleX + titleW + 2, 37, 0xFFD4A357);
+        g.fill(titleX + 1, 10, titleX + titleW - 1, 35, 0xFFF9ECCE);
+        g.drawCenteredString(font, page == Page.MAIN ? "◆  副本组队  ◆" : pageTitle(), width / 2, 18, DungeonGuiStyle.TEXT);
+
+        // 关闭按钮。
+        boolean closeHover = inside(mx, my, width - 41, 10, 27, 27);
+        int c = closeHover ? 0xFF9A6231 : 0xFF6E4428;
+        g.fill(width - 41, 10, width - 14, 37, 0xFF4B2C1B);
+        g.fill(width - 39, 12, width - 16, 35, c);
+        g.drawCenteredString(font, "×", width - 27, 19, 0xFFFFF1D7);
+        target(width - 41, 10, 27, 27, -9, null, "关闭");
     }
 
     private String pageTitle() {
-        return switch (page) {
-            case MAIN -> "组队系统";
-            case INFO -> "队伍信息";
-            case INVITE -> "邀请玩家";
-            case MANAGE -> "队伍管理";
-            case DUNGEONS -> "选择副本";
-            case CONFIRM -> "开始挑战确认";
-        };
+        return page == Page.INVITE ? "邀请玩家" : "队伍管理";
     }
 
     private void renderMain(GuiGraphics g, CompoundTag meta, float mx, float my) {
@@ -149,191 +135,249 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
         boolean leader = meta.getBoolean("ViewerLeader");
         boolean locked = meta.getBoolean("Locked");
         boolean hasInvite = meta.getBoolean("HasInvite");
+        boolean hasMailbox = meta.getBoolean("HasMailbox");
 
-        // 第一排：四张卡
-        drawFunctionCard(g, 20, 64, 82, 150,
-                new ItemStack(Items.PAPER),
-                "创建队伍", "创建一个新的", "冒险队伍",
-                !hasParty, inside(mx, my, 20, 64, 82, 150), DungeonGuiStyle.ButtonTone.GRAY);
-        target(20, 64, 82, 150,
-                !hasParty ? PartyMenu.ACTION_CREATE : Integer.MIN_VALUE, null,
-                hasParty ? "你已经在队伍中" : "创建一个新的冒险队伍");
+        CompoundTag bound = tag(menu.stateStack(PartyMenu.BOUND_DUNGEON_SLOT));
+        DungeonData dungeon = "dungeon".equals(bound.getString("YDType")) ? dungeonData(bound) : null;
 
-        if (!hasParty && hasInvite) {
-            drawFunctionCard(g, 108, 64, 82, 150,
-                    new ItemStack(Items.EMERALD),
-                    "接受邀请", "已有队伍邀请", "点击加入队伍",
-                    true, inside(mx, my, 108, 64, 82, 150), DungeonGuiStyle.ButtonTone.GREEN);
-            target(108, 64, 82, 150, PartyMenu.ACTION_ACCEPT, null, "接受当前收到的队伍邀请");
-        } else {
-            boolean canInvite = hasParty && leader && !locked;
-            drawFunctionCard(g, 108, 64, 82, 150,
-                    new ItemStack(Items.ENDER_EYE),
-                    "邀请玩家", "邀请其他玩家", "加入队伍",
-                    canInvite, inside(mx, my, 108, 64, 82, 150), DungeonGuiStyle.ButtonTone.GRAY);
-            target(108, 64, 82, 150,
-                    canInvite ? -1 : Integer.MIN_VALUE,
-                    canInvite ? Page.INVITE : null,
-                    !hasParty ? "请先创建或加入队伍"
-                            : (!leader ? "只有队长可以邀请玩家"
-                            : (locked ? "副本进行中队伍已锁定" : "邀请副本柱子20格内的玩家")));
-        }
-
-        drawFunctionCard(g, 196, 64, 82, 150,
-                new ItemStack(Items.WRITABLE_BOOK),
-                "队伍信息", "查看当前", "队伍信息",
-                hasParty, inside(mx, my, 196, 64, 82, 150), DungeonGuiStyle.ButtonTone.GRAY);
-        target(196, 64, 82, 150,
-                hasParty ? -1 : Integer.MIN_VALUE,
-                hasParty ? Page.INFO : null,
-                hasParty ? "查看队伍成员与准备状态" : "请先创建或加入队伍");
-
-        boolean canManage = hasParty && leader && !locked;
-        drawFunctionCard(g, 284, 64, 82, 150,
-                new ItemStack(Items.PLAYER_HEAD),
-                "队伍管理", "踢出 / 转让", "队长等",
-                canManage, inside(mx, my, 284, 64, 82, 150), DungeonGuiStyle.ButtonTone.GRAY);
-        target(284, 64, 82, 150,
-                canManage ? -1 : Integer.MIN_VALUE,
-                canManage ? Page.MANAGE : null,
-                !hasParty ? "请先创建或加入队伍"
-                        : (!leader ? "只有队长可以管理队伍"
-                        : (locked ? "副本进行中队伍已锁定" : "管理队伍成员")));
-
-        // 第二排：三张卡
-        drawFunctionCard(g, 20, 224, 98, 156,
-                new ItemStack(Items.COMPASS),
-                "选择副本", "查看当前柱子", "绑定的副本",
-                hasParty, inside(mx, my, 20, 224, 98, 156), DungeonGuiStyle.ButtonTone.GRAY);
-        target(20, 224, 98, 156,
-                hasParty ? -1 : Integer.MIN_VALUE,
-                hasParty ? Page.DUNGEONS : null,
-                hasParty ? "查看当前副本柱子固定绑定的副本" : "请先创建或加入队伍");
-
-        drawFunctionCard(g, 125, 224, 123, 156,
-                new ItemStack(Items.DIAMOND_SWORD),
-                "开始挑战", "当所有队员", "准备后开始",
-                hasParty, inside(mx, my, 125, 224, 123, 156), DungeonGuiStyle.ButtonTone.GREEN);
-        target(125, 224, 123, 156,
-                hasParty ? -1 : Integer.MIN_VALUE,
-                hasParty ? Page.CONFIRM : null,
-                hasParty ? "检查准备状态并开始挑战" : "请先创建或加入队伍");
-
-        boolean canLeave = hasParty && !locked;
-        drawFunctionCard(g, 254, 224, 112, 156,
-                new ItemStack(Items.BARRIER),
-                "离开队伍", "离开当前", "冒险队伍",
-                canLeave, inside(mx, my, 254, 224, 112, 156), DungeonGuiStyle.ButtonTone.RED);
-        target(254, 224, 112, 156,
-                canLeave ? PartyMenu.ACTION_LEAVE : Integer.MIN_VALUE, null,
-                !hasParty ? "请先创建或加入队伍"
-                        : (locked ? "副本进行中无法直接离开队伍，请先离开副本" : "离开当前队伍"));
-
-        // 底部实时状态条。
-        DungeonGuiStyle.innerPanel(g, 20, 394, 346, 34);
-        if (hasParty) {
-            String status = meta.getString("PartyName") + "  ·  " + meta.getInt("MemberTotal") + "/"
-                    + selectedMaxPlayers() + "  ·  " + selectedDungeonName();
-            g.drawCenteredString(font, status, 193, 407, 0xFF343434);
-        } else if (hasInvite) {
-            g.drawCenteredString(font, "你有一个待处理的队伍邀请", 193, 407, 0xFF188F38);
-        } else {
-            g.drawCenteredString(font, "创建队伍或等待其他玩家邀请", 193, 407, DungeonGuiStyle.MUTED);
-        }
+        renderDungeonSelect(g, dungeon, mx, my);
+        renderMemberPanel(g, meta, hasParty, leader, locked, mx, my);
+        renderDungeonInfo(g, dungeon, meta);
+        renderBottom(g, meta, dungeon, hasParty, leader, locked, hasInvite, hasMailbox, mx, my);
     }
 
-    private void renderInfo(GuiGraphics g, CompoundTag meta, float mx, float my) {
-        DungeonGuiStyle.innerPanel(g, 22, 52, 308, 66);
-        drawItemIcon(g, new ItemStack(Items.PLAYER_HEAD), 34, 68, 1.65F);
-        g.drawString(font, "队长：" + meta.getString("LeaderName"), 82, 68, DungeonGuiStyle.TEXT, false);
-        g.drawString(font, "队员：" + meta.getInt("MemberTotal") + " / " + selectedMaxPlayers(),
-                82, 94, DungeonGuiStyle.TEXT, false);
+    private void renderDungeonSelect(GuiGraphics g, DungeonData dungeon, float mx, float my) {
+        int x = 14, y = 53, w = 151, h = 264;
+        DungeonGuiStyle.panel(g, x, y, w, h);
+        DungeonGuiStyle.sectionHeader(g, minecraft, x + 7, y + 7, w - 14, "♟  选择副本");
+
+        int cardX = x + 10, cardY = y + 37, cardW = w - 20, cardH = 60;
+        boolean enabled = dungeon != null && dungeon.enabled;
+        DungeonGuiStyle.card(g, cardX, cardY, cardW, cardH, inside(mx, my, cardX, cardY, cardW, cardH),
+                enabled, DungeonGuiStyle.ButtonTone.GOLD);
+
+        if (dungeon != null) {
+            DungeonGuiStyle.bossIconForDungeon(g, dungeon.id, cardX + 6, cardY + 7, 48, 44);
+            g.drawString(font, dungeon.displayName, cardX + 59, cardY + 12, DungeonGuiStyle.TEXT, false);
+            // 按预览图保留副本名下方的等级文字。
+            g.drawString(font, "Lv.60", cardX + 59, cardY + 35, DungeonGuiStyle.MUTED, false);
+        } else {
+            drawItemIcon(g, new ItemStack(Items.BARRIER), cardX + 12, cardY + 13, 1.7F);
+            g.drawString(font, "未绑定副本", cardX + 59, cardY + 22, 0xFF9B3D36, false);
+        }
+
+        // 左栏底部的难度显示，和当前 YellowDuck 精英 Boss 定位保持一致。
+        g.drawString(font, "⚔  难度选择", x + 14, y + h - 35, DungeonGuiStyle.TEXT, false);
+        DungeonGuiStyle.button(g, minecraft, x + 91, y + h - 44, 48, 27,
+                "精英", false, DungeonGuiStyle.ButtonTone.GOLD, enabled);
+    }
+
+    private void renderMemberPanel(GuiGraphics g, CompoundTag meta, boolean hasParty,
+                                   boolean leader, boolean locked, float mx, float my) {
+        int x = 173, y = 53, w = 251, h = 264;
+        DungeonGuiStyle.panel(g, x, y, w, h);
+        int total = hasParty ? Math.max(0, meta.getInt("MemberTotal")) : 0;
+        int max = selectedMaxPlayers();
+        DungeonGuiStyle.sectionHeader(g, minecraft, x + 7, y + 7, w - 14,
+                "♟  队伍成员  (" + total + "/" + max + ")");
+
+        if (leader && !locked) {
+            boolean hover = inside(mx, my, x + w - 63, y + 7, 52, 18);
+            DungeonGuiStyle.button(g, minecraft, x + w - 63, y + 6, 52, 19,
+                    "管理", hover, DungeonGuiStyle.ButtonTone.GRAY, true);
+            target(x + w - 63, y + 6, 52, 19, -1, Page.MANAGE, "踢出成员或转让队长");
+        }
 
         List<MemberData> list = members();
         for (int i = 0; i < 5; i++) {
-            int y = 127 + i * 48;
-            boolean hovered = inside(mx, my, 22, y, 308, 42);
-            DungeonGuiStyle.row(g, 22, y, 308, 42, hovered);
-            if (i < list.size()) {
-                MemberData m = list.get(i);
-                DungeonGuiStyle.playerFace(g, minecraft, m.uuid, 30, y + 6, 30);
-                g.drawString(font, m.name + (m.leader ? "  [队长]" : ""), 72, y + 9, DungeonGuiStyle.TEXT, false);
-                String state = !m.online ? "离线" : (m.ready ? "✓ 已准备" : "✕ 未准备");
-                int color = !m.online ? 0xFF777777 : (m.ready ? 0xFF188F38 : 0xFFC92F2F);
-                g.drawString(font, state, 228, y + 23, color, false);
-            } else {
-                g.drawString(font, "（空位）", 72, y + 15, 0xFF777777, false);
+            int ry = y + 36 + i * 43;
+            boolean hovered = inside(mx, my, x + 8, ry, w - 16, 38);
+            DungeonGuiStyle.row(g, x + 8, ry, w - 16, 38, hovered);
+            if (i >= list.size()) {
+                g.drawString(font, "（空位）", x + 55, ry + 15, 0xFF9B8875, false);
+                continue;
             }
+
+            MemberData m = list.get(i);
+            DungeonGuiStyle.playerFace(g, minecraft, m.uuid, x + 13, ry + 4, 30);
+            g.drawString(font, m.name, x + 52, ry + 7, DungeonGuiStyle.TEXT, false);
+            if (m.leader) {
+                g.drawString(font, "♛ 队长", x + 52, ry + 22, 0xFF9B6A22, false);
+            } else {
+                g.drawString(font, m.online ? "在线" : "离线", x + 52, ry + 22,
+                        m.online ? 0xFF6F765E : 0xFF9B8875, false);
+            }
+
+            String state = !m.online ? "离线" : (m.ready ? "✓ 已准备" : "未准备");
+            int color = !m.online ? 0xFF8A837B : (m.ready ? 0xFF277B45 : 0xFF9B493E);
+            int sx = x + w - 17 - font.width(state);
+            g.drawString(font, state, sx, ry + 14, color, false);
         }
-
-        boolean locked = meta.getBoolean("Locked");
-        boolean ready = meta.getBoolean("ViewerReady");
-
-        boolean backHover = inside(mx, my, 22, 392, 142, 48);
-        DungeonGuiStyle.button(g, minecraft, 22, 392, 142, 48,
-                "返回", backHover, DungeonGuiStyle.ButtonTone.GRAY, true);
-        target(22, 392, 142, 48, -1, Page.MAIN, "返回组队系统");
-
-        boolean readyHover = inside(mx, my, 184, 392, 146, 48);
-        DungeonGuiStyle.button(g, minecraft, 184, 392, 146, 48,
-                locked ? "副本进行中" : (ready ? "取消准备" : "准备"),
-                readyHover, ready ? DungeonGuiStyle.ButtonTone.GOLD : DungeonGuiStyle.ButtonTone.GREEN, !locked);
-        target(184, 392, 146, 48,
-                locked ? Integer.MIN_VALUE : PartyMenu.ACTION_READY, null,
-                locked ? "副本进行中无法修改准备状态" : (ready ? "取消准备" : "标记为已准备"));
     }
 
-    private void renderInvite(GuiGraphics g, CompoundTag meta, float mx, float my) {
-        List<InviteData> all = invites();
-        int maxPage = Math.max(0, (all.size() - 1) / 3);
-        invitePage = Math.max(0, Math.min(invitePage, maxPage));
-        int start = invitePage * 3;
+    private void renderDungeonInfo(GuiGraphics g, DungeonData dungeon, CompoundTag meta) {
+        int x = 432, y = 53, w = 194, h = 264;
+        DungeonGuiStyle.panel(g, x, y, w, h);
+        DungeonGuiStyle.sectionHeader(g, minecraft, x + 7, y + 7, w - 14, "▣  副本信息");
 
-        DungeonGuiStyle.innerPanel(g, 22, 54, 308, 38);
-        g.drawString(font, "副本柱子 20 格内玩家", 32, 66, DungeonGuiStyle.TEXT, false);
-        g.drawString(font, "共 " + all.size() + " 人", 268, 66, DungeonGuiStyle.MUTED, false);
-
-        for (int row = 0; row < 3; row++) {
-            int y = 103 + row * 78;
-            DungeonGuiStyle.row(g, 22, y, 308, 64, false);
-            int idx = start + row;
-            if (idx < all.size()) {
-                InviteData p = all.get(idx);
-                DungeonGuiStyle.playerFace(g, minecraft, p.uuid, 31, y + 16, 32);
-                g.drawString(font, p.name, 78, y + 13, DungeonGuiStyle.TEXT, false);
-                g.drawString(font, "● 在线", 78, y + 36, 0xFF15923A, false);
-
-                boolean hover = inside(mx, my, 241, y + 12, 78, 40);
-                DungeonGuiStyle.button(g, minecraft, 241, y + 12, 78, 40,
-                        "邀请", hover, DungeonGuiStyle.ButtonTone.GREEN, true);
-                target(241, y + 12, 78, 40,
-                        PartyMenu.ACTION_INVITE_BASE + p.index, null,
-                        "邀请 " + p.name + " 加入队伍");
-            } else {
-                g.drawString(font, "（空位）", 78, y + 27, DungeonGuiStyle.MUTED, false);
-            }
+        if (dungeon == null) {
+            g.drawCenteredString(font, "当前柱子未绑定可用副本", x + w / 2, y + 130, 0xFF9B493E);
+            return;
         }
 
-        if (all.isEmpty()) {
-            g.drawCenteredString(font, "附近暂无可邀请玩家", 176, 212, DungeonGuiStyle.MUTED);
+        // Boss 横幅区域：直接使用该 Boss 当前血量 HUD 所使用的头像资源。
+        int bx = x + 10, by = y + 36, bw = w - 20, bh = 79;
+        g.fill(bx, by, bx + bw, by + bh, 0xFF3A2924);
+        g.fill(bx + 2, by + 2, bx + bw - 2, by + bh - 2, 0xFF5A3B31);
+        DungeonGuiStyle.bossIconForDungeon(g, dungeon.id, bx + 6, by + 5, 78, 66);
+        g.fill(bx + 2, by + bh - 22, bx + bw - 2, by + bh - 2, 0xAA2B1712);
+        g.drawString(font, dungeon.displayName, bx + 8, by + bh - 17, 0xFFFFF1D6, false);
+
+        g.drawString(font, "当前副本柱子绑定的精英挑战。", x + 12, y + 123, DungeonGuiStyle.MUTED, false);
+        g.drawString(font, "全员准备后由队长开始挑战。", x + 12, y + 137, DungeonGuiStyle.MUTED, false);
+
+        g.fill(x + 10, y + 157, x + w - 10, y + 158, 0x5576532F);
+        g.drawString(font, "♟  队伍人数", x + 13, y + 169, DungeonGuiStyle.TEXT, false);
+        g.drawString(font, meta.getInt("MemberTotal") + " 人", x + w - 42, y + 169, DungeonGuiStyle.TEXT, false);
+        g.drawString(font, "♥  队伍复活次数", x + 13, y + 190, DungeonGuiStyle.TEXT, false);
+        g.drawString(font, reviveText(dungeon, Math.max(0, meta.getInt("MemberTotal"))),
+                x + w - 54, y + 190, DungeonGuiStyle.TEXT, false);
+
+        List<ItemStack> preview = configuredDrops();
+        if (!preview.isEmpty()) {
+            g.fill(x + 10, y + 215, x + w - 10, y + 216, 0x5576532F);
+            g.drawCenteredString(font, "◆  奖励预览  ◆", x + w / 2, y + 223, DungeonGuiStyle.TEXT);
+            int size = 27;
+            int gap = 5;
+            int columns = 5;
+            int startX = x + 17;
+            int startY = y + 239;
+            int visible = Math.min(5, preview.size());
+            for (int i = 0; i < visible; i++) {
+                int col = i % columns;
+                int sx = startX + col * (size + gap);
+                int sy = startY;
+                DungeonGuiStyle.rewardSlot(g, sx, sy, size);
+                ItemStack stack = preview.get(i);
+                g.renderItem(stack, sx + 5, sy + 5);
+            }
+        }
+    }
+
+    private void renderBottom(GuiGraphics g, CompoundTag meta, DungeonData dungeon,
+                              boolean hasParty, boolean leader, boolean locked,
+                              boolean hasInvite, boolean hasMailbox, float mx, float my) {
+        int y = 324;
+
+        // 左下角待领取邮箱。
+        int mailX = 14, mailY = y, mailW = 203, mailH = 67;
+        boolean mailHover = inside(mx, my, mailX, mailY, mailW, mailH);
+        DungeonGuiStyle.card(g, mailX, mailY, mailW, mailH, mailHover, hasMailbox,
+                hasMailbox ? DungeonGuiStyle.ButtonTone.GOLD : DungeonGuiStyle.ButtonTone.GRAY);
+        drawItemIcon(g, new ItemStack(Items.CHEST), mailX + 13, mailY + 13, 2.25F);
+        g.drawString(font, "待领取邮箱", mailX + 62, mailY + 12, DungeonGuiStyle.TEXT, false);
+        if (hasMailbox) {
+            int stacks = Math.max(1, meta.getInt("MailboxStacks"));
+            g.drawString(font, "有 " + stacks + " 堆副本奖励待领取", mailX + 62, mailY + 31, 0xFF9C4B2D, false);
+            g.drawString(font, "未领取时无法开启下一副本", mailX + 62, mailY + 47, 0xFF9C4B2D, false);
+            target(mailX, mailY, mailW, mailH, PartyMenu.ACTION_MAILBOX, null,
+                    "打开待领取邮箱；背包放不下的奖励会掉在脚下");
+        } else {
+            g.drawString(font, "当前没有待领取奖励", mailX + 62, mailY + 35, DungeonGuiStyle.MUTED, false);
+            target(mailX, mailY, mailW, mailH, Integer.MIN_VALUE, null, "当前没有待领取奖励");
+        }
+
+        // 第一排：创建 / 加入 / 邀请。
+        int bx = 225;
+        int bw = 126;
+        int gap = 6;
+        boolean create = !hasParty;
+        buttonTarget(g, bx, y, bw, 29, "创建队伍", create, mx, my,
+                DungeonGuiStyle.ButtonTone.GRAY,
+                create ? PartyMenu.ACTION_CREATE : Integer.MIN_VALUE, null,
+                create ? "创建一个新的冒险队伍" : "你已经在队伍中");
+
+        boolean join = !hasParty && hasInvite;
+        buttonTarget(g, bx + bw + gap, y, bw, 29, "加入队伍", join, mx, my,
+                DungeonGuiStyle.ButtonTone.GRAY,
+                join ? PartyMenu.ACTION_ACCEPT : Integer.MIN_VALUE, null,
+                join ? "接受当前收到的队伍邀请" : (hasParty ? "你已经在队伍中" : "当前没有队伍邀请"));
+
+        boolean invite = hasParty && leader && !locked;
+        buttonTarget(g, bx + (bw + gap) * 2, y, 132, 29, "邀请玩家", invite, mx, my,
+                DungeonGuiStyle.ButtonTone.GRAY,
+                invite ? -1 : Integer.MIN_VALUE, invite ? Page.INVITE : null,
+                invite ? "邀请副本柱子20格内的玩家" : "只有未锁定队伍的队长可以邀请玩家");
+
+        // 第二排：准备 / 开始挑战 / 离队。
+        boolean ready = hasParty && !locked;
+        String readyText = meta.getBoolean("ViewerReady") ? "✓ 取消准备" : "✓ 准备";
+        buttonTarget(g, bx, y + 36, bw, 29, readyText, ready, mx, my,
+                DungeonGuiStyle.ButtonTone.GREEN,
+                ready ? PartyMenu.ACTION_READY : Integer.MIN_VALUE, null,
+                locked ? "副本进行中无法修改准备状态" : "切换自己的准备状态");
+
+        boolean canStart = hasParty && leader && meta.getBoolean("AllReady")
+                && dungeon != null && dungeon.enabled && !locked && !hasMailbox;
+        String startTip;
+        if (hasMailbox) startTip = "请先领取待领取邮箱中的副本奖励";
+        else if (!leader) startTip = "只有队长可以开始挑战";
+        else if (!meta.getBoolean("AllReady")) startTip = "所有队员必须准备完成";
+        else startTip = "服务端会再次检查人数、冷却和所有队员的待领取邮箱";
+        buttonTarget(g, bx + bw + gap, y + 36, 164, 29, "⚔ 开始挑战", canStart, mx, my,
+                DungeonGuiStyle.ButtonTone.GOLD,
+                canStart ? PartyMenu.ACTION_START : Integer.MIN_VALUE, null, startTip);
+
+        boolean leave = hasParty && !locked;
+        buttonTarget(g, bx + bw + gap + 170, y + 36, 94, 29, "离开队伍", leave, mx, my,
+                DungeonGuiStyle.ButtonTone.RED,
+                leave ? PartyMenu.ACTION_LEAVE : Integer.MIN_VALUE, null,
+                locked ? "副本进行中无法直接离开队伍" : "离开当前冒险队伍");
+    }
+
+    private void renderInvite(GuiGraphics g, float mx, float my) {
+        List<InviteData> all = invites();
+        int perPage = 5;
+        int maxPage = Math.max(0, (all.size() - 1) / perPage);
+        invitePage = Math.max(0, Math.min(invitePage, maxPage));
+        int start = invitePage * perPage;
+
+        DungeonGuiStyle.panel(g, 24, 55, 422, 285);
+        DungeonGuiStyle.sectionHeader(g, minecraft, 34, 65, 402,
+                "副本柱子 20 格内可邀请玩家   共 " + all.size() + " 人");
+
+        for (int row = 0; row < perPage; row++) {
+            int yy = 94 + row * 46;
+            DungeonGuiStyle.row(g, 38, yy, 394, 40, false);
+            int idx = start + row;
+            if (idx >= all.size()) {
+                g.drawString(font, "（空位）", 86, yy + 15, DungeonGuiStyle.MUTED, false);
+                continue;
+            }
+            InviteData p = all.get(idx);
+            DungeonGuiStyle.playerFace(g, minecraft, p.uuid, 44, yy + 5, 30);
+            g.drawString(font, p.name, 85, yy + 8, DungeonGuiStyle.TEXT, false);
+            g.drawString(font, "● 在线", 85, yy + 23, 0xFF2D7848, false);
+
+            boolean hover = inside(mx, my, 337, yy + 7, 82, 27);
+            DungeonGuiStyle.button(g, minecraft, 337, yy + 7, 82, 27,
+                    "邀请", hover, DungeonGuiStyle.ButtonTone.GREEN, true);
+            target(337, yy + 7, 82, 27, PartyMenu.ACTION_INVITE_BASE + p.index, null,
+                    "邀请 " + p.name + " 加入队伍");
         }
 
         if (maxPage > 0) {
-            boolean prevHover = inside(mx, my, 92, 348, 64, 28);
-            boolean nextHover = inside(mx, my, 196, 348, 64, 28);
-            DungeonGuiStyle.button(g, minecraft, 92, 348, 64, 28,
-                    "上一页", prevHover, DungeonGuiStyle.ButtonTone.GRAY, invitePage > 0);
-            DungeonGuiStyle.button(g, minecraft, 196, 348, 64, 28,
-                    "下一页", nextHover, DungeonGuiStyle.ButtonTone.GRAY, invitePage < maxPage);
-            target(92, 348, 64, 28, invitePage > 0 ? -2 : Integer.MIN_VALUE, null, "上一页");
-            target(196, 348, 64, 28, invitePage < maxPage ? -3 : Integer.MIN_VALUE, null, "下一页");
-            g.drawCenteredString(font, (invitePage + 1) + " / " + (maxPage + 1), 176, 356, DungeonGuiStyle.TEXT);
+            buttonTarget(g, 75, 350, 80, 27, "上一页", invitePage > 0, mx, my,
+                    DungeonGuiStyle.ButtonTone.GRAY, invitePage > 0 ? -2 : Integer.MIN_VALUE,
+                    null, "上一页");
+            buttonTarget(g, 315, 350, 80, 27, "下一页", invitePage < maxPage, mx, my,
+                    DungeonGuiStyle.ButtonTone.GRAY, invitePage < maxPage ? -3 : Integer.MIN_VALUE,
+                    null, "下一页");
+            g.drawCenteredString(font, (invitePage + 1) + " / " + (maxPage + 1), 235, 359, DungeonGuiStyle.TEXT);
         }
 
-        boolean backHover = inside(mx, my, 92, 399, 168, 42);
-        DungeonGuiStyle.button(g, minecraft, 92, 399, 168, 42,
-                "返回组队系统", backHover, DungeonGuiStyle.ButtonTone.GRAY, true);
-        target(92, 399, 168, 42, -1, Page.MAIN, "返回组队系统");
+        buttonTarget(g, 180, 350, 110, 27, "返回", true, mx, my,
+                DungeonGuiStyle.ButtonTone.GOLD, -1, Page.MAIN, "返回副本组队");
     }
 
     private void renderManage(GuiGraphics g, CompoundTag meta, float mx, float my) {
@@ -343,169 +387,47 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
             if (viewer == null || !m.uuid.equals(viewer)) other.add(m);
         }
 
+        DungeonGuiStyle.panel(g, 55, 65, 360, 255);
         if (other.isEmpty()) {
-            DungeonGuiStyle.innerPanel(g, 40, 72, 308, 154);
-            g.drawCenteredString(font, "目前没有可管理的其他队员", 194, 140, DungeonGuiStyle.MUTED);
+            g.drawCenteredString(font, "目前没有可管理的其他队员", 235, 180, DungeonGuiStyle.MUTED);
         } else {
             manageCursor = Math.max(0, Math.min(manageCursor, other.size() - 1));
             MemberData m = other.get(manageCursor);
+            DungeonGuiStyle.playerFace(g, minecraft, m.uuid, 85, 105, 72);
+            g.drawString(font, m.name, 182, 105, DungeonGuiStyle.TEXT, false);
+            g.drawString(font, "状态：" + (m.online ? "在线" : "离线"), 182, 132,
+                    m.online ? 0xFF2D7848 : DungeonGuiStyle.MUTED, false);
+            g.drawString(font, "准备：" + (m.ready ? "已准备" : "未准备"), 182, 155,
+                    m.ready ? 0xFF2D7848 : 0xFF9B493E, false);
 
-            DungeonGuiStyle.innerPanel(g, 40, 72, 308, 154);
-            DungeonGuiStyle.playerFace(g, minecraft, m.uuid, 61, 103, 72);
-            g.drawString(font, m.name, 160, 101, DungeonGuiStyle.TEXT, false);
-            g.drawString(font, "队伍成员", 160, 127, DungeonGuiStyle.MUTED, false);
-            g.drawString(font, "状态：" + (m.ready ? "已准备" : "未准备"), 160, 154,
-                    m.ready ? 0xFF178C36 : 0xFFC63434, false);
-            g.drawString(font, m.online ? "● 当前在线" : "● 当前离线", 160, 181,
-                    m.online ? 0xFF178C36 : 0xFF777777, false);
+            buttonTarget(g, 88, 205, 290, 34, "转让队长给 " + m.name, m.online, mx, my,
+                    DungeonGuiStyle.ButtonTone.GOLD,
+                    m.online ? PartyMenu.ACTION_LEADER_BASE + m.index : Integer.MIN_VALUE,
+                    null, m.online ? "把队长转让给 " + m.name : "离线队员不能接任队长");
+            buttonTarget(g, 88, 249, 290, 34, "移出队伍", true, mx, my,
+                    DungeonGuiStyle.ButtonTone.RED,
+                    PartyMenu.ACTION_KICK_BASE + m.index, null, "将 " + m.name + " 移出队伍");
 
             if (other.size() > 1) {
-                boolean prevHover = inside(mx, my, 117, 235, 64, 28);
-                boolean nextHover = inside(mx, my, 207, 235, 64, 28);
-                DungeonGuiStyle.button(g, minecraft, 117, 235, 64, 28,
-                        "上一个", prevHover, DungeonGuiStyle.ButtonTone.GRAY, manageCursor > 0);
-                DungeonGuiStyle.button(g, minecraft, 207, 235, 64, 28,
-                        "下一个", nextHover, DungeonGuiStyle.ButtonTone.GRAY, manageCursor < other.size() - 1);
-                target(117, 235, 64, 28, manageCursor > 0 ? -4 : Integer.MIN_VALUE, null, "上一个队员");
-                target(207, 235, 64, 28, manageCursor < other.size() - 1 ? -5 : Integer.MIN_VALUE, null, "下一个队员");
+                buttonTarget(g, 92, 329, 76, 27, "上一个", manageCursor > 0, mx, my,
+                        DungeonGuiStyle.ButtonTone.GRAY, manageCursor > 0 ? -4 : Integer.MIN_VALUE,
+                        null, "上一个队员");
+                buttonTarget(g, 302, 329, 76, 27, "下一个", manageCursor < other.size() - 1, mx, my,
+                        DungeonGuiStyle.ButtonTone.GRAY, manageCursor < other.size() - 1 ? -5 : Integer.MIN_VALUE,
+                        null, "下一个队员");
             }
-
-            boolean leaderHover = inside(mx, my, 70, 277, 248, 56);
-            DungeonGuiStyle.button(g, minecraft, 70, 277, 248, 56,
-                    "转让队长给 " + m.name, leaderHover, DungeonGuiStyle.ButtonTone.GOLD, m.online);
-            target(70, 277, 248, 56,
-                    m.online ? PartyMenu.ACTION_LEADER_BASE + m.index : Integer.MIN_VALUE, null,
-                    m.online ? "把队长转让给 " + m.name : "离线队员不能接任队长");
-
-            boolean kickHover = inside(mx, my, 70, 340, 248, 56);
-            DungeonGuiStyle.button(g, minecraft, 70, 340, 248, 56,
-                    "移出队伍", kickHover, DungeonGuiStyle.ButtonTone.RED, true);
-            target(70, 340, 248, 56,
-                    PartyMenu.ACTION_KICK_BASE + m.index, null,
-                    "将 " + m.name + " 移出队伍");
         }
 
-        boolean backHover = inside(mx, my, 112, 404, 164, 40);
-        DungeonGuiStyle.button(g, minecraft, 112, 404, 164, 40,
-                "返回组队系统", backHover, DungeonGuiStyle.ButtonTone.GRAY, true);
-        target(112, 404, 164, 40, -1, Page.MAIN, "返回组队系统");
+        buttonTarget(g, 185, 365, 100, 27, "返回", true, mx, my,
+                DungeonGuiStyle.ButtonTone.GOLD, -1, Page.MAIN, "返回副本组队");
     }
 
-    private void renderDungeons(GuiGraphics g, CompoundTag meta, float mx, float my) {
-        CompoundTag bound = tag(menu.stateStack(PartyMenu.BOUND_DUNGEON_SLOT));
-        boolean enabled = bound.getBoolean("Enabled");
-        String id = bound.getString("Id");
-
-        DungeonGuiStyle.innerPanel(g, 28, 56, 328, 278);
-        g.drawCenteredString(font, "当前副本柱子", 192, 68, DungeonGuiStyle.MUTED);
-
-        DungeonGuiStyle.IconRegion icon = iconFor(id);
-        drawDungeonCard(g, bound, 104, 88, icon);
-
-        boolean hover = inside(mx, my, 42, 348, 300, 50);
-        DungeonGuiStyle.button(g, minecraft, 42, 348, 300, 50,
-                enabled ? "查看挑战条件" : "该副本当前不可用",
-                hover, enabled ? DungeonGuiStyle.ButtonTone.GREEN : DungeonGuiStyle.ButtonTone.GRAY, enabled);
-        target(42, 348, 300, 50,
-                enabled ? -1 : Integer.MIN_VALUE,
-                enabled ? Page.CONFIRM : null,
-                enabled ? "查看挑战条件；副本不能在GUI内切换" : "管理员需要检查柱子绑定或副本配置");
-    }
-
-    private void drawDungeonCard(GuiGraphics g, CompoundTag t, int x, int y,
-                                 DungeonGuiStyle.IconRegion icon) {
-        DungeonGuiStyle.card(g, x, y, 176, 226, false, t.getBoolean("Enabled"), DungeonGuiStyle.ButtonTone.GOLD);
-        DungeonGuiStyle.bossIcon(g, icon, x + 50, y + 25, 76, 66);
-
-        String name = t.getString("DisplayName");
-        if (name.isBlank()) name = "未配置";
-        g.drawCenteredString(font, name, x + 88, y + 105, DungeonGuiStyle.TEXT);
-        g.drawCenteredString(font,
-                "推荐人数：" + t.getInt("MinPlayers") + "-" + t.getInt("MaxPlayers") + "人",
-                x + 88, y + 141, DungeonGuiStyle.TEXT);
-        g.drawCenteredString(font,
-                "副本时限：" + minutes(t.getInt("TimeLimit")) + " 分钟",
-                x + 88, y + 167, DungeonGuiStyle.TEXT);
-        g.drawCenteredString(font,
-                t.getBoolean("Enabled") ? "已启用" : "未启用",
-                x + 88, y + 194,
-                t.getBoolean("Enabled") ? 0xFF188F38 : 0xFFC92F2F);
-    }
-
-    private void renderConfirm(GuiGraphics g, CompoundTag meta, float mx, float my) {
-        DungeonData selected = selectedDungeon();
-        if (selected == null) {
-            DungeonGuiStyle.innerPanel(g, 30, 74, 292, 226);
-            g.drawCenteredString(font, "当前没有可用副本", 176, 180, 0xFFC92F2F);
-
-            boolean backHover = inside(mx, my, 100, 344, 152, 50);
-            DungeonGuiStyle.button(g, minecraft, 100, 344, 152, 50,
-                    "返回", backHover, DungeonGuiStyle.ButtonTone.GRAY, true);
-            target(100, 344, 152, 50, -1, Page.DUNGEONS, "返回副本选择");
-            return;
-        }
-
-        DungeonGuiStyle.innerPanel(g, 30, 64, 292, 250);
-        DungeonGuiStyle.IconRegion icon = iconFor(selected.id);
-        DungeonGuiStyle.bossIcon(g, icon, 48, 86, 74, 68);
-
-        int ready = 0;
-        for (MemberData m : members()) if (m.ready) ready++;
-        int total = Math.max(0, meta.getInt("MemberTotal"));
-
-        g.drawString(font, "副本：" + selected.displayName, 136, 84, DungeonGuiStyle.TEXT, false);
-        g.drawString(font, "队伍人数：" + total, 136, 118, DungeonGuiStyle.TEXT, false);
-        g.drawString(font, "副本时限：" + minutes(selected.timeLimit) + " 分钟",
-                136, 152, DungeonGuiStyle.TEXT, false);
-        g.drawString(font, "团队复活：" + reviveText(selected, total),
-                136, 186, DungeonGuiStyle.TEXT, false);
-        g.drawString(font, "准备状态：" + ready + " / " + total,
-                136, 220,
-                meta.getBoolean("AllReady") ? 0xFF168D36 : 0xFFC72E2E, false);
-
-        // 实时准备进度条。
-        g.fill(48, 264, 304, 292, 0xFF6E7073);
-        int segments = Math.max(1, total);
-        int usable = 248;
-        for (int i = 0; i < segments; i++) {
-            int sx = 52 + i * usable / segments;
-            int ex = 52 + (i + 1) * usable / segments - 3;
-            g.fill(sx, 268, ex, 288, i < ready ? 0xFF1DB943 : 0xFF4F5154);
-        }
-
-        boolean canStart = meta.getBoolean("ViewerLeader")
-                && meta.getBoolean("AllReady")
-                && selected.enabled
-                && !meta.getBoolean("Locked");
-
-        boolean startHover = inside(mx, my, 18, 344, 151, 56);
-        DungeonGuiStyle.button(g, minecraft, 18, 344, 151, 56,
-                "开始挑战", startHover, DungeonGuiStyle.ButtonTone.GREEN, canStart);
-        target(18, 344, 151, 56,
-                canStart ? PartyMenu.ACTION_START : Integer.MIN_VALUE, null,
-                canStart ? "服务端将再次检查人数、准备状态和副本配置"
-                        : (!meta.getBoolean("ViewerLeader") ? "只有队长可以开始挑战" : "所有队员必须准备完成"));
-
-        boolean cancelHover = inside(mx, my, 183, 344, 151, 56);
-        DungeonGuiStyle.button(g, minecraft, 183, 344, 151, 56,
-                "取消", cancelHover, DungeonGuiStyle.ButtonTone.GRAY, true);
-        target(183, 344, 151, 56, -1, Page.DUNGEONS, "取消并返回副本选择");
-    }
-
-    private void drawFunctionCard(GuiGraphics g, int x, int y, int w, int h,
-                                  ItemStack icon, String title, String line1, String line2,
-                                  boolean enabled, boolean hovered, DungeonGuiStyle.ButtonTone tone) {
-        DungeonGuiStyle.card(g, x, y, w, h, hovered, enabled, tone);
-
-        float scale = w >= 110 ? 2.55F : 2.25F;
-        int iconSize = Math.round(16 * scale);
-        drawItemIcon(g, icon, x + (w - iconSize) / 2, y + 18, scale);
-
-        int titleColor = enabled ? DungeonGuiStyle.TEXT : 0xFF8B8B8B;
-        int descColor = enabled ? 0xFF444444 : 0xFF8F8F8F;
-        g.drawCenteredString(font, title, x + w / 2, y + 78, titleColor);
-        g.drawCenteredString(font, line1, x + w / 2, y + 103, descColor);
-        g.drawCenteredString(font, line2, x + w / 2, y + 118, descColor);
+    private void buttonTarget(GuiGraphics g, int x, int y, int w, int h, String text,
+                              boolean enabled, float mx, float my, DungeonGuiStyle.ButtonTone tone,
+                              int action, Page targetPage, String tooltip) {
+        boolean hover = inside(mx, my, x, y, w, h);
+        DungeonGuiStyle.button(g, minecraft, x, y, w, h, text, hover, tone, enabled);
+        target(x, y, w, h, enabled ? action : Integer.MIN_VALUE, enabled ? targetPage : null, tooltip);
     }
 
     private void drawItemIcon(GuiGraphics g, ItemStack stack, int x, int y, float scale) {
@@ -514,14 +436,6 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
         g.pose().scale(scale, scale, 1.0F);
         g.renderItem(stack, 0, 0);
         g.pose().popPose();
-    }
-
-    private static boolean inside(float mx, float my, int x, int y, int w, int h) {
-        return mx >= x && mx < x + w && my >= y && my < y + h;
-    }
-
-    private void target(int x, int y, int w, int h, int action, Page page, String tooltip) {
-        targets.add(new HitTarget(x, y, w, h, action, page, tooltip));
     }
 
     private List<MemberData> members() {
@@ -548,26 +462,19 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
         return out;
     }
 
-    private DungeonData selectedDungeon() {
-        CompoundTag bound = tag(menu.stateStack(PartyMenu.BOUND_DUNGEON_SLOT));
-        if (!"dungeon".equals(bound.getString("YDType"))) return null;
-        return dungeonData(bound);
-    }
-
-    private DungeonGuiStyle.IconRegion iconFor(String id) {
-        return "sakura".equalsIgnoreCase(id)
-                ? DungeonGuiStyle.SAKURA_ICON
-                : DungeonGuiStyle.CLEOPATRA_ICON;
-    }
-
-    private String selectedDungeonName() {
-        DungeonData data = selectedDungeon();
-        return data == null ? "未选择" : data.displayName;
+    private List<ItemStack> configuredDrops() {
+        List<ItemStack> out = new ArrayList<>();
+        for (int i = 0; i < PartyMenu.DROP_PREVIEW_COUNT; i++) {
+            ItemStack stack = menu.stateStack(PartyMenu.DROP_PREVIEW_START + i);
+            if (!stack.isEmpty()) out.add(stack);
+        }
+        return out;
     }
 
     private int selectedMaxPlayers() {
-        DungeonData data = selectedDungeon();
-        return data == null ? 5 : data.maxPlayers;
+        CompoundTag t = tag(menu.stateStack(PartyMenu.BOUND_DUNGEON_SLOT));
+        int max = t.getInt("MaxPlayers");
+        return max > 0 ? max : 5;
     }
 
     private DungeonData dungeonData(CompoundTag t) {
@@ -586,11 +493,15 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
     private static String reviveText(DungeonData data, int members) {
         return "fixed".equalsIgnoreCase(data.reviveMode)
                 ? data.fixedRevives + " 次"
-                : Math.max(0, members) + " 次（按人数）";
+                : Math.max(0, members) + " 次";
     }
 
-    private static int minutes(int seconds) {
-        return Math.max(1, (seconds + 59) / 60);
+    private static boolean inside(float mx, float my, int x, int y, int w, int h) {
+        return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    private void target(int x, int y, int w, int h, int action, Page targetPage, String tooltip) {
+        targets.add(new HitTarget(x, y, w, h, action, targetPage, tooltip));
     }
 
     private static CompoundTag tag(ItemStack stack) {
@@ -613,10 +524,12 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
         for (int i = targets.size() - 1; i >= 0; i--) {
             HitTarget target = targets.get(i);
             if (!target.contains(lx, ly) || target.action == Integer.MIN_VALUE) continue;
-
             playClick();
 
-            // 纯客户端翻页，不修改服务端权威状态。
+            if (target.action == -9) {
+                onClose();
+                return true;
+            }
             if (target.action == -2) {
                 invitePage = Math.max(0, invitePage - 1);
                 return true;
@@ -638,8 +551,6 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
             if (target.action >= 0) sendAction(target.action);
             return true;
         }
-
-        // 隐藏状态槽不接收鼠标操作。
         return true;
     }
 
@@ -653,7 +564,7 @@ public final class PartyScreen extends AbstractContainerScreen<PartyMenu> {
                 .play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
     }
 
-    private enum Page { MAIN, INFO, INVITE, MANAGE, DUNGEONS, CONFIRM }
+    private enum Page { MAIN, INVITE, MANAGE }
 
     private record ScreenSize(int w, int h) {}
 
