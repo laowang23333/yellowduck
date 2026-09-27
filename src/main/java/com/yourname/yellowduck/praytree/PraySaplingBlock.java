@@ -57,7 +57,6 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
             level.setBlock(pos, state.setValue(STAGE, 1), 4);
             return;
         }
-
         growPrayTree(level, pos, random);
     }
 
@@ -69,7 +68,7 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
         List<CanopyBlob> blobs = new ArrayList<>();
 
         buildRootAndTrunk(base, logs, spec);
-        buildCanopyBlobs(base, blobs, spec, random);
+        buildCanopyBlobs(blobs, spec, random);
         buildBranches(base, logs, blobs, spec, random);
         buildCanopy(base, leaves, blobs, spec, random);
         coverBranchesFromAbove(base, logs, leaves, spec, random);
@@ -102,10 +101,11 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
             placedLeaves.add(pos.immutable());
         }
 
-        placeRibbons(level, placedLeaves, logs, spec, random);
+        placeRibbons(level, placedLeaves, logs, random);
     }
 
     private void buildRootAndTrunk(BlockPos base, Set<BlockPos> logs, TreeSpec spec) {
+        // 根座
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 logs.add(base.offset(dx, 0, dz));
@@ -118,35 +118,28 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
         logs.add(base.offset(0, 1, 1));
         logs.add(base.offset(0, 1, -1));
 
+        // 主干压低，减少中间光秃秃的高度
         for (int y = 2; y <= spec.trunkTopY; y++) {
             logs.add(base.above(y));
         }
     }
 
-    /**
-     * 树冠改成“中心主体 + 大量重叠副叶团”。
-     * 目标：
-     * 1. 整体更大
-     * 2. 轮廓更聚拢，不再散架
-     * 3. 每棵树仍有随机差异
-     */
-    private void buildCanopyBlobs(BlockPos base,
-                                  List<CanopyBlob> blobs,
+    private void buildCanopyBlobs(List<CanopyBlob> blobs,
                                   TreeSpec spec,
                                   RandomSource random) {
 
-        // 中央主体：更大更厚，保证树冠不会散。
+        // 中央主体：更厚更实，避免中间空太多
         blobs.add(new CanopyBlob(
                 spec.centerOffsetX,
                 spec.canopyCenterY,
                 spec.centerOffsetZ,
-                4 + random.nextInt(2),   // 4~5
-                4 + random.nextInt(2),   // 4~5
-                2 + random.nextInt(2)    // 2~3
+                5 + random.nextInt(2),  // 5~6
+                5 + random.nextInt(2),  // 5~6
+                3                       // 更厚
         ));
 
-        // 次级主体，让整体更像一整团，而不是很多分裂小块。
-        int coreExtras = 2 + random.nextInt(2);
+        // 次核心叶团，靠得更近，用于把树冠揉成一整团
+        int coreExtras = 3 + random.nextInt(2);
         for (int i = 0; i < coreExtras; i++) {
             int cx = spec.centerOffsetX + random.nextInt(5) - 2;
             int cz = spec.centerOffsetZ + random.nextInt(5) - 2;
@@ -154,78 +147,73 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
 
             blobs.add(new CanopyBlob(
                     cx, cy, cz,
-                    3 + random.nextInt(2),
-                    3 + random.nextInt(2),
-                    2
+                    4, 4, 2
             ));
         }
 
-        // 外围 6~8 个大叶团，视频里树冠很大，因此外圈也做大。
+        // 外围大叶团：仍保持大树冠，但距离比上一版更近，避免分层断开
         int lobeCount = 6 + random.nextInt(3);
         double startAngle = random.nextDouble() * Math.PI * 2.0D;
 
         for (int i = 0; i < lobeCount; i++) {
             double angle = startAngle
                     + Math.PI * 2.0D * i / lobeCount
-                    + (random.nextDouble() - 0.5D) * 0.35D;
+                    + (random.nextDouble() - 0.5D) * 0.28D;
 
-            double distance = 3.6D + random.nextDouble() * 2.0D;
+            double distance = 3.3D + random.nextDouble() * 1.5D;
             int cx = spec.centerOffsetX + (int) Math.round(Math.cos(angle) * distance);
             int cz = spec.centerOffsetZ + (int) Math.round(Math.sin(angle) * distance);
             int cy = spec.canopyCenterY - 1 + random.nextInt(3);
 
             blobs.add(new CanopyBlob(
                     cx, cy, cz,
-                    3 + random.nextInt(2), // 3~4
-                    3 + random.nextInt(2), // 3~4
+                    3 + random.nextInt(2),  // 3~4
+                    3 + random.nextInt(2),  // 3~4
                     2
+            ));
+
+            // 在核心和外围之间加过渡叶团，专门消掉明显分层和中空
+            int bridgeX = (int) Math.round((spec.centerOffsetX + cx) * 0.5D);
+            int bridgeZ = (int) Math.round((spec.centerOffsetZ + cz) * 0.5D);
+            int bridgeY = spec.canopyCenterY - 1 + random.nextInt(2);
+
+            blobs.add(new CanopyBlob(
+                    bridgeX, bridgeY, bridgeZ,
+                    3, 3, 2
             ));
         }
 
-        // 额外大叶团：少量偏心，保证变化，但不再做太多小碎块。
+        // 少量偏心大叶团，保留每棵树不一样
         int extra = 1 + random.nextInt(2);
         for (int i = 0; i < extra; i++) {
-            int cx = spec.centerOffsetX + random.nextInt(9) - 4;
-            int cz = spec.centerOffsetZ + random.nextInt(9) - 4;
+            int cx = spec.centerOffsetX + random.nextInt(7) - 3;
+            int cz = spec.centerOffsetZ + random.nextInt(7) - 3;
             int cy = spec.canopyCenterY + random.nextInt(2);
 
-            blobs.add(new CanopyBlob(
-                    cx, cy, cz,
-                    2 + random.nextInt(2),
-                    2 + random.nextInt(2),
-                    1 + random.nextInt(2)
-            ));
+            blobs.add(new CanopyBlob(cx, cy, cz, 3, 3, 2));
         }
     }
 
-    /**
-     * 枝条朝较大的外叶团延伸，但不再过多。
-     * 这样树下仍能看见内部木头支撑，但树冠不会被木头撑得太乱。
-     */
     private void buildBranches(BlockPos base,
                                Set<BlockPos> logs,
                                List<CanopyBlob> blobs,
                                TreeSpec spec,
                                RandomSource random) {
-        int startY = spec.branchY;
         int built = 0;
-
         for (int i = 1; i < blobs.size(); i++) {
             CanopyBlob blob = blobs.get(i);
 
-            // 只给较大的叶团优先接枝，小叶团不一定接，防止木头太多。
-            if (blob.rx + blob.rz < 6 && random.nextBoolean()) {
-                continue;
-            }
-
+            // 只给较远且较大的叶团接枝，减少内部木头乱露
             int targetX = blob.cx;
             int targetZ = blob.cz;
             int steps = Math.max(Math.abs(targetX), Math.abs(targetZ));
             if (steps <= 1) {
                 continue;
             }
-
-            if (built >= 7 && random.nextInt(3) != 0) {
+            if (blob.rx + blob.rz < 6 && random.nextInt(3) != 0) {
+                continue;
+            }
+            if (built >= 6 && random.nextInt(4) != 0) {
                 continue;
             }
 
@@ -242,7 +230,8 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
                     continue;
                 }
 
-                int y = startY;
+                // 枝条高度更贴近树冠中心，不再形成明显“上下分层”
+                int y = spec.branchY;
                 if (step >= steps - 1 && blob.cy >= spec.canopyCenterY + 1) {
                     y++;
                 }
@@ -266,32 +255,30 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
             addLeafBlob(base, leaves, blob, random);
         }
 
-        // 补一个更宽的“下裙边”，但不是完全平底。
-        // 这一步让树冠从远处看更有视频里那种大面积覆盖感。
-        int skirtPoints = 18 + random.nextInt(7);
+        // 下摆改成连续的较厚过渡层，而不是一圈一圈台阶
+        int skirtPoints = 16 + random.nextInt(6);
         for (int i = 0; i < skirtPoints; i++) {
             double angle = random.nextDouble() * Math.PI * 2.0D;
-            double dist = 4.2D + random.nextDouble() * (spec.outerReach - 3.8D);
+            double dist = 4.0D + random.nextDouble() * (spec.outerReach - 4.0D);
 
             int cx = spec.centerOffsetX + (int) Math.round(Math.cos(angle) * dist);
             int cz = spec.centerOffsetZ + (int) Math.round(Math.sin(angle) * dist);
-            int cy = spec.branchY - 1 + random.nextInt(2); // 底部高低错开
+            int cy = spec.branchY + random.nextInt(2) - 1; // 更靠近主体，减少分层
 
             addLeafBlob(base, leaves, new CanopyBlob(
-                    cx, cy,
-                    cz,
+                    cx, cy, cz,
                     2 + random.nextInt(2),
                     2 + random.nextInt(2),
-                    1
+                    1 + random.nextInt(2)
             ), random);
         }
 
-        // 顶部少量鼓包，数量减少，不让顶部变碎。
-        int topBumps = 2 + random.nextInt(2);
+        // 顶部只保留少量柔和鼓包，不再太碎
+        int topBumps = 1 + random.nextInt(2);
         for (int i = 0; i < topBumps; i++) {
-            int cx = spec.centerOffsetX + random.nextInt(7) - 3;
-            int cz = spec.centerOffsetZ + random.nextInt(7) - 3;
-            int cy = spec.canopyCenterY + 2 + random.nextInt(2);
+            int cx = spec.centerOffsetX + random.nextInt(5) - 2;
+            int cz = spec.centerOffsetZ + random.nextInt(5) - 2;
+            int cy = spec.canopyCenterY + 2;
 
             addLeafBlob(base, leaves, new CanopyBlob(
                     cx, cy, cz,
@@ -299,17 +286,12 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
             ), random);
         }
 
-        // 顶部偶尔挖个小浅坑，让每棵树略不同，但不再大面积镂空。
-        if (random.nextInt(4) == 0) {
-            int cx = spec.centerOffsetX + random.nextInt(5) - 2;
-            int cz = spec.centerOffsetZ + random.nextInt(5) - 2;
-            carvePocket(base.offset(cx, spec.canopyCenterY + 2, cz), leaves, 1);
+        // 轻微修圆顶部，不再挖明显中空
+        if (random.nextInt(5) == 0) {
+            carvePocket(base.offset(spec.centerOffsetX, spec.canopyCenterY + 2, spec.centerOffsetZ), leaves, 1);
         }
     }
 
-    /**
-     * 叶团使用“椭球 + 少量边缘削切”，保留自然感，但大幅减少散乱。
-     */
     private void addLeafBlob(BlockPos base,
                              Set<BlockPos> leaves,
                              CanopyBlob blob,
@@ -322,20 +304,16 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
                     double nz = dz / (double) blob.rz;
                     double distance = nx * nx + ny * ny + nz * nz;
 
-                    if (distance > 1.18D) {
+                    if (distance > 1.22D) {
                         continue;
                     }
 
-                    // 只在最边上一小圈偶尔削掉，避免树叶太散。
-                    if (distance > 0.97D && random.nextInt(12) == 0) {
+                    // 边缘只做很轻微削切，避免散乱
+                    if (distance > 1.00D && random.nextInt(18) == 0) {
                         continue;
                     }
 
-                    leaves.add(base.offset(
-                            blob.cx + dx,
-                            blob.cy + dy,
-                            blob.cz + dz
-                    ));
+                    leaves.add(base.offset(blob.cx + dx, blob.cy + dy, blob.cz + dz));
                 }
             }
         }
@@ -351,10 +329,6 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
         }
     }
 
-    /**
-     * 树冠上方不再露木头。
-     * 只对树冠内部横枝做覆盖，且覆盖比之前更厚一点。
-     */
     private void coverBranchesFromAbove(BlockPos base,
                                         Set<BlockPos> logs,
                                         Set<BlockPos> leaves,
@@ -371,6 +345,7 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
                 continue;
             }
 
+            // 上盖树叶，防止俯视露木头
             leaves.add(logPos.above());
             leaves.add(logPos.above().north());
             leaves.add(logPos.above().south());
@@ -425,7 +400,6 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
     private void placeRibbons(ServerLevel level,
                               List<BlockPos> placedLeaves,
                               Set<BlockPos> logs,
-                              TreeSpec spec,
                               RandomSource random) {
         List<BlockPos> candidates = new ArrayList<>();
 
@@ -436,7 +410,6 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
                 continue;
             }
 
-            // 下表面都可挂，边缘权重更高。
             candidates.add(below);
 
             int openSides = 0;
@@ -455,7 +428,7 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
 
         Collections.shuffle(candidates, new java.util.Random(random.nextLong()));
 
-        int targetGroups = Math.min(candidates.size(), 30 + random.nextInt(16));
+        int targetGroups = Math.min(candidates.size(), 28 + random.nextInt(14));
 
         Set<BlockPos> used = new HashSet<>();
         for (int i = 0; i < candidates.size() && used.size() < targetGroups; i++) {
@@ -574,10 +547,10 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
         }
 
         static TreeSpec create(RandomSource random) {
-            int trunkTopY = 7 + random.nextInt(3);   // 7~9，更高一点
+            int trunkTopY = 6 + random.nextInt(2);   // 6~7，压低
             int branchY = trunkTopY - 1;
-            int canopyCenterY = trunkTopY + 2;
-            int outerReach = 7 + random.nextInt(2);  // 7~8，更大
+            int canopyCenterY = trunkTopY + 1;       // 树冠更贴近主干
+            int outerReach = 7 + random.nextInt(2);  // 7~8，保持够大
             int centerOffsetX = random.nextInt(3) - 1;
             int centerOffsetZ = random.nextInt(3) - 1;
 
