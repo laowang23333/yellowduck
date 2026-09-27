@@ -2,8 +2,6 @@ package com.yourname.yellowduck.praytree;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.data.worldgen.features.TreeFeatures;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
@@ -11,7 +9,6 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.BonemealableBlock;
 import net.minecraft.world.level.block.BushBlock;
 import net.minecraft.world.level.block.LeavesBlock;
@@ -20,20 +17,27 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
-import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
     public static final IntegerProperty STAGE = BlockStateProperties.STAGE;
 
-    private static final int SNAPSHOT_RADIUS = 10;
-    private static final int SNAPSHOT_DOWN = 2;
-    private static final int SNAPSHOT_UP = 20;
+    /*
+     * 图片里的祈福树是明显的“伞状大树冠”：
+     * - 地面有宽大的根座
+     * - 中间单主干
+     * - 树冠下有向四周伸展的粗枝
+     * - 树冠宽、扁、分层，并带少量凸起
+     * - 树冠底部大量悬挂祈福缎带
+     */
+    private static final int TRUNK_TOP_Y = 8;
+    private static final int CANOPY_BOTTOM_Y = 8;
+    private static final int CANOPY_TOP_Y = 12;
 
     public PraySaplingBlock(Properties properties) {
         super(properties);
@@ -66,120 +70,228 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
             return;
         }
 
-        growVanillaCherryShape(level, pos, state, random);
+        growPrayTree(level, pos, random);
     }
 
-    /**
-     * 直接调用 Minecraft 1.20.1 原版樱花树 ConfiguredFeature 来决定
-     * 主干、分叉、树冠以及悬垂树叶的结构。
-     *
-     * 生成完成后，只把这次新生成出来的樱花原木和樱花树叶替换成
-     * 祈福树自己的树干和树叶，最后再在树冠下方添加祈福缎带。
-     */
-    private void growVanillaCherryShape(ServerLevel level, BlockPos pos,
-                                       BlockState saplingState,
-                                       RandomSource random) {
-        Map<BlockPos, BlockState> before = snapshot(level, pos);
+    private void growPrayTree(ServerLevel level, BlockPos base, RandomSource random) {
+        Set<BlockPos> logs = new HashSet<>();
+        Set<BlockPos> leaves = new HashSet<>();
 
-        ConfiguredFeature<?, ?> cherry = level.registryAccess()
-                .registryOrThrow(Registries.CONFIGURED_FEATURE)
-                .getHolderOrThrow(TreeFeatures.CHERRY)
-                .value();
+        buildRootAndTrunk(base, logs);
+        buildBranches(base, logs, random);
+        buildCanopy(base, logs, leaves, random);
 
-        level.setBlock(pos, Blocks.AIR.defaultBlockState(), 4);
-
-        boolean placed = cherry.place(
-                level,
-                level.getChunkSource().getGenerator(),
-                random,
-                pos
-        );
-
-        if (!placed) {
-            level.setBlock(pos, saplingState, 4);
+        if (!hasRoom(level, logs, leaves)) {
             return;
         }
 
-        List<BlockPos> newPrayLeaves = new ArrayList<>();
+        BlockState verticalLog = PrayTreeContent.PRAY_TREE.get()
+                .defaultBlockState()
+                .setValue(RotatedPillarBlock.AXIS, Direction.Axis.Y);
 
-        for (Map.Entry<BlockPos, BlockState> entry : before.entrySet()) {
-            BlockPos checkPos = entry.getKey();
-            BlockState oldState = entry.getValue();
-            BlockState newState = level.getBlockState(checkPos);
+        for (BlockPos pos : logs) {
+            Direction.Axis axis = chooseLogAxis(base, pos);
+            level.setBlock(
+                    pos,
+                    verticalLog.setValue(RotatedPillarBlock.AXIS, axis),
+                    3
+            );
+        }
 
-            if (newState.is(Blocks.CHERRY_LOG)
-                    && !oldState.is(Blocks.CHERRY_LOG)) {
-                Direction.Axis axis = newState.getValue(RotatedPillarBlock.AXIS);
+        BlockState leafState = PrayTreeContent.PRAY_LEAVES.get()
+                .defaultBlockState()
+                .setValue(LeavesBlock.PERSISTENT, true);
 
-                level.setBlock(
-                        checkPos,
-                        PrayTreeContent.PRAY_TREE.get()
-                                .defaultBlockState()
-                                .setValue(RotatedPillarBlock.AXIS, axis),
-                        3
-                );
+        List<BlockPos> placedLeaves = new ArrayList<>();
+        for (BlockPos pos : leaves) {
+            if (logs.contains(pos)) {
                 continue;
             }
-
-            if (newState.is(Blocks.CHERRY_LEAVES)
-                    && !oldState.is(Blocks.CHERRY_LEAVES)) {
-                BlockState prayLeaves = PrayTreeContent.PRAY_LEAVES.get()
-                        .defaultBlockState();
-
-                if (newState.hasProperty(LeavesBlock.DISTANCE)) {
-                    prayLeaves = prayLeaves.setValue(
-                            LeavesBlock.DISTANCE,
-                            newState.getValue(LeavesBlock.DISTANCE)
-                    );
-                }
-
-                if (newState.hasProperty(LeavesBlock.PERSISTENT)) {
-                    prayLeaves = prayLeaves.setValue(
-                            LeavesBlock.PERSISTENT,
-                            newState.getValue(LeavesBlock.PERSISTENT)
-                    );
-                }
-
-                level.setBlock(checkPos, prayLeaves, 3);
-                newPrayLeaves.add(checkPos.immutable());
-            }
+            level.setBlock(pos, leafState, 3);
+            placedLeaves.add(pos);
         }
 
-        placeRibbons(level, newPrayLeaves, random);
+        placeRibbons(level, placedLeaves, logs, random);
     }
 
-    private Map<BlockPos, BlockState> snapshot(ServerLevel level, BlockPos origin) {
-        Map<BlockPos, BlockState> result = new HashMap<>();
-
-        for (int y = -SNAPSHOT_DOWN; y <= SNAPSHOT_UP; y++) {
-            for (int x = -SNAPSHOT_RADIUS; x <= SNAPSHOT_RADIUS; x++) {
-                for (int z = -SNAPSHOT_RADIUS; z <= SNAPSHOT_RADIUS; z++) {
-                    BlockPos p = origin.offset(x, y, z);
-                    result.put(p.immutable(), level.getBlockState(p));
-                }
+    private void buildRootAndTrunk(BlockPos base, Set<BlockPos> logs) {
+        // 最底层 3×3 根座。
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                logs.add(base.offset(dx, 0, dz));
             }
         }
 
-        return result;
+        // 第二层十字收口，形成图片里阶梯状树根。
+        logs.add(base.above());
+        logs.add(base.offset(1, 1, 0));
+        logs.add(base.offset(-1, 1, 0));
+        logs.add(base.offset(0, 1, 1));
+        logs.add(base.offset(0, 1, -1));
+
+        // 单主干。
+        for (int y = 2; y <= TRUNK_TOP_Y; y++) {
+            logs.add(base.above(y));
+        }
+    }
+
+    private void buildBranches(BlockPos base, Set<BlockPos> logs, RandomSource random) {
+        int rotation = random.nextInt(4);
+        Direction[] dirs = {
+                Direction.NORTH, Direction.EAST,
+                Direction.SOUTH, Direction.WEST
+        };
+
+        // 四条主要粗枝，贴着树冠下表面向四周伸展。
+        for (int n = 0; n < 4; n++) {
+            Direction dir = dirs[(rotation + n) & 3];
+            int length = 4 + (n % 2);
+
+            for (int i = 1; i <= length; i++) {
+                int rise = i >= length - 1 ? 1 : 0;
+                logs.add(base.relative(dir, i).above(7 + rise));
+            }
+
+            // 每条主枝末端再向左右分叉一格。
+            BlockPos tip = base.relative(dir, length).above(8);
+            logs.add(tip.relative(dir.getClockWise()));
+            logs.add(tip.relative(dir.getCounterClockWise()));
+        }
+
+        // 四条较短的斜向枝，让树冠底面和截图一样更饱满。
+        int[][] diagonals = {
+                {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+        };
+
+        for (int[] d : diagonals) {
+            for (int i = 1; i <= 3; i++) {
+                int dx = d[0] * i;
+                int dz = d[1] * i;
+                int y = 7 + (i >= 3 ? 1 : 0);
+                logs.add(base.offset(dx, y, dz));
+            }
+        }
+    }
+
+    private void buildCanopy(BlockPos base,
+                             Set<BlockPos> logs,
+                             Set<BlockPos> leaves,
+                             RandomSource random) {
+        // 下面三层形成图片里宽而扁的伞状主体。
+        addCanopyLayer(base, leaves, 8, 6, 9);
+        addCanopyLayer(base, leaves, 9, 7, 10);
+        addCanopyLayer(base, leaves, 10, 6, 9);
+
+        // 第四层缩小，形成顶部起伏。
+        addCanopyLayer(base, leaves, 11, 4, 6);
+
+        // 顶部不是一个尖顶，而是几个错开的“小包”，对应截图俯视的凸起。
+        int omitted = random.nextInt(4);
+        int[][] caps = {
+                {3, 0}, {-3, 0}, {0, 3}, {0, -3}
+        };
+
+        addLeafPatch(base.offset(0, 12, 0), leaves, 2);
+
+        for (int i = 0; i < caps.length; i++) {
+            if (i == omitted) {
+                continue;
+            }
+            addLeafPatch(base.offset(caps[i][0], 12, caps[i][1]), leaves, 1);
+        }
+
+        // 清掉和木头重叠的位置，保证粗枝在树冠底下能够看见。
+        leaves.removeAll(logs);
+    }
+
+    private void addCanopyLayer(BlockPos base,
+                                Set<BlockPos> leaves,
+                                int y,
+                                int radius,
+                                int maxManhattan) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                int ax = Math.abs(dx);
+                int az = Math.abs(dz);
+
+                if (ax > radius || az > radius) {
+                    continue;
+                }
+
+                // 阶梯式八边形边缘，比圆球树冠更像截图里的大平顶树冠。
+                if (ax + az > maxManhattan) {
+                    continue;
+                }
+
+                leaves.add(base.offset(dx, y, dz));
+            }
+        }
+    }
+
+    private void addLeafPatch(BlockPos center, Set<BlockPos> leaves, int radius) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                if (Math.abs(dx) + Math.abs(dz) <= radius + 1) {
+                    leaves.add(center.offset(dx, 0, dz));
+                }
+            }
+        }
+    }
+
+    private boolean hasRoom(ServerLevel level,
+                            Set<BlockPos> logs,
+                            Set<BlockPos> leaves) {
+        for (BlockPos pos : logs) {
+            if (!canReplace(level.getBlockState(pos))) {
+                return false;
+            }
+        }
+
+        for (BlockPos pos : leaves) {
+            if (logs.contains(pos)) {
+                continue;
+            }
+            if (!canReplace(level.getBlockState(pos))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private Direction.Axis chooseLogAxis(BlockPos base, BlockPos pos) {
+        int dx = pos.getX() - base.getX();
+        int dz = pos.getZ() - base.getZ();
+
+        // 根座和主干都保持竖纹。
+        if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1) {
+            return Direction.Axis.Y;
+        }
+
+        // 横枝按主要延伸方向旋转树干纹理。
+        return Math.abs(dx) >= Math.abs(dz)
+                ? Direction.Axis.X
+                : Direction.Axis.Z;
     }
 
     private void placeRibbons(ServerLevel level,
-                              List<BlockPos> generatedLeaves,
+                              List<BlockPos> placedLeaves,
+                              Set<BlockPos> logs,
                               RandomSource random) {
-        if (generatedLeaves.isEmpty()) {
-            return;
-        }
-
         List<BlockPos> candidates = new ArrayList<>();
 
-        for (BlockPos leafPos : generatedLeaves) {
+        // 只从树冠最下表面开始挂，避免缎带穿进树叶内部。
+        for (BlockPos leafPos : placedLeaves) {
             BlockPos below = leafPos.below();
 
-            if (level.isEmptyBlock(below)
-                    && level.getBlockState(leafPos)
-                    .is(PrayTreeContent.PRAY_LEAVES.get())) {
-                candidates.add(below);
+            if (!level.isEmptyBlock(below)) {
+                continue;
             }
+            if (logs.contains(below)) {
+                continue;
+            }
+
+            candidates.add(below);
         }
 
         Collections.shuffle(
@@ -187,14 +299,20 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
                 new java.util.Random(random.nextLong())
         );
 
-        int ribbonGroups = Math.min(
+        // 截图里缎带非常密集，所以数量明显多于普通装饰树。
+        int targetGroups = Math.min(
                 candidates.size(),
-                5 + random.nextInt(4)
+                38 + random.nextInt(18)
         );
 
-        for (int i = 0; i < ribbonGroups; i++) {
+        for (int i = 0; i < targetGroups; i++) {
             BlockPos start = candidates.get(i);
+
+            // 大部分 1~3 格，少量会达到 4 格，做出长短交错的垂挂效果。
             int length = 1 + random.nextInt(3);
+            if (random.nextInt(5) == 0) {
+                length++;
+            }
 
             for (int part = 0; part < length; part++) {
                 BlockPos ribbonPos = start.below(part);
@@ -216,6 +334,18 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
                 );
             }
         }
+    }
+
+    private boolean canReplace(BlockState state) {
+        if (!state.getFluidState().isEmpty()) {
+            return false;
+        }
+
+        return state.isAir()
+                || state.is(this)
+                || state.is(PrayTreeContent.PRAY_LEAVES.get())
+                || state.is(PrayTreeContent.PRAY_RIBBON.get())
+                || state.canBeReplaced();
     }
 
     @Override
