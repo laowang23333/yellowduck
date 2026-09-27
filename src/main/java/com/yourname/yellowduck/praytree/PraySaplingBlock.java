@@ -66,10 +66,16 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
 
         Set<BlockPos> logs = new HashSet<>();
         Set<BlockPos> leaves = new HashSet<>();
+        List<CanopyBlob> blobs = new ArrayList<>();
 
         buildRootAndTrunk(base, logs, spec);
-        buildBranches(base, logs, spec, random);
-        buildCanopy(base, leaves, spec, random);
+        buildCanopyBlobs(base, blobs, spec, random);
+        buildBranches(base, logs, blobs, spec, random);
+        buildCanopy(base, leaves, blobs, spec, random);
+
+        // 横枝全部压在树冠内部，并在木头正上方补叶子。
+        // 从上面看时不会再出现木头戳出树叶的情况。
+        coverBranchesFromAbove(base, logs, leaves, spec, random);
 
         leaves.removeAll(logs);
 
@@ -95,6 +101,7 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
             if (logs.contains(pos)) {
                 continue;
             }
+
             level.setBlock(pos, leafState, 3);
             placedLeaves.add(pos.immutable());
         }
@@ -103,6 +110,7 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
     }
 
     private void buildRootAndTrunk(BlockPos base, Set<BlockPos> logs, TreeSpec spec) {
+        // 树根是下宽上窄的台座。
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 logs.add(base.offset(dx, 0, dz));
@@ -120,135 +128,240 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
         }
     }
 
-    private void buildBranches(BlockPos base, Set<BlockPos> logs, TreeSpec spec, RandomSource random) {
-        int[][] directions = {
-                {1, 0}, {-1, 0}, {0, 1}, {0, -1},
-                {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
-        };
+    /**
+     * 树冠不再按水平层一层层铺。
+     * 改成多个大小、位置、高度都不同的叶团相互重叠，
+     * 这样顶面和底面都会像视频一样自然起伏。
+     */
+    private void buildCanopyBlobs(BlockPos base,
+                                  List<CanopyBlob> blobs,
+                                  TreeSpec spec,
+                                  RandomSource random) {
+        // 中央主体。
+        blobs.add(new CanopyBlob(
+                spec.centerOffsetX,
+                spec.canopyCenterY,
+                spec.centerOffsetZ,
+                3 + random.nextInt(2),
+                3 + random.nextInt(2),
+                2
+        ));
 
-        int rotated = random.nextInt(4);
+        // 外围 5~8 个叶团，每棵树位置和大小都不同。
+        int lobeCount = 5 + random.nextInt(4);
+        double startAngle = random.nextDouble() * Math.PI * 2.0D;
 
-        for (int i = 0; i < directions.length; i++) {
-            int[] d = directions[(i + rotated) % directions.length];
-            boolean diagonal = d[0] != 0 && d[1] != 0;
-            int length = diagonal
-                    ? 2 + random.nextInt(2)
-                    : 3 + random.nextInt(2);
+        for (int i = 0; i < lobeCount; i++) {
+            double angle = startAngle
+                    + Math.PI * 2.0D * i / lobeCount
+                    + (random.nextDouble() - 0.5D) * 0.55D;
 
-            int startY = spec.undersideY + (diagonal ? 0 : 1);
+            double distance = 2.6D + random.nextDouble() * 2.0D;
+            int cx = spec.centerOffsetX
+                    + (int) Math.round(Math.cos(angle) * distance);
+            int cz = spec.centerOffsetZ
+                    + (int) Math.round(Math.sin(angle) * distance);
 
-            for (int step = 1; step <= length; step++) {
-                int x = d[0] * step;
-                int z = d[1] * step;
-                int y = startY + (step >= length && !diagonal ? 1 : 0);
+            int cy = spec.canopyCenterY - 1 + random.nextInt(3);
+            int rx = 2 + random.nextInt(2);
+            int rz = 2 + random.nextInt(2);
+            int ry = 1 + random.nextInt(2);
+
+            blobs.add(new CanopyBlob(cx, cy, cz, rx, rz, ry));
+        }
+
+        // 再随机补 1~2 个偏心叶团
+        int extra = 1 + random.nextInt(2);
+        for (int i = 0; i < extra; i++) {
+            int cx = spec.centerOffsetX + random.nextInt(7) - 3;
+            int cz = spec.centerOffsetZ + random.nextInt(7) - 3;
+            int cy = spec.canopyCenterY + random.nextInt(2);
+
+            blobs.add(new CanopyBlob(
+                    cx, cy, cz,
+                    2 + random.nextInt(2),
+                    2 + random.nextInt(2),
+                    1 + random.nextInt(2)
+            ));
+        }
+    }
+
+    /**
+     * 主枝只在树冠下部和内部生长，不再往树冠上面抬。
+     * 每条枝条朝一个叶团中心延伸，所以树干结构也会跟着树冠随机变化。
+     */
+    private void buildBranches(BlockPos base,
+                               Set<BlockPos> logs,
+                               List<CanopyBlob> blobs,
+                               TreeSpec spec,
+                               RandomSource random) {
+        int startY = spec.branchY;
+
+        for (int i = 1; i < blobs.size(); i++) {
+            CanopyBlob blob = blobs.get(i);
+
+            int targetX = blob.cx;
+            int targetZ = blob.cz;
+            int steps = Math.max(Math.abs(targetX), Math.abs(targetZ));
+
+            if (steps <= 1) {
+                continue;
+            }
+
+            // 并不是每个小叶团都一定有一根明显枝条，避免内部木头过密。
+            if (i > 4 && random.nextInt(3) == 0) {
+                continue;
+            }
+
+            int lastX = 0;
+            int lastZ = 0;
+
+            for (int step = 1; step <= steps; step++) {
+                double progress = step / (double) steps;
+
+                int x = (int) Math.round(targetX * progress);
+                int z = (int) Math.round(targetZ * progress);
+
+                if (x == lastX && z == lastZ) {
+                    continue;
+                }
+
+                // 只允许末端轻微抬高 1 格，而且仍位于叶团下半部。
+                int y = startY;
+                if (step >= steps - 1 && blob.cy >= spec.canopyCenterY + 1) {
+                    y++;
+                }
 
                 logs.add(base.offset(x, y, z));
-
-                if (!diagonal && step == length && random.nextBoolean()) {
-                    logs.add(base.offset(x + Integer.signum(d[0]), y, z + Integer.signum(d[1])));
-                }
+                lastX = x;
+                lastZ = z;
             }
         }
     }
 
     private void buildCanopy(BlockPos base,
                              Set<BlockPos> leaves,
+                             List<CanopyBlob> blobs,
                              TreeSpec spec,
                              RandomSource random) {
-        int bottom = spec.undersideY;
-        int top = spec.topY;
-
-        for (int y = bottom; y <= top; y++) {
-            double layer = y - bottom;
-            double heightNorm = spec.height == 0 ? 0.0D : layer / (double) spec.height;
-
-            // 底部宽平，中间最厚，顶部收窄，不再是整齐“蛋糕层”。
-            double baseRadius;
-            if (heightNorm < 0.26D) {
-                baseRadius = spec.outerRadius;
-            } else if (heightNorm < 0.56D) {
-                baseRadius = spec.outerRadius - 0.35D;
-            } else if (heightNorm < 0.82D) {
-                baseRadius = spec.outerRadius - 1.15D;
-            } else {
-                baseRadius = spec.outerRadius - 2.15D;
-            }
-
-            for (int dx = -(spec.outerRadius + 2); dx <= spec.outerRadius + 2; dx++) {
-                for (int dz = -(spec.outerRadius + 2); dz <= spec.outerRadius + 2; dz++) {
-                    double px = dx - spec.centerOffsetX * heightNorm * 0.35D;
-                    double pz = dz - spec.centerOffsetZ * heightNorm * 0.35D;
-
-                    double angle = Math.atan2(pz, px);
-                    double distance = Math.sqrt(px * px + pz * pz);
-
-                    double edgeNoise =
-                            Math.sin(angle * spec.lobeCount + spec.phase1) * spec.lobeAmp1
-                          + Math.cos(angle * (spec.lobeCount + 2) + spec.phase2) * spec.lobeAmp2;
-
-                    double radius = baseRadius + edgeNoise;
-
-                    // 顶层整体再收一点，让顶部不是大平面。
-                    if (y == top) {
-                        radius -= 0.8D;
-                    }
-
-                    if (distance <= radius) {
-                        leaves.add(base.offset(dx, y, dz));
-                    }
-                }
-            }
+        for (CanopyBlob blob : blobs) {
+            addLeafBlob(base, leaves, blob, random);
         }
 
-        // 顶部做 3~5 个随机鼓包，接近视频里自然起伏，而不是固定一圈一圈。
-        int bumps = 3 + random.nextInt(3);
-        for (int i = 0; i < bumps; i++) {
+        // 树冠下面额外补一些小叶团。
+        // 这些叶团高度随机，所以底面不会再变成一张整齐的平板。
+        int undersideBlobs = 5 + random.nextInt(6);
+        for (int i = 0; i < undersideBlobs; i++) {
             double angle = random.nextDouble() * Math.PI * 2.0D;
-            double dist = random.nextDouble() * 2.2D;
-            int cx = (int) Math.round(Math.cos(angle) * dist);
-            int cz = (int) Math.round(Math.sin(angle) * dist);
-            int cy = spec.topY - 1 + random.nextInt(2);
-            int radius = 1 + random.nextInt(2);
-            addLeafPatch(base.offset(cx, cy, cz), leaves, radius);
+            double dist = 1.5D + random.nextDouble() * (spec.outerReach - 1.5D);
+
+            int cx = spec.centerOffsetX
+                    + (int) Math.round(Math.cos(angle) * dist);
+            int cz = spec.centerOffsetZ
+                    + (int) Math.round(Math.sin(angle) * dist);
+            int cy = spec.branchY + random.nextInt(2);
+
+            addLeafBlob(
+                    base,
+                    leaves,
+                    new CanopyBlob(cx, cy, cz, 1 + random.nextInt(2),
+                            1 + random.nextInt(2), 1),
+                    random
+            );
         }
 
-        // 树冠下沿补一点垂边，让轮廓更像视频里自然下坠，而不是纯水平切面。
-        int droops = 10 + random.nextInt(8);
-        for (int i = 0; i < droops; i++) {
-            double angle = random.nextDouble() * Math.PI * 2.0D;
-            double dist = spec.outerRadius - 0.5D + random.nextDouble() * 0.8D;
-            int x = (int) Math.round(Math.cos(angle) * dist);
-            int z = (int) Math.round(Math.sin(angle) * dist);
-            BlockPos p = base.offset(x, bottom - 1, z);
-            if (Math.abs(x) + Math.abs(z) > 2) {
-                leaves.add(p);
-            }
-        }
+        // 顶部补少量小鼓包，但全部是树叶，不再放木头。
+        int topBumps = 2 + random.nextInt(4);
+        for (int i = 0; i < topBumps; i++) {
+            int cx = spec.centerOffsetX + random.nextInt(7) - 3;
+            int cz = spec.centerOffsetZ + random.nextInt(7) - 3;
+            int cy = spec.canopyCenterY + 2 + random.nextInt(2);
 
-        // 中间稍微掏掉一点点顶面，让顶部更自然。
-        if (random.nextBoolean()) {
-            carveTopPocket(base.above(spec.topY), leaves, 1 + random.nextInt(2));
+            addLeafBlob(
+                    base,
+                    leaves,
+                    new CanopyBlob(cx, cy, cz, 1 + random.nextInt(2),
+                            1 + random.nextInt(2), 1),
+                    random
+            );
         }
     }
 
-    private void addLeafPatch(BlockPos center, Set<BlockPos> leaves, int radius) {
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                if (dx * dx + dz * dz <= radius * radius + 1) {
-                    leaves.add(center.offset(dx, 0, dz));
+    private void addLeafBlob(BlockPos base,
+                             Set<BlockPos> leaves,
+                             CanopyBlob blob,
+                             RandomSource random) {
+        for (int dx = -blob.rx; dx <= blob.rx; dx++) {
+            for (int dy = -blob.ry; dy <= blob.ry; dy++) {
+                for (int dz = -blob.rz; dz <= blob.rz; dz++) {
+                    double nx = dx / (double) blob.rx;
+                    double ny = dy / (double) blob.ry;
+                    double nz = dz / (double) blob.rz;
+                    double distance = nx * nx + ny * ny + nz * nz;
+
+                    if (distance > 1.12D) {
+                        continue;
+                    }
+
+                    // 只在叶团最外边缘少量随机削掉方块，
+                    // 保持自然轮廓，同时避免产生大洞。
+                    if (distance > 0.82D && random.nextInt(7) == 0) {
+                        continue;
+                    }
+
+                    leaves.add(base.offset(
+                            blob.cx + dx,
+                            blob.cy + dy,
+                            blob.cz + dz
+                    ));
                 }
             }
         }
     }
 
-    private void carveTopPocket(BlockPos center, Set<BlockPos> leaves, int radius) {
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                if (dx * dx + dz * dz <= radius * radius) {
-                    leaves.remove(center.offset(dx, 0, dz));
-                }
+    /**
+     * 树下看到枝条，但俯视时树冠上方看不到裸露木头。
+     * 对树冠内的横枝统一在正上方补叶子，并随机补左右叶子包裹。
+     */
+    private void coverBranchesFromAbove(BlockPos base,
+                                        Set<BlockPos> logs,
+                                        Set<BlockPos> leaves,
+                                        TreeSpec spec,
+                                        RandomSource random) {
+        List<BlockPos> copy = new ArrayList<>(logs);
+
+        for (BlockPos logPos : copy) {
+            int relativeY = logPos.getY() - base.getY();
+            int dx = logPos.getX() - base.getX();
+            int dz = logPos.getZ() - base.getZ();
+
+            if (relativeY < spec.branchY || (dx == 0 && dz == 0)) {
+                continue;
+            }
+
+            leaves.add(logPos.above());
+
+            if (random.nextBoolean()) {
+                leaves.add(logPos.above().north());
+            }
+            if (random.nextBoolean()) {
+                leaves.add(logPos.above().south());
+            }
+            if (random.nextBoolean()) {
+                leaves.add(logPos.above().east());
+            }
+            if (random.nextBoolean()) {
+                leaves.add(logPos.above().west());
             }
         }
+
+        // 主干最顶部也封在树叶内部。
+        BlockPos trunkTop = base.above(spec.trunkTopY);
+        leaves.add(trunkTop.above());
+        leaves.add(trunkTop.above().north());
+        leaves.add(trunkTop.above().south());
+        leaves.add(trunkTop.above().east());
+        leaves.add(trunkTop.above().west());
     }
 
     private boolean hasRoom(ServerLevel level,
@@ -275,8 +388,9 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
     private Direction.Axis chooseLogAxis(BlockPos base, BlockPos pos, TreeSpec spec) {
         int dx = pos.getX() - base.getX();
         int dz = pos.getZ() - base.getZ();
+        int relativeY = pos.getY() - base.getY();
 
-        if (pos.getY() <= 2 || (dx == 0 && dz == 0)) {
+        if (relativeY <= 2 || (dx == 0 && dz == 0)) {
             return Direction.Axis.Y;
         }
 
@@ -299,21 +413,20 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
                 continue;
             }
 
-            // 只优先从树冠下表面和边缘位置挂缎带。
-            if (!isBottomSurfaceLeaf(level, leafPos)) {
-                continue;
-            }
+            // 现在所有真正的树冠下表面都可以成为候选点，
+            // 不再要求它必须处在一整块平面边缘。
+            candidates.add(below);
 
-            int edgeScore = 0;
+            int openSides = 0;
             for (Direction d : Direction.Plane.HORIZONTAL) {
                 if (level.isEmptyBlock(leafPos.relative(d))) {
-                    edgeScore++;
+                    openSides++;
                 }
             }
 
-            candidates.add(below);
-            if (edgeScore >= 2 && random.nextBoolean()) {
-                candidates.add(below); // 边缘位置更容易被抽中，接近视频里的外围垂挂感
+            // 外围叶子稍微提高抽中概率。
+            if (openSides >= 2 && random.nextBoolean()) {
+                candidates.add(below);
             }
         }
 
@@ -321,23 +434,24 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
 
         int targetGroups = Math.min(
                 candidates.size(),
-                20 + random.nextInt(14)
+                24 + random.nextInt(15)
         );
 
         Set<BlockPos> used = new HashSet<>();
         for (int i = 0; i < candidates.size() && used.size() < targetGroups; i++) {
             BlockPos start = candidates.get(i);
+
             if (!used.add(start)) {
                 continue;
             }
 
-            int lengthRoll = random.nextInt(100);
+            int roll = random.nextInt(100);
             int length;
-            if (lengthRoll < 45) {
+            if (roll < 38) {
                 length = 1;
-            } else if (lengthRoll < 75) {
+            } else if (roll < 70) {
                 length = 2;
-            } else if (lengthRoll < 93) {
+            } else if (roll < 92) {
                 length = 3;
             } else {
                 length = 4;
@@ -363,20 +477,6 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
                 );
             }
         }
-    }
-
-    private boolean isBottomSurfaceLeaf(ServerLevel level, BlockPos leafPos) {
-        if (!level.isEmptyBlock(leafPos.below())) {
-            return false;
-        }
-
-        int solidSides = 0;
-        for (Direction d : Direction.Plane.HORIZONTAL) {
-            if (level.getBlockState(leafPos.relative(d)).is(PrayTreeContent.PRAY_LEAVES.get())) {
-                solidSides++;
-            }
-        }
-        return solidSides <= 3;
     }
 
     private boolean canReplace(BlockState state) {
@@ -415,62 +515,62 @@ public class PraySaplingBlock extends BushBlock implements BonemealableBlock {
         advanceTree(level, pos, state, random);
     }
 
+    private static final class CanopyBlob {
+        final int cx;
+        final int cy;
+        final int cz;
+        final int rx;
+        final int rz;
+        final int ry;
+
+        private CanopyBlob(int cx, int cy, int cz,
+                           int rx, int rz, int ry) {
+            this.cx = cx;
+            this.cy = cy;
+            this.cz = cz;
+            this.rx = rx;
+            this.rz = rz;
+            this.ry = ry;
+        }
+    }
+
     private static final class TreeSpec {
-        final int undersideY;
-        final int topY;
-        final int height;
         final int trunkTopY;
-        final int outerRadius;
-        final int lobeCount;
-        final double lobeAmp1;
-        final double lobeAmp2;
-        final double phase1;
-        final double phase2;
+        final int branchY;
+        final int canopyCenterY;
+        final int outerReach;
         final int centerOffsetX;
         final int centerOffsetZ;
 
-        private TreeSpec(int undersideY,
-                         int topY,
-                         int trunkTopY,
-                         int outerRadius,
-                         int lobeCount,
-                         double lobeAmp1,
-                         double lobeAmp2,
-                         double phase1,
-                         double phase2,
+        private TreeSpec(int trunkTopY,
+                         int branchY,
+                         int canopyCenterY,
+                         int outerReach,
                          int centerOffsetX,
                          int centerOffsetZ) {
-            this.undersideY = undersideY;
-            this.topY = topY;
-            this.height = topY - undersideY;
             this.trunkTopY = trunkTopY;
-            this.outerRadius = outerRadius;
-            this.lobeCount = lobeCount;
-            this.lobeAmp1 = lobeAmp1;
-            this.lobeAmp2 = lobeAmp2;
-            this.phase1 = phase1;
-            this.phase2 = phase2;
+            this.branchY = branchY;
+            this.canopyCenterY = canopyCenterY;
+            this.outerReach = outerReach;
             this.centerOffsetX = centerOffsetX;
             this.centerOffsetZ = centerOffsetZ;
         }
 
         static TreeSpec create(RandomSource random) {
-            int undersideY = 7 + random.nextInt(2);      // 7~8
-            int topY = undersideY + 3 + random.nextInt(2); // 总高 4~5 层
-            int trunkTopY = undersideY - 1;
-            int outerRadius = 5 + random.nextInt(2);     // 5~6
-            int lobeCount = 3 + random.nextInt(3);       // 3~5 个外轮廓波瓣
-            double lobeAmp1 = 0.35D + random.nextDouble() * 0.75D;
-            double lobeAmp2 = 0.15D + random.nextDouble() * 0.45D;
-            double phase1 = random.nextDouble() * Math.PI * 2.0D;
-            double phase2 = random.nextDouble() * Math.PI * 2.0D;
+            int trunkTopY = 6 + random.nextInt(2);       // 6~7
+            int branchY = trunkTopY - 1;                 // 横枝压在树冠内部
+            int canopyCenterY = trunkTopY + 2;           // 树冠主体中心
+            int outerReach = 5 + random.nextInt(2);      // 5~6 格范围
             int centerOffsetX = random.nextInt(3) - 1;
             int centerOffsetZ = random.nextInt(3) - 1;
 
             return new TreeSpec(
-                    undersideY, topY, trunkTopY, outerRadius,
-                    lobeCount, lobeAmp1, lobeAmp2, phase1, phase2,
-                    centerOffsetX, centerOffsetZ
+                    trunkTopY,
+                    branchY,
+                    canopyCenterY,
+                    outerReach,
+                    centerOffsetX,
+                    centerOffsetZ
             );
         }
     }
