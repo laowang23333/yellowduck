@@ -1,10 +1,11 @@
 package com.yourname.yellowduck.party;
 
 import com.mojang.authlib.GameProfile;
+import com.yourname.yellowduck.block.MeetStoneBlockEntity;
 import com.yourname.yellowduck.dungeon.DungeonConfig;
 import com.yourname.yellowduck.dungeon.DungeonDefinition;
 import com.yourname.yellowduck.dungeon.DungeonManager;
-import com.yourname.yellowduck.block.MeetStoneBlockEntity;
+import com.yourname.yellowduck.dungeon.DungeonRewardManager;
 import com.yourname.yellowduck.registry.ModBlocks;
 import com.yourname.yellowduck.registry.ModMenuTypes;
 import net.minecraft.core.BlockPos;
@@ -22,7 +23,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,8 +33,8 @@ import java.util.UUID;
 /**
  * 自定义组队 GUI 的服务端菜单。
  *
- * 客户端不再显示原版箱子槽位；54 个只读隐藏槽只负责把队伍状态同步给客户端。
- * 所有按钮最终仍由服务端 clickMenuButton 校验并执行，客户端不能直接改队伍数据。
+ * 54 个隐藏状态槽只负责把服务端权威数据同步给客户端；
+ * 所有创建、邀请、准备、开本、邮箱领取入口最终都在服务端校验。
  */
 public class PartyMenu extends AbstractContainerMenu {
     public static final int STATE_SIZE = 54;
@@ -44,9 +44,13 @@ public class PartyMenu extends AbstractContainerMenu {
     public static final int INVITE_START = 16;
     public static final int INVITE_COUNT = 20;
     public static final int BOUND_DUNGEON_SLOT = 40;
-    // 保留旧常量名，避免其他客户端代码/旧存档升级时直接断引用。
     public static final int DUNGEON_CLEOPATRA_SLOT = BOUND_DUNGEON_SLOT;
     public static final int DUNGEON_SAKURA_SLOT = 41;
+
+    /** 配置文件中的掉落物预览，只同步物品种类。 */
+    public static final int DROP_PREVIEW_START = 42;
+    public static final int DROP_PREVIEW_COUNT = 12;
+
     public static final double INVITE_RADIUS = 20.0D;
     private static final double MENU_USE_RADIUS_SQR = 8.0D * 8.0D;
 
@@ -55,17 +59,14 @@ public class PartyMenu extends AbstractContainerMenu {
     public static final int ACTION_READY = 3;
     public static final int ACTION_LEAVE = 4;
     public static final int ACTION_START = 5;
+    public static final int ACTION_MAILBOX = 6;
     public static final int ACTION_SELECT_CLEOPATRA = 10;
     public static final int ACTION_SELECT_SAKURA = 11;
     public static final int ACTION_REFRESH = 90;
 
-    // 动态按钮统一使用低位 ID。
-    // 一些 Forge + Bukkit/Mohist 混合端对过大的 container button id 兼容并不稳定，
-    // 原来的 1000/2000/3000 可能导致客户端看起来点了“邀请”，服务端却没有进入邀请分支。
-    // 这些区间彼此不重叠，并且与上面的固定按钮 ID 保持分离。
-    public static final int ACTION_INVITE_BASE = 20;  // 20 ~ 39
-    public static final int ACTION_KICK_BASE = 40;    // 40 ~ 51
-    public static final int ACTION_LEADER_BASE = 60;  // 60 ~ 71
+    public static final int ACTION_INVITE_BASE = 20;
+    public static final int ACTION_KICK_BASE = 40;
+    public static final int ACTION_LEADER_BASE = 60;
 
     private final SimpleContainer state = new SimpleContainer(STATE_SIZE);
     private final BlockPos stationPos;
@@ -83,7 +84,6 @@ public class PartyMenu extends AbstractContainerMenu {
     public PartyMenu(int id, Inventory inv, BlockPos stationPos) {
         super(ModMenuTypes.PARTY.get(), id);
         this.stationPos = stationPos.immutable();
-        // 隐藏状态槽。坐标放到屏幕外，客户端自定义 Screen 只读取内容，不绘制/交互这些槽。
         for (int i = 0; i < STATE_SIZE; i++) addSlot(new StateSlot(state, i));
         if (!inv.player.level().isClientSide && inv.player instanceof ServerPlayer serverPlayer) refresh(serverPlayer);
     }
@@ -98,8 +98,11 @@ public class PartyMenu extends AbstractContainerMenu {
         CompoundTag mt = meta.getOrCreateTag();
         mt.putBoolean("HasParty", party != null);
         mt.putBoolean("HasInvite", PartyManager.hasPendingInvite(viewer.getUUID()));
+        mt.putBoolean("HasMailbox", DungeonRewardManager.hasMailboxRewards(viewer));
+        mt.putInt("MailboxStacks", DungeonRewardManager.mailboxStackCount(viewer));
         mt.putString("ViewerUuid", viewer.getUUID().toString());
         mt.putString("ViewerName", viewer.getGameProfile().getName());
+
         String stationDungeonId = stationDungeonId(viewer);
         DungeonDefinition stationDef = DungeonConfig.get(stationDungeonId);
         mt.putString("StationDungeonId", stationDungeonId);
@@ -159,6 +162,12 @@ public class PartyMenu extends AbstractContainerMenu {
 
         writeDungeonState(BOUND_DUNGEON_SLOT, stationDef, party, stationDungeonId);
         state.setItem(DUNGEON_SAKURA_SLOT, ItemStack.EMPTY);
+
+        List<ItemStack> configuredDrops = DungeonRewardManager.configuredPreview(stationDef, DROP_PREVIEW_COUNT);
+        for (int i = 0; i < configuredDrops.size() && i < DROP_PREVIEW_COUNT; i++) {
+            state.setItem(DROP_PREVIEW_START + i, configuredDrops.get(i).copy());
+        }
+
         broadcastChanges();
     }
 
@@ -192,38 +201,43 @@ public class PartyMenu extends AbstractContainerMenu {
             case ACTION_ACCEPT -> PartyManager.accept(serverPlayer, stationDungeonId(serverPlayer));
             case ACTION_READY -> PartyManager.toggleReady(serverPlayer);
             case ACTION_LEAVE -> PartyManager.leave(serverPlayer);
-            case ACTION_START -> DungeonManager.startDungeonFromPillar(serverPlayer, stationPos);
-            case ACTION_SELECT_CLEOPATRA, ACTION_SELECT_SAKURA -> {
-                serverPlayer.sendSystemMessage(Component.literal("§e副本由当前柱子固定绑定，不能在GUI里切换。"));
+            case ACTION_MAILBOX -> DungeonRewardManager.openMailbox(serverPlayer);
+            case ACTION_START -> {
+                AdventureParty party = PartyManager.getParty(serverPlayer);
+                ServerPlayer blocker = firstMailboxBlocker(serverPlayer, party);
+                if (blocker != null) {
+                    String name = blocker.getGameProfile().getName();
+                    serverPlayer.sendSystemMessage(Component.literal(
+                            "§c无法开始副本：§f" + name + " §c还有未领取的副本物品奖励，请先领取待领取邮箱。"));
+                    if (blocker != serverPlayer) {
+                        blocker.sendSystemMessage(Component.literal(
+                                "§e你的待领取邮箱还有副本物品奖励，领取后队伍才能开始下一场副本。"));
+                    }
+                } else {
+                    DungeonManager.startDungeonFromPillar(serverPlayer, stationPos);
+                }
             }
+            case ACTION_SELECT_CLEOPATRA, ACTION_SELECT_SAKURA ->
+                    serverPlayer.sendSystemMessage(Component.literal("§e副本由当前柱子固定绑定，不能在GUI里切换。"));
             case ACTION_REFRESH -> { }
             default -> {
                 if (id >= ACTION_INVITE_BASE && id < ACTION_INVITE_BASE + INVITE_COUNT) {
                     int inviteIndex = id - ACTION_INVITE_BASE;
                     UUID targetId = inviteTargets.get(inviteIndex);
-
                     if (targetId == null) {
-                        // 客户端列表与服务端列表刚好发生刷新时，旧版本会直接什么都不做，
-                        // 玩家就会误以为已经邀请成功。现在明确提示并立即刷新列表。
                         serverPlayer.sendSystemMessage(Component.literal(
-                                "§6[副本系统]§e邀请列表刚刚发生变化，已自动刷新，请重新点击一次目标玩家。"
-                        ));
+                                "§6[副本系统]§e邀请列表刚刚发生变化，已自动刷新，请重新点击一次目标玩家。"));
                         refresh(serverPlayer);
                     } else {
                         ServerPlayer target = serverPlayer.server.getPlayerList().getPlayer(targetId);
                         if (target == null) {
-                            serverPlayer.sendSystemMessage(Component.literal(
-                                    "§6[副本系统]§c该玩家已经离线，无法发送邀请。"
-                            ));
+                            serverPlayer.sendSystemMessage(Component.literal("§6[副本系统]§c该玩家已经离线，无法发送邀请。"));
                             refresh(serverPlayer);
                         } else if (!isWithinInviteRange(target)) {
                             serverPlayer.sendSystemMessage(Component.literal(
-                                    "§6[副本系统]§c该玩家已经离开副本柱子20格范围，无法邀请。"
-                            ));
+                                    "§6[副本系统]§c该玩家已经离开副本柱子20格范围，无法邀请。"));
                             refresh(serverPlayer);
                         } else {
-                            // PartyManager.invite() 会登记服务端待处理邀请，
-                            // 并立即向目标玩家发送聊天栏 + 动作栏提示。
                             PartyManager.invite(serverPlayer, target);
                         }
                     }
@@ -242,6 +256,15 @@ public class PartyMenu extends AbstractContainerMenu {
         }
         if (serverPlayer.containerMenu == this) refresh(serverPlayer);
         return handled;
+    }
+
+    private static ServerPlayer firstMailboxBlocker(ServerPlayer viewer, AdventureParty party) {
+        if (party == null) return null;
+        for (UUID uuid : party.members()) {
+            ServerPlayer member = viewer.server.getPlayerList().getPlayer(uuid);
+            if (member != null && DungeonRewardManager.hasMailboxRewards(member)) return member;
+        }
+        return null;
     }
 
     public ItemStack stateStack(int slot) {
