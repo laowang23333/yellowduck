@@ -2,6 +2,7 @@ package com.yourname.yellowduck.dungeon;
 
 import com.yourname.yellowduck.registry.ModMenuTypes;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -14,13 +15,14 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 副本奖励只读预览菜单。
+ * 副本奖励只读预览 / 待领取邮箱菜单。
  *
- * 服务端菜单不注册任何真实 Slot，奖励物品只作为显示数据同步给客户端。
- * 同时吞掉所有容器点击/拖拽/Shift移动/双击收集等操作，避免任何方式把预览物品变成真实物品。
+ * 菜单本身不注册任何真实 Slot，所有物品都只是显示数据。
+ * 邮箱模式只有一个服务端按钮：领取全部奖励。
  */
 public final class RewardMenu extends AbstractContainerMenu {
     private static final int MAX_PREVIEW_STACKS = 54;
+    public static final int ACTION_CLAIM_MAILBOX = 1;
 
     private final String dungeonName;
     private final List<ItemStack> rewards;
@@ -28,6 +30,7 @@ public final class RewardMenu extends AbstractContainerMenu {
     private final int personalXp;
     private final String itemRecipientName;
     private final boolean itemRecipient;
+    private final boolean mailboxMode;
 
     public RewardMenu(int id, Inventory inventory, FriendlyByteBuf buf) {
         this(id, inventory,
@@ -36,11 +39,13 @@ public final class RewardMenu extends AbstractContainerMenu {
                 buf.readVarInt(),
                 buf.readVarInt(),
                 buf.readUtf(64),
+                buf.readBoolean(),
                 buf.readBoolean());
     }
 
     public RewardMenu(int id, Inventory inventory, String dungeonName, List<ItemStack> rewards,
-                      int totalXp, int personalXp, String itemRecipientName, boolean itemRecipient) {
+                      int totalXp, int personalXp, String itemRecipientName,
+                      boolean itemRecipient, boolean mailboxMode) {
         super(ModMenuTypes.DUNGEON_REWARD.get(), id);
         this.dungeonName = dungeonName == null ? "副本" : dungeonName;
 
@@ -55,10 +60,12 @@ public final class RewardMenu extends AbstractContainerMenu {
         this.personalXp = Math.max(0, personalXp);
         this.itemRecipientName = itemRecipientName == null ? "" : itemRecipientName;
         this.itemRecipient = itemRecipient;
+        this.mailboxMode = mailboxMode;
     }
 
     public static void writeOpenData(FriendlyByteBuf buf, String dungeonName, List<ItemStack> rewards,
-                                     int totalXp, int personalXp, String recipientName, boolean recipient) {
+                                     int totalXp, int personalXp, String recipientName,
+                                     boolean recipient, boolean mailboxMode) {
         buf.writeUtf(dungeonName == null ? "副本" : dungeonName, 128);
         int count = Math.min(MAX_PREVIEW_STACKS, rewards == null ? 0 : rewards.size());
         buf.writeVarInt(count);
@@ -67,6 +74,7 @@ public final class RewardMenu extends AbstractContainerMenu {
         buf.writeVarInt(Math.max(0, personalXp));
         buf.writeUtf(recipientName == null ? "" : recipientName, 64);
         buf.writeBoolean(recipient);
+        buf.writeBoolean(mailboxMode);
     }
 
     private static List<ItemStack> readItems(FriendlyByteBuf buf) {
@@ -82,25 +90,31 @@ public final class RewardMenu extends AbstractContainerMenu {
     public int personalXp() { return personalXp; }
     public String itemRecipientName() { return itemRecipientName; }
     public boolean isItemRecipient() { return itemRecipient; }
+    public boolean mailboxMode() { return mailboxMode; }
+
+    @Override
+    public boolean clickMenuButton(Player player, int id) {
+        if (!mailboxMode || id != ACTION_CLAIM_MAILBOX || !(player instanceof ServerPlayer serverPlayer)) {
+            return false;
+        }
+        DungeonRewardManager.claimMailbox(serverPlayer);
+        serverPlayer.closeContainer();
+        return true;
+    }
 
     @Override
     public boolean stillValid(Player player) {
         return true;
     }
 
-    /** Shift 点击永远不能移动任何物品。 */
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
         return ItemStack.EMPTY;
     }
 
-    /**
-     * 服务端最终防线：左/右键、Shift、数字键、丢弃、双击收集、快捷交换等全部无效。
-     * 菜单没有任何真实 Slot，因此也不存在“放入奖励箱”的目标。
-     */
     @Override
     public void clicked(int slotId, int button, ClickType clickType, Player player) {
-        // intentionally no-op
+        // 没有真实 Slot，任何容器物品操作都无效。
     }
 
     @Override
