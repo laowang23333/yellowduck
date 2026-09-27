@@ -10,6 +10,7 @@
     "TwoPhaseBossNoKnockbackMixin",
     "GarmrConfiguredDefenseMixin",
     "GarmrYellowPhaseGuardMixin",
+    "GarmrSafeCleanupMixin",
     "ToyBearAttackRangeMixin"
   ],
   "client": [],
