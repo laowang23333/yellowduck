@@ -10,6 +10,7 @@ import com.yourname.yellowduck.cleopatra.CleopatraConfig;
 import com.yourname.yellowduck.cleopatra.CleopatraSandworm;
 import com.yourname.yellowduck.cleopatra.CleopatraScorpion;
 import com.yourname.yellowduck.cleopatra.CleopatraVenomSnake;
+import com.yourname.yellowduck.daji.DajiConfig;
 import com.yourname.yellowduck.dungeon.DungeonConfig;
 import com.yourname.yellowduck.dungeon.DungeonDefinition;
 import com.yourname.yellowduck.dungeon.DungeonManager;
@@ -128,10 +129,12 @@ public final class YellowDuckReloadCommand {
     private static int reload(CommandSourceStack source) {
         try {
             /*
-             * 三份 YellowDuck 配置均自行解析，不经过 ForgeConfigSpec。
-             * 任一文件解析失败时，该文件继续使用上一份有效值，不会被自动改回默认。
+             * YellowDuck 配置均自行解析，不经过 ForgeConfigSpec。
+             * 妲己与其它生物共用 yellowduck-entities.toml，只是由自己的 [daji_battle] 段读取战斗参数。
+             * 任一配置解析失败时继续使用上一份有效值，不会被自动改回默认。
              */
             boolean entityOk = EntityTuningConfig.reload();
+            boolean dajiOk = DajiConfig.reload();
             boolean dungeonOk = DungeonConfig.reload();
             boolean silkOk = SilkConfig.reload();
 
@@ -167,6 +170,10 @@ public final class YellowDuckReloadCommand {
                 source.sendFailure(Component.literal(
                         "yellowduck-entities.toml 读取失败：已保留上一份有效生物/艳后配置，文件没有被自动改回默认。请查看日志。"));
             }
+            if (!dajiOk) {
+                source.sendFailure(Component.literal(
+                        "yellowduck-entities.toml 的 [daji_battle] 读取失败：妲己继续使用上一份有效值。请查看日志。"));
+            }
             if (!silkOk) {
                 source.sendFailure(Component.literal(
                         "yellowduck-entities.toml 读取失败：已保留上一份有效教授配置，文件没有被自动改回默认。请查看日志。"));
@@ -176,12 +183,14 @@ public final class YellowDuckReloadCommand {
                     "YellowDuck 重载完成："
                             + (entityOk ? "生物/艳后配置已更新" : "生物/艳后配置保持上一份有效值")
                             + "；"
+                            + (dajiOk ? "妲己配置已更新" : "妲己配置保持上一份有效值")
+                            + "；"
                             + (silkOk ? "教授配置已更新" : "教授配置保持上一份有效值")
                             + "；"
                             + (dungeonOk ? "副本配置已更新" : "副本配置读取失败")
                             + "。"), true);
 
-            return entityOk || dungeonOk || silkOk ? Math.max(1, count) : 0;
+            return entityOk || dajiOk || dungeonOk || silkOk ? Math.max(1, count) : 0;
         } catch (Throwable t) {
             source.sendFailure(Component.literal("YellowDuck reload 失败: " + t.getMessage()));
             return 0;
