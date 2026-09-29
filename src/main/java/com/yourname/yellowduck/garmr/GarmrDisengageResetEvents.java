@@ -20,7 +20,7 @@ import java.util.UUID;
 
 /**
  * 加姆脱战复位：
- * Boss 水平 5 格内连续 5 秒没有可战斗玩家时，回满血并恢复到第一阶段等待首击状态。
+ * Boss 水平 5 格内连续 8 秒没有可战斗玩家时，回满血并恢复到第一阶段等待首击状态。
  * 复位后下一次玩家攻击仍由 GarmrBoss 原逻辑触发起飞。
  */
 @Mod.EventBusSubscriber(modid = YellowDuckMod.MOD_ID)
@@ -29,9 +29,10 @@ public final class GarmrDisengageResetEvents {
 
     private static final double PLAYER_RADIUS = 5.0D;
     private static final double PLAYER_RADIUS_SQ = PLAYER_RADIUS * PLAYER_RADIUS;
-    private static final int RESET_AFTER_CHECKS = 5;
+    private static final int RESET_AFTER_CHECKS = 8;
 
     private static final Map<UUID, Integer> EMPTY_CHECKS = new HashMap<>();
+    private static final String RESET_PERMISSION_TAG = "YellowDuckGarmrDisengageResetAllowed";
 
     private static Method resetMethod;
     private static boolean resetMethodResolved;
@@ -112,20 +113,21 @@ public final class GarmrDisengageResetEvents {
 
         EMPTY_CHECKS.remove(boss.getUUID());
 
-        // 先回满，再调用 Boss 自己现有的完整复位逻辑：
-        // 清召唤物、清仇恨/索命、落地、回 P1_GROUND、重置技能计时。
-        boss.setHealth(boss.getMaxHealth());
-
         Method method = resolveResetMethod();
         if (method == null) return;
 
+        // 只有这里完成连续 8 秒无玩家检测后，才授权完整回满与阶段复位。
+        boss.getPersistentData().putBoolean(RESET_PERMISSION_TAG, true);
         try {
+            boss.setHealth(boss.getMaxHealth());
             method.invoke(boss, level);
         } catch (Throwable error) {
             if (!reflectionErrorLogged) {
                 reflectionErrorLogged = true;
                 LOGGER.error("[YellowDuck/Garmr] 5格脱战复位调用失败", error);
             }
+        } finally {
+            boss.getPersistentData().remove(RESET_PERMISSION_TAG);
         }
     }
 
