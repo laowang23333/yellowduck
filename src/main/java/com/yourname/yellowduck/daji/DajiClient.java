@@ -102,13 +102,13 @@ public final class DajiClient {
                 // 必须跟随身体 Bip001_Neck 的当前动画矩阵，否则身体动作时头会悬空不动。
                 if(human[1]!=null){
                     pose.pushPose();
-                    Matrix4f neck = animatedNodeGlobal(human[0], "Bip001_Neck", sample);
-                    if(neck!=null){
-                        pose.mulPoseMatrix(neck);
-                    }else{
-                        // 资源异常时的兜底位置。
-                        pose.translate(HUMAN_HEAD_X,HUMAN_HEAD_Y,HUMAN_HEAD_Z);
+                    Matrix4f neckDelta = animatedNodeDelta(human[0], "Bip001_Neck", sample);
+                    if(neckDelta!=null){
+                        // 只应用颈部相对静止姿势的动画变化。
+                        // 不能直接乘完整颈部矩阵，否则会把模型导出时的轴向旋转再套一次，头就会侧歪。
+                        pose.mulPoseMatrix(neckDelta);
                     }
+                    pose.translate(HUMAN_HEAD_X,HUMAN_HEAD_Y,HUMAN_HEAD_Z);
                     YellowGltfRenderUtil.renderModel(human[1],pose,buffers,light,sample,"Anim-1",false);
                     pose.popPose();
                 }
@@ -356,14 +356,23 @@ public final class DajiClient {
         }
     }
 
-    /** 返回指定节点在当前动画采样时刻的模型空间全局矩阵。 */
-    private static Matrix4f animatedNodeGlobal(YellowGltfModel model, String nodeName, float seconds){
+    /** 返回指定节点相对静止姿势的动画增量矩阵。 */
+    private static Matrix4f animatedNodeDelta(YellowGltfModel model, String nodeName, float seconds){
         if(model==null) return null;
         YellowGltfNode target=model.nodeByName.get(nodeName);
         if(target==null) return null;
 
         Map<Integer,Matrix4f> sampled = YellowGltfAnimationPlayer.sampleAnimation(
                 model,"Anim-1",seconds,false);
+        Matrix4f animated = nodeGlobal(target, sampled);
+        Matrix4f rest = nodeGlobal(target, Map.of());
+        if(animated==null || rest==null) return null;
+
+        Matrix4f inverseRest = new Matrix4f(rest).invert();
+        return new Matrix4f(animated).mul(inverseRest);
+    }
+
+    private static Matrix4f nodeGlobal(YellowGltfNode target, Map<Integer,Matrix4f> sampled){
         java.util.ArrayList<YellowGltfNode> chain=new java.util.ArrayList<>();
         for(YellowGltfNode n=target;n!=null;n=n.parent) chain.add(n);
 
