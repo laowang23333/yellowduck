@@ -4,7 +4,9 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import com.yourname.yellowduck.YellowDuckMod;
+import com.yourname.yellowduck.client.gltf.YellowGltfAnimationPlayer;
 import com.yourname.yellowduck.client.gltf.YellowGltfModel;
+import com.yourname.yellowduck.client.gltf.YellowGltfNode;
 import com.yourname.yellowduck.client.gltf.YellowGltfModelCache;
 import com.yourname.yellowduck.client.gltf.YellowGltfRenderUtil;
 import net.minecraft.client.renderer.LightTexture;
@@ -19,6 +21,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import org.joml.Matrix4f;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -86,7 +89,7 @@ public final class DajiClient {
 
             pose.pushPose();
             if(e.form()==DajiBoss.FORM_HUMAN){
-                pose.mulPose(Axis.YP.rotationDegrees(180.0F-yaw));
+                pose.mulPose(Axis.YP.rotationDegrees(-yaw));
                 pose.scale(0.22F,0.22F,0.22F);
                 float sample=humanSample(e,actionSeconds,now);
 
@@ -95,10 +98,17 @@ public final class DajiClient {
                 if(human[2]!=null) YellowGltfRenderUtil.renderModel(human[2],pose,buffers,light,sample,"Anim-1",false);
                 if(human[3]!=null) YellowGltfRenderUtil.renderModel(human[3],pose,buffers,light,sample,"Anim-1",false);
 
-                // 头部模型是以独立挂点原点导出的，放回身体颈部坐标。
+                // 头部模型使用独立骨架导出。位置不能只做固定平移，
+                // 必须跟随身体 Bip001_Neck 的当前动画矩阵，否则身体动作时头会悬空不动。
                 if(human[1]!=null){
                     pose.pushPose();
-                    pose.translate(HUMAN_HEAD_X,HUMAN_HEAD_Y,HUMAN_HEAD_Z);
+                    Matrix4f neck = animatedNodeGlobal(human[0], "Bip001_Neck", sample);
+                    if(neck!=null){
+                        pose.mulPoseMatrix(neck);
+                    }else{
+                        // 资源异常时的兜底位置。
+                        pose.translate(HUMAN_HEAD_X,HUMAN_HEAD_Y,HUMAN_HEAD_Z);
+                    }
                     YellowGltfRenderUtil.renderModel(human[1],pose,buffers,light,sample,"Anim-1",false);
                     pose.popPose();
                 }
@@ -344,6 +354,26 @@ public final class DajiClient {
                 default -> null;
             };
         }
+    }
+
+    /** 返回指定节点在当前动画采样时刻的模型空间全局矩阵。 */
+    private static Matrix4f animatedNodeGlobal(YellowGltfModel model, String nodeName, float seconds){
+        if(model==null) return null;
+        YellowGltfNode target=model.nodeByName.get(nodeName);
+        if(target==null) return null;
+
+        Map<Integer,Matrix4f> sampled = YellowGltfAnimationPlayer.sampleAnimation(
+                model,"Anim-1",seconds,false);
+        java.util.ArrayList<YellowGltfNode> chain=new java.util.ArrayList<>();
+        for(YellowGltfNode n=target;n!=null;n=n.parent) chain.add(n);
+
+        Matrix4f global=new Matrix4f();
+        for(int i=chain.size()-1;i>=0;i--){
+            YellowGltfNode n=chain.get(i);
+            Matrix4f local=sampled.get(n.index);
+            global.mul(local!=null ? local : n.localTransform);
+        }
+        return global;
     }
 
     private static ResourceLocation tex(String name){
