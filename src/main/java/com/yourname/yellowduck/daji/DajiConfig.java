@@ -203,11 +203,11 @@ public final class DajiConfig {
         rageInterval = i(values, "rage_interval_ticks", rageInterval, 20, 12000);
 
         // MC 伤害
-        basicDamage = f(values, "basic_damage", basicDamage, 0, 1e9);
-        windDamage = f(values, "wind_damage", windDamage, 0, 1e9);
-        chargeDamage = f(values, "charge_damage", chargeDamage, 0, 1e9);
-        fireDamage = f(values, "fire_damage", fireDamage, 0, 1e9);
-        rageDamage = f(values, "rage_damage", rageDamage, 0, 1e9);
+        basicDamage = f(values, "basic_damage", basicDamage, 0.0F, 1_000_000_000.0F);
+        windDamage = f(values, "wind_damage", windDamage, 0.0F, 1_000_000_000.0F);
+        chargeDamage = f(values, "charge_damage", chargeDamage, 0.0F, 1_000_000_000.0F);
+        fireDamage = f(values, "fire_damage", fireDamage, 0.0F, 1_000_000_000.0F);
+        rageDamage = f(values, "rage_damage", rageDamage, 0.0F, 1_000_000_000.0F);
 
         // 持续/控制
         redPowerDuration = i(values, "red_power_duration_ticks", redPowerDuration, 1, 12000);
@@ -218,7 +218,7 @@ public final class DajiConfig {
         slowAmplifier = i(values, "slow_amplifier", slowAmplifier, 0, 10);
 
         // 护盾/狂暴
-        shieldHealth = f(values, "shield_health", shieldHealth, 1, 1e9);
+        shieldHealth = f(values, "shield_health", shieldHealth, 1.0F, 1_000_000_000.0F);
         rageDamagePerStack = f(values, "rage_damage_per_stack", rageDamagePerStack, 0, 10);
         rageReductionPerStack = f(values, "rage_reduction_per_stack", rageReductionPerStack, 0, 1);
         rageReductionCap = f(values, "rage_reduction_cap", rageReductionCap, 0, 0.99F);

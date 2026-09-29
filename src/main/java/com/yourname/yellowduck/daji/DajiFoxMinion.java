@@ -62,7 +62,7 @@ public final class DajiFoxMinion extends Monster {
         goalSelector.addGoal(7, new RandomStrollGoal(this, 0.8D));
         goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
         targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true,
-                p -> !p.isCreative() && !p.isSpectator()));
+                p -> p instanceof Player player && !player.isCreative() && !player.isSpectator()));
     }
 
     public int variant() { return entityData.get(VARIANT); }
