@@ -29,6 +29,11 @@ import java.util.UUID;
 public final class DajiClient {
     private static final float GLB_TIMELINE_FPS = 15.0F;
 
+    // 人形头部资源以头部挂点为局部原点导出，需要放回身体颈部位置。
+    private static final double HUMAN_HEAD_X = 0.0D;
+    private static final double HUMAN_HEAD_Y = 10.324472D;
+    private static final double HUMAN_HEAD_Z = 0.119830D;
+
     private DajiClient() {}
 
     private static ResourceLocation model(String name){
@@ -80,14 +85,26 @@ public final class DajiClient {
             float actionSeconds = Math.max(0.0F,(now-clock.startTick)/20.0F);
 
             pose.pushPose();
-            pose.mulPose(Axis.YP.rotationDegrees(180.0F-yaw));
             if(e.form()==DajiBoss.FORM_HUMAN){
+                pose.mulPose(Axis.YP.rotationDegrees(180.0F-yaw));
                 pose.scale(0.22F,0.22F,0.22F);
                 float sample=humanSample(e,actionSeconds,now);
-                for(YellowGltfModel m:human){
-                    if(m!=null) YellowGltfRenderUtil.renderModel(m,pose,buffers,light,sample,"Anim-1",false);
+
+                // 身体、扇子和尾巴本身已经在角色坐标系中。
+                if(human[0]!=null) YellowGltfRenderUtil.renderModel(human[0],pose,buffers,light,sample,"Anim-1",false);
+                if(human[2]!=null) YellowGltfRenderUtil.renderModel(human[2],pose,buffers,light,sample,"Anim-1",false);
+                if(human[3]!=null) YellowGltfRenderUtil.renderModel(human[3],pose,buffers,light,sample,"Anim-1",false);
+
+                // 头部模型是以独立挂点原点导出的，放回身体颈部坐标。
+                if(human[1]!=null){
+                    pose.pushPose();
+                    pose.translate(HUMAN_HEAD_X,HUMAN_HEAD_Y,HUMAN_HEAD_Z);
+                    YellowGltfRenderUtil.renderModel(human[1],pose,buffers,light,sample,"Anim-1",false);
+                    pose.popPose();
                 }
             }else{
+                // 狐形资源自身正面与人形资源相反，不再额外旋转 180°。
+                pose.mulPose(Axis.YP.rotationDegrees(-yaw));
                 pose.scale(0.10F,0.10F,0.10F);
                 float sample=foxSample(e,actionSeconds,now);
                 for(YellowGltfModel m:bossFox){
@@ -165,7 +182,8 @@ public final class DajiClient {
             boolean moving=e.getDeltaMovement().horizontalDistanceSqr()>0.002D;
 
             pose.pushPose();
-            pose.mulPose(Axis.YP.rotationDegrees(180.0F-yaw));
+            // 小狐与精英狐资源正面和原版实体朝向相反，去掉额外的 180° 翻转。
+            pose.mulPose(Axis.YP.rotationDegrees(-yaw));
             if(e.variant()==DajiFoxMinion.SMALL){
                 pose.scale(.050F,.050F,.050F);
                 float s=attacking ? segment(68,90,15,since,false)
