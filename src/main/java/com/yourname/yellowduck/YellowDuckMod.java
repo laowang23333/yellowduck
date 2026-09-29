@@ -48,6 +48,8 @@ public class YellowDuckMod {
         SilkContent.ENTITY_TYPES.register(bus);
         GarmrContent.ENTITY_TYPES.register(bus);
         TenguContent.ENTITY_TYPES.register(bus);
+        com.yourname.yellowduck.daji.DajiContent.ENTITY_TYPES.register(bus);
+        com.yourname.yellowduck.daji.DajiContent.EFFECTS.register(bus);
         com.yourname.yellowduck.registry.ModItems.ITEMS.register(bus);
         ModParticles.PARTICLES.register(bus);
 
@@ -57,10 +59,12 @@ public class YellowDuckMod {
         MountNetwork.init();
 
         EntityTuningConfig.ensureLoaded();
+        com.yourname.yellowduck.daji.DajiConfig.ensureLoaded();
 
         DungeonConfig.ensureLoaded();
         if (GarmrDungeonBootstrap.ensureDungeonSection()) DungeonConfig.reload();
         if (com.yourname.yellowduck.change.ChangeDungeonBootstrap.ensureDungeonSection()) DungeonConfig.reload();
+        if (com.yourname.yellowduck.daji.DajiDungeonBootstrap.ensureDungeonSection()) DungeonConfig.reload();
 
         SilkConfig.ensureLoaded();
         bus.addListener(this::registerAttributes);
