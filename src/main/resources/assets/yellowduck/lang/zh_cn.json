@@ -121,5 +121,8 @@
   "block.yellowduck.pray_leaves": "祈福树叶",
   "item.yellowduck.pray_leaves": "祈福树叶",
   "block.yellowduck.pray_ribbon": "祈福缎带",
-  "item.yellowduck.pray_ribbon": "祈福缎带"
+  "item.yellowduck.pray_ribbon": "祈福缎带",
+  "entity.yellowduck.daji_boss": "妲己",
+  "entity.yellowduck.daji_fox": "妲己狐灵",
+  "effect.yellowduck.daji_white_fox_vulnerability": "白狐之力"
 }
